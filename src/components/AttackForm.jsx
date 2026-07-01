@@ -378,14 +378,16 @@ const AttackForm = () => {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !state.plan}
           className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black text-sm font-bold py-2 rounded-lg transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
         >
-          {loading
-            ? loopActive ? (starting ? 'Loop başlatılıyor...' : 'Başlatılıyor...') : 'Başlatılıyor...'
-            : loopActive
-              ? 'Loop Başlat'
-              : 'Saldırı Başlat'}
+          {!state.plan
+            ? 'Plan yükleniyor...'
+            : loading
+              ? loopActive ? (starting ? 'Loop başlatılıyor...' : 'Başlatılıyor...') : 'Başlatılıyor...'
+              : loopActive
+                ? 'Loop Başlat'
+                : 'Saldırı Başlat'}
         </button>
       </form>
     </div>

@@ -51,6 +51,9 @@ const DATA_DIR = path.join(__dirname, 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
 
+let saveStateRunning = false;
+let saveStatePending = false;
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -68,26 +71,43 @@ function safeWriteJson(filePath, data) {
 }
 
 function saveState() {
-  ensureDataDir();
+  if (saveStateRunning) {
+    saveStatePending = true;
+    return;
+  }
+  saveStateRunning = true;
 
-  // Save sessions: serialize CookieJar to JSON
-  const sessionsToSave = {};
-  Object.entries(sessions).forEach(([sessionId, session]) => {
-    try {
-      sessionsToSave[sessionId] = {
-        username: session.username,
-        user: session.user,
-        plan: session.plan,
-        jar: session.jar.toJSON()
-      };
-    } catch (err) {
-      console.error(`[persistence] Failed to serialize session ${sessionId}:`, err.message);
+  try {
+    ensureDataDir();
+
+    // Save sessions: serialize CookieJar to JSON
+    const sessionsToSave = {};
+    Object.entries(sessions).forEach(([sessionId, session]) => {
+      try {
+        sessionsToSave[sessionId] = {
+          username: session.username,
+          user: session.user,
+          plan: session.plan,
+          createdAt: session.createdAt,
+          jar: session.jar.toJSON()
+        };
+      } catch (err) {
+        console.error(`[persistence] Failed to serialize session ${sessionId}:`, err.message);
+      }
+    });
+    safeWriteJson(SESSIONS_FILE, sessionsToSave);
+
+    // Save loops: only serializable fields
+    safeWriteJson(LOOPS_FILE, activeLoops);
+
+    cleanupOldSessions();
+  } finally {
+    saveStateRunning = false;
+    if (saveStatePending) {
+      saveStatePending = false;
+      setImmediate(saveState);
     }
-  });
-  safeWriteJson(SESSIONS_FILE, sessionsToSave);
-
-  // Save loops: only serializable fields
-  safeWriteJson(LOOPS_FILE, activeLoops);
+  }
 }
 
 function loadState() {
@@ -103,6 +123,7 @@ function loadState() {
             username: data.username,
             user: data.user,
             plan: data.plan,
+            createdAt: data.createdAt || new Date().toISOString(),
             jar: CookieJar.fromJSON(data.jar)
           };
         } catch (err) {
@@ -113,6 +134,11 @@ function loadState() {
     }
   } catch (err) {
     console.error('[persistence] Failed to load sessions:', err.message);
+    try {
+      fs.renameSync(SESSIONS_FILE, `${SESSIONS_FILE}.corrupt.${Date.now()}`);
+    } catch (renameErr) {
+      console.error('[persistence] Failed to backup corrupt sessions file:', renameErr.message);
+    }
   }
 
   try {
@@ -135,7 +161,14 @@ function loadState() {
     }
   } catch (err) {
     console.error('[persistence] Failed to load loops:', err.message);
+    try {
+      fs.renameSync(LOOPS_FILE, `${LOOPS_FILE}.corrupt.${Date.now()}`);
+    } catch (renameErr) {
+      console.error('[persistence] Failed to backup corrupt loops file:', renameErr.message);
+    }
   }
+
+  cleanupOldSessions();
 }
 
 // Auto-save every 30 seconds
@@ -143,6 +176,21 @@ setInterval(saveState, 30000);
 
 function getSessionPlan(sessionId) {
   return sessions[sessionId]?.plan || {};
+}
+
+function handleEndpointError(res, error, label) {
+  if (error.statusCode) {
+    return res.status(error.statusCode).json({ status: 'error', message: error.message });
+  }
+  if (error.response) {
+    return res.status(error.response.status).json({
+      status: 'error',
+      message: error.response.data?.message || error.message,
+      data: error.response.data
+    });
+  }
+  console.error(`${label}:`, error.message);
+  res.status(500).json({ status: 'error', message: error.message });
 }
 
 function checkPlanLimits(sessionId, time, concurrents) {
@@ -157,6 +205,23 @@ function checkPlanLimits(sessionId, time, concurrents) {
     return { ok: false, message: `Maksimum concurrent ${maxConcurrents} olabilir` };
   }
   return { ok: true };
+}
+
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat
+
+function cleanupOldSessions() {
+  const now = Date.now();
+  let removed = 0;
+  Object.entries(sessions).forEach(([sessionId, session]) => {
+    const created = new Date(session.createdAt || 0).getTime();
+    if (now - created > SESSION_MAX_AGE_MS) {
+      delete sessions[sessionId];
+      removed++;
+    }
+  });
+  if (removed > 0) {
+    console.log(`[cleanup] Removed ${removed} expired session(s)`);
+  }
 }
 
 /**
@@ -224,7 +289,9 @@ function getJar(sessionId) {
 function getClient(sessionId) {
   const jar = getJar(sessionId);
   if (!jar) {
-    throw new Error('Invalid or expired session');
+    const err = new Error('Invalid or expired session');
+    err.statusCode = 401;
+    throw err;
   }
   return wrapper(axios.create({
     baseURL: 'https://stresse.st',
@@ -259,7 +326,7 @@ app.post('/api/stresse/login', async (req, res) => {
     }
 
       const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      sessions[sessionId] = { jar: new CookieJar(), username: null };
+      sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };
       const client = getClient(sessionId);
 
       let step = 'GET /login';
@@ -335,8 +402,7 @@ app.get('/api/stresse/user/:username', async (req, res) => {
     const response = await client.get(`/user/${req.params.username}`);
     res.json(response.data);
   } catch (error) {
-    console.error('User fetch error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'User fetch error');
   }
 });
 
@@ -352,8 +418,7 @@ app.get('/api/stresse/plan/:username', async (req, res) => {
     const response = await client.get(`/plan/${req.params.username}`);
     res.json(response.data);
   } catch (error) {
-    console.error('Plan fetch error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Plan fetch error');
   }
 });
 
@@ -369,8 +434,7 @@ app.get('/api/stresse/methods', async (req, res) => {
     const response = await client.get('/methods.json');
     res.json(response.data);
   } catch (error) {
-    console.error('Methods fetch error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Methods fetch error');
   }
 });
 
@@ -386,14 +450,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     const response = await client.get(`/ongoing/${req.params.username}`);
     res.json(response.data);
   } catch (error) {
-    console.error('Ongoing fetch error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Ongoing fetch error');
   }
 });
 
 /**
  * POST /api/stresse/attack
- * Body: { host, port, time, method, subnet, geo }
  */
 app.post('/api/stresse/attack', async (req, res) => {
   try {
@@ -452,15 +514,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    console.error('Attack error:', error.message);
-    if (error.response) {
-      return res.status(error.response.status).json({
-        status: 'error',
-        message: error.response.data?.message || error.message,
-        data: error.response.data
-      });
-    }
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Attack error');
   }
 });
 
@@ -541,15 +595,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       attack_id: successResults[0]?.data?.id || successResults[0]?.data?.attack_id || null
     });
   } catch (error) {
-    console.error('Bulk attack error:', error.message);
-    if (error.response) {
-      return res.status(error.response.status).json({
-        status: 'error',
-        message: error.response.data?.message || error.message,
-        data: error.response.data
-      });
-    }
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Bulk attack error');
   }
 });
 
@@ -557,6 +603,18 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
  * Verilen loopId icin loop motorunu calistirir.
  * startLoop ve loadState() tarafindan kullanilir.
  */
+const MAX_LOOP_CONSECUTIVE_ERRORS = 10;
+
+async function fetchCsrfToken(client, loopId) {
+  try {
+    const csrfRes = await client.get('/csrf-token');
+    return csrfRes.data.csrfToken || null;
+  } catch (err) {
+    console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
+    return null;
+  }
+}
+
 async function runLoop(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.sessionId) {
@@ -567,17 +625,15 @@ async function runLoop(loopId) {
   }
 
   const client = getClient(loop.sessionId);
-  let csrfToken = null;
-  try {
-    const csrfRes = await client.get('/csrf-token');
-    csrfToken = csrfRes.data.csrfToken;
-  } catch (err) {
-    console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
+  let csrfToken = await fetchCsrfToken(client, loopId);
+  if (!csrfToken) {
     activeLoops[loopId].running = false;
     activeLoops[loopId].errors += 1;
     saveState();
     return;
   }
+
+  let consecutiveErrors = 0;
 
   while (activeLoops[loopId] && activeLoops[loopId].running) {
     const currentLoop = activeLoops[loopId];
@@ -586,6 +642,13 @@ async function runLoop(loopId) {
     currentLoop.lastRoundAt = new Date().toISOString();
 
     const round = currentLoop.roundCount;
+
+    // Her 5 turda bir veya onceki tur hataliysa CSRF token'i tazeleyelim
+    if (round % 5 === 0 || consecutiveErrors > 0) {
+      const freshToken = await fetchCsrfToken(client, loopId);
+      if (freshToken) csrfToken = freshToken;
+    }
+
     const attackPayload = {
       host: currentLoop.params.layer === 'L7' ? normalizeUrl(currentLoop.params.host) : normalizeHost(currentLoop.params.host),
       port: currentLoop.params.port,
@@ -603,6 +666,7 @@ async function runLoop(loopId) {
     currentLoop.roundAttackIds = [];
 
     // Concurrent'lari ayni anda gonder ki stresse.st hepsi ayni zaman diliminde baslasin
+    let roundSuccesses = 0;
     const roundAttacks = [];
     for (let c = 0; c < currentLoop.params.concurrents; c++) {
       roundAttacks.push(
@@ -611,6 +675,9 @@ async function runLoop(loopId) {
             const attackId = res.data?.id || res.data?.attack_id;
             if (attackId) {
               currentLoop.roundAttackIds.push(attackId);
+              roundSuccesses++;
+            } else {
+              currentLoop.errors += 1;
             }
             return res;
           })
@@ -622,6 +689,19 @@ async function runLoop(loopId) {
     }
     await Promise.all(roundAttacks);
     saveState();
+
+    // Ardışık hata kontrolü: bir turda hiç başarılı saldırı yoksa sayaç artar
+    if (roundSuccesses === 0) {
+      consecutiveErrors++;
+      console.warn(`[loop ${loopId}] round ${round} tamamen basarisiz (${consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS})`);
+      if (consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
+        console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
+        activeLoops[loopId].running = false;
+        break;
+      }
+    } else {
+      consecutiveErrors = 0;
+    }
 
     // Sonsuz loop degilse bir set calistir ve bitir
     if (!currentLoop.params.infinite) {
@@ -696,8 +776,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
     saveState();
   } catch (error) {
-    console.error('Loop error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Loop error');
   }
 });
 
@@ -735,15 +814,7 @@ app.post('/api/stresse/stop', async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    console.error('Stop error:', error.message);
-    if (error.response) {
-      return res.status(error.response.status).json({
-        status: 'error',
-        message: error.response.data?.message || error.message,
-        data: error.response.data
-      });
-    }
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Stop error');
   }
 });
 
@@ -831,8 +902,7 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
 
     res.json({ status: 'success', total: ids.length, results });
   } catch (error) {
-    console.error('Bulk stop error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Bulk stop error');
   }
 });
 
@@ -865,8 +935,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     saveState();
     res.json({ status: 'success', message: 'Loop durduruldu', loopId });
   } catch (error) {
-    console.error('Loop stop error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Loop stop error');
   }
 });
 
@@ -888,8 +957,7 @@ app.get('/api/stresse/loops', async (req, res) => {
 
     res.json({ status: 'success', count: loops.length, loops });
   } catch (error) {
-    console.error('Loop list error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Loop list error');
   }
 });
 
@@ -910,8 +978,7 @@ app.get('/api/stresse/loop/:loopId', async (req, res) => {
 
     res.json({ status: 'success', loopId, ...loop });
   } catch (error) {
-    console.error('Loop status error:', error.message);
-    res.status(500).json({ status: 'error', message: error.message });
+    handleEndpointError(res, error, 'Loop status error');
   }
 });
 
@@ -1041,7 +1108,14 @@ app.get('/api/stresse/live/:username', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const client = getClient(sessionId);
+  let client;
+  try {
+    client = getClient(sessionId);
+  } catch (err) {
+    res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+    return res.end();
+  }
+
   const interval = setInterval(async () => {
     try {
       const [ongoing, user] = await Promise.all([
