@@ -129,92 +129,73 @@ const LiveAttacks = () => {
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const stopBatch = async (attackIds, { batchSize = 30, delayMs = 500 } = {}) => {
-    const totalBatches = Math.ceil(attackIds.length / batchSize);
+  const runWithConcurrency = async (items, fn, limit) => {
+    const out = [];
+    for (let i = 0; i < items.length; i += limit) {
+      const chunk = items.slice(i, i + limit);
+      const chunkResults = await Promise.all(chunk.map(fn));
+      out.push(...chunkResults);
+    }
+    return out;
+  };
+
+  const stopAttacksWithProgress = async (attackIds, { concurrency = 5, delayMs = 150 } = {}) => {
     let successCount = 0;
     let failCount = 0;
+    let processed = 0;
 
-    const updateProgress = (currentBatch, processed) => {
+    const updateProgress = () => {
+      const pct = attackIds.length > 0 ? Math.round((processed / attackIds.length) * 100) : 0;
       setStopProgress({
         current: processed,
         total: attackIds.length,
         successCount,
         failCount,
-        percentage: Math.round((processed / attackIds.length) * 100),
-        label: `Batch ${currentBatch}/${totalBatches}`
+        percentage: pct,
+        label: processed === attackIds.length ? 'Tamamlandı' : 'Durduruluyor'
       });
     };
 
-    updateProgress(0, 0);
+    updateProgress();
 
-    for (let i = 0; i < attackIds.length; i += batchSize) {
+    const stopSingle = async (id) => {
+      if (stopCancelledRef.current) {
+        return { id, status: 'cancelled' };
+      }
+      try {
+        const data = await apiClient.stopAttack(id);
+        if (data && data.error) {
+          return { id, status: 'error', message: data.message };
+        }
+        return { id, status: 'success' };
+      } catch (err) {
+        return { id, status: 'error', message: err.message };
+      }
+    };
+
+    for (let i = 0; i < attackIds.length; i += concurrency) {
       if (stopCancelledRef.current) {
         addLog('Toplu durdurma kullanıcı tarafından iptal edildi.');
         showToast('Durdurma işlemi iptal edildi', 'info');
         return { cancelled: true, successCount, failCount };
       }
 
-      const batch = attackIds.slice(i, i + batchSize);
-      const currentBatch = Math.floor(i / batchSize) + 1;
+      const chunk = attackIds.slice(i, i + concurrency);
+      const results = await runWithConcurrency(chunk, stopSingle, concurrency);
 
-      try {
-        const data = await apiClient.stopAttacks(batch);
-        const batchSuccess = data.results?.filter((r) => r.status === 'success' && !r.data?.error).length || 0;
-        successCount += batchSuccess;
-        failCount += batch.length - batchSuccess;
-      } catch (err) {
-        failCount += batch.length;
-        addLog(`Batch ${currentBatch}/${totalBatches} hata: ${err.message}`);
+      for (const r of results) {
+        if (r.status === 'success') successCount++;
+        else if (r.status === 'error') {
+          failCount++;
+          addLog(`Saldırı durdurulamadı #${r.id}: ${r.message || 'Bilinmeyen hata'}`);
+        }
+        processed++;
+        updateProgress();
       }
 
-      updateProgress(currentBatch, Math.min(i + batch.length, attackIds.length));
-
-      if (i + batchSize < attackIds.length) {
+      if (i + concurrency < attackIds.length && !stopCancelledRef.current) {
         await sleep(delayMs);
       }
-    }
-
-    return { cancelled: false, successCount, failCount };
-  };
-
-  const stopOneByOne = async (attackIds) => {
-    let successCount = 0;
-    let failCount = 0;
-
-    const updateProgress = (processed) => {
-      setStopProgress({
-        current: processed,
-        total: attackIds.length,
-        successCount,
-        failCount,
-        percentage: Math.round((processed / attackIds.length) * 100),
-        label: 'Satır durduruluyor'
-      });
-    };
-
-    updateProgress(0);
-
-    for (let i = 0; i < attackIds.length; i++) {
-      if (stopCancelledRef.current) {
-        addLog('Satır durdurma kullanıcı tarafından iptal edildi.');
-        showToast('Durdurma işlemi iptal edildi', 'info');
-        return { cancelled: true, successCount, failCount };
-      }
-
-      const id = attackIds[i];
-      try {
-        const data = await apiClient.stopAttack(id);
-        if (data && data.error) {
-          failCount++;
-        } else {
-          successCount++;
-        }
-      } catch (err) {
-        failCount++;
-        addLog(`Saldırı durdurulamadı #${id}: ${err.message}`);
-      }
-
-      updateProgress(i + 1);
     }
 
     return { cancelled: false, successCount, failCount };
@@ -229,7 +210,7 @@ const LiveAttacks = () => {
     stopCancelledRef.current = false;
 
     try {
-      const result = attackIds.length > 5 ? await stopBatch(attackIds) : await stopOneByOne(attackIds);
+      const result = await stopAttacksWithProgress(attackIds);
       if (result.cancelled) return;
 
       const { successCount, failCount } = result;
@@ -261,7 +242,7 @@ const LiveAttacks = () => {
 
     try {
       // Once tum aktif loop'lari kapat ki sonraki turlarda yeni saldiri baslamasin
-      const loopIds = Object.keys(state.activeLoops);
+      const loopIds = Object.keys(state.activeLoops || {});
       if (loopIds.length > 0) {
         await Promise.all(
           loopIds.map((loopId) =>
@@ -272,7 +253,7 @@ const LiveAttacks = () => {
         );
       }
 
-      const result = await stopBatch(allIds);
+      const result = await stopAttacksWithProgress(allIds);
       if (result.cancelled) return;
 
       const { successCount, failCount } = result;
