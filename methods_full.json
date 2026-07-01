@@ -1,0 +1,188 @@
+[
+  {
+    "method": "DNS",
+    "description": "DNS Amplification Flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Amp": true,
+    "MaxSlots": 35
+  },
+  {
+    "method": "MIXAMP",
+    "description": "MIX Amplification flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Amp": true,
+    "MaxSlots": 50
+  },
+  {
+    "method": "FIVEM",
+    "description": "UDP Flood emulating fivem connections",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 20
+  },
+  {
+    "method": "FREE-DNS",
+    "description": "Dns Amplification Flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Freel4": true,
+    "MaxSlots": 10
+  },
+  {
+    "method": "FREE-TLS",
+    "description": "HTTP/2 Flood",
+    "IsPremium": false,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "Freel7": true,
+    "MaxSlots": 10
+  },
+  {
+    "method": "ACK",
+    "description": "TCP-ACK Flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Tcp": true,
+    "Raw": true,
+    "MaxSlots": 75
+  },
+  {
+    "method": "SYN",
+    "description": "TCP-SYN Flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Tcp": true,
+    "Raw": true,
+    "MaxSlots": 75
+  },
+  {
+    "method": "TCPAMP",
+    "description": "TCP Amplification Flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Amp": true,
+    "MaxSlots": 100
+  },
+  {
+    "method": "HANDSHAKE",
+    "description": "Raw TCP Handshake flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Tcp": true,
+    "MaxSlots": 35
+  },
+  {
+    "method": "STOMP",
+    "description": "Raw PSH-ACK flood",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Tcp": true,
+    "MaxSlots": 75
+  },
+  {
+    "method": "GAME",
+    "description": "UDP Flood optimized for Game servers",
+    "IsPremium": true,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 30
+  },
+  {
+    "method": "RAKNET",
+    "description": "UDP Flood with RakNet queries",
+    "IsPremium": true,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 30
+  },
+  {
+    "method": "TS3",
+    "description": "Special TeamSpeak3 Query Udp Flood",
+    "IsPremium": true,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 50
+  },
+  {
+    "method": "UDPBYPASS",
+    "description": "UDP Flood optimized for high pps",
+    "IsPremium": false,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 75
+  },
+  {
+    "method": "UDP",
+    "description": "UDP Flood optimized for high output",
+    "IsPremium": true,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 20
+  },
+  {
+    "method": "DISCORD",
+    "description": "UDP Flood with special payload",
+    "IsPremium": true,
+    "IsLayer4": true,
+    "IsSpecial": false,
+    "Udp": true,
+    "MaxSlots": 20
+  },
+  {
+    "method": "GO-NEBULA",
+    "description": "HTTP/2 Flood for targets with big backend (FLOODER)",
+    "IsPremium": false,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "MaxSlots": 200
+  },
+  {
+    "method": "HTTP-ROCKET",
+    "description": "Strong HTTP/2 Flooder for high RQ/S (FLOODER)",
+    "IsPremium": true,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "MaxSlots": 200
+  },
+  {
+    "method": "HTTP-TEMPESTA",
+    "description": "HTTP/2 Flood adapted to bypass most protections (BROWSER)",
+    "IsPremium": true,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "MaxSlots": 75
+  },
+  {
+    "method": "CLOUDFLARE",
+    "description": "HTTP/2 Flooder for cloudflare targets without js challange (FLOODER)",
+    "IsPremium": false,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "MaxSlots": 200
+  },
+  {
+    "method": "HTTP",
+    "description": "HTTP/1 Flood Universal (CC)",
+    "IsPremium": false,
+    "IsLayer7": true,
+    "IsSpecial": false,
+    "MaxSlots": 200
+  }
+]
