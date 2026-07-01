@@ -260,6 +260,18 @@ const LiveAttacks = () => {
     stopCancelledRef.current = false;
 
     try {
+      // Once tum aktif loop'lari kapat ki sonraki turlarda yeni saldiri baslamasin
+      const loopIds = Object.keys(state.activeLoops);
+      if (loopIds.length > 0) {
+        await Promise.all(
+          loopIds.map((loopId) =>
+            apiClient.stopLoop(loopId).catch((err) => {
+              addLog(`Loop durdurma hatası: ${err.message}`);
+            })
+          )
+        );
+      }
+
       const result = await stopBatch(allIds);
       if (result.cancelled) return;
 

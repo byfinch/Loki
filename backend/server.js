@@ -358,7 +358,8 @@ app.post('/api/stresse/loop', async (req, res) => {
       startedAt: new Date().toISOString(),
       lastRoundAt: null,
       roundCount: 0,
-      errors: 0
+      errors: 0,
+      roundAttackIds: []
     };
 
     // Loop'u arka planda calistir, response hemen donsun
@@ -394,11 +395,21 @@ app.post('/api/stresse/loop', async (req, res) => {
           'X-CSRF-Token': csrfToken
         };
 
+        // Her yeni turda once onceki tur ID'lerini temizle
+        loop.roundAttackIds = [];
+
         // Concurrent'lari ayni anda gonder ki stresse.st hepsi ayni zaman diliminde baslasin
         const roundAttacks = [];
         for (let c = 0; c < loop.params.concurrents; c++) {
           roundAttacks.push(
             client.post('/attack', attackPayload, { headers: attackHeaders })
+              .then((res) => {
+                const attackId = res.data?.id || res.data?.attack_id;
+                if (attackId) {
+                  loop.roundAttackIds.push(attackId);
+                }
+                return res;
+              })
               .catch((err) => {
                 loop.errors += 1;
                 console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata:`, err.message);
@@ -446,6 +457,16 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     const { id } = req.body;
     if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
+
+    // Eger durdurulan saldiri bir loop'a aitse, o loop'u tamamen durdur ki
+    // loop sonraki turda tekrar saldiri baslatmasin.
+    Object.keys(activeLoops).forEach((key) => {
+      if (key.startsWith(`${sessionId}::`) && activeLoops[key]?.roundAttackIds?.includes(id)) {
+        activeLoops[key].running = false;
+        delete activeLoops[key];
+        console.log(`[stop] Loop durduruldu cunku attack ${id} durduruldu: ${key}`);
+      }
+    });
 
     const client = getClient(sessionId);
     // CSRF token gonderilirse stresse.st "Attack not found" donuyor
@@ -526,6 +547,21 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
 
       const batchResults = await runWithConcurrency(batch, stopSingle, concurrent);
       results.push(...batchResults);
+
+      // Durdurulan ID'lerden herhangi biri bir loop'a aitse o loop'u kapat
+      const loopsToStop = new Set();
+      batch.forEach((id) => {
+        Object.keys(activeLoops).forEach((key) => {
+          if (key.startsWith(`${sessionId}::`) && activeLoops[key]?.roundAttackIds?.includes(id)) {
+            loopsToStop.add(key);
+          }
+        });
+      });
+      loopsToStop.forEach((key) => {
+        activeLoops[key].running = false;
+        delete activeLoops[key];
+        console.log(`[stop/bulk] Loop durduruldu: ${key}`);
+      });
 
       // Son batch degilse kisa bir bekleme (rate limit korumasi)
       if (currentBatch < totalBatches) {
