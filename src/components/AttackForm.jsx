@@ -149,12 +149,11 @@ const AttackForm = () => {
       return;
     }
 
-    if (loopActive) {
-      const existingLoopId = findActiveLoop();
-      if (existingLoopId) {
-        addLog(`Bu hedef için zaten aktif loop var: ${existingLoopId}`);
-        return;
-      }
+    const existingLoopId = findActiveLoop();
+    if (existingLoopId) {
+      addLog(`Bu hedef için zaten aktif loop var: ${existingLoopId}`);
+      showToast('Bu hedef için aktif loop var. Önce loopu durdurun.', 'warning');
+      return;
     }
 
     const normalizedHost = layer === 'L7' ? normalizeUrl(host) : normalizeHost(host);
