@@ -9,6 +9,16 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
+const net = require('net');
+const dns = require('dns');
+
+// Node 20'nin "Happy Eyeballs" (autoSelectFamily) ozelligi, IPv6'si bozuk/eksik
+// sunucularda IPv6 denemesi sirasinda "read ECONNRESET" hatasina yol aciyor.
+// Bu yuzden IPv4'u tercih edip autoSelectFamily'i kapatiyoruz.
+if (typeof net.setDefaultAutoSelectFamily === 'function') {
+  net.setDefaultAutoSelectFamily(false);
+}
+dns.setDefaultResultOrder('ipv4first');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -101,6 +111,7 @@ function getClient(sessionId) {
     baseURL: 'https://stresse.st',
     jar: getJar(sessionId),
     withCredentials: true,
+    family: 4,
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*',
@@ -749,6 +760,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`Loki backend running on http://localhost:${PORT}`);
 });
