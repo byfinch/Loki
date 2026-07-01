@@ -224,10 +224,12 @@ const AttackForm = () => {
         startTest(`loop_${loopId}`);
         showToast('Loop başlatıldı', 'success');
       } else {
-        const data = await withMinimumLoading(() => apiClient.startAttack(payload));
+        const data = await withMinimumLoading(() => apiClient.startAttacks(payload));
         startTest(data.attack_id || `attack_${Date.now()}`);
-        addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s)`);
-        showToast('Saldırı başlatıldı', 'success');
+        const ok = data.successCount ?? 1;
+        const fail = data.failCount ?? 0;
+        addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s) x${ok} başarılı${fail > 0 ? `, ${fail} başarısız` : ''}`);
+        showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
       }
 
       if (!loopActive) setHost('');

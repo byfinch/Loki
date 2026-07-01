@@ -95,6 +95,15 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async startAttacks(payload) {
+    const res = await fetch(`${API_BASE}/stresse/attack/bulk`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+
   // Loop
   async startLoop(payload) {
     const res = await fetch(`${API_BASE}/stresse/loop`, {
