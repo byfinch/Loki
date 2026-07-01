@@ -125,7 +125,7 @@ const AttackForm = () => {
     return layer === 'L7' ? normalizeUrl(host) : normalizeHost(host);
   };
 
-  const findActiveLoop = () => {
+  const isTargetBusyInState = () => {
     const normalized = getNormalizedTarget();
     return Object.entries(state.activeLoops).find(([_, loop]) =>
       loop.params?.host === normalized &&
@@ -133,6 +133,22 @@ const AttackForm = () => {
       loop.params?.method === method &&
       loop.running
     )?.[0];
+  };
+
+  const isTargetBusyOnBackend = async () => {
+    try {
+      const data = await apiClient.getLoops();
+      const normalized = getNormalizedTarget();
+      return (data.loops || []).find(
+        (loop) =>
+          loop.params?.host === normalized &&
+          loop.params?.layer === layer &&
+          loop.params?.method === method
+      );
+    } catch (err) {
+      addLog(`Loop kontrolü yapılamadı: ${err.message}`);
+      return null;
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -149,10 +165,17 @@ const AttackForm = () => {
       return;
     }
 
-    const existingLoopId = findActiveLoop();
-    if (existingLoopId) {
-      addLog(`Bu hedef için zaten aktif loop var: ${existingLoopId}`);
+    const busyLoopId = isTargetBusyInState();
+    if (busyLoopId) {
+      addLog(`Bu hedef için zaten aktif loop var: ${busyLoopId}`);
       showToast('Bu hedef için aktif loop var. Önce loopu durdurun.', 'warning');
+      return;
+    }
+
+    const busyLoopOnBackend = await isTargetBusyOnBackend();
+    if (busyLoopOnBackend) {
+      addLog(`Bu hedef için sunucuda aktif loop var: ${busyLoopOnBackend.loopId}`);
+      showToast('Bu hedef için sunucuda aktif loop var. Önce loopu durdurun.', 'warning');
       return;
     }
 
