@@ -216,15 +216,20 @@ function normalizeUrl(url) {
 
 function getJar(sessionId) {
   if (!sessions[sessionId]) {
-    sessions[sessionId] = { jar: new CookieJar(), username: null };
+    return null;
   }
   return sessions[sessionId].jar;
 }
 
 function getClient(sessionId) {
+  const jar = getJar(sessionId);
+  if (!jar) {
+    throw new Error('Invalid or expired session');
+  }
   return wrapper(axios.create({
     baseURL: 'https://stresse.st',
-    jar: getJar(sessionId),
+    jar,
+    withCredentials: true,
     withCredentials: true,
     family: 4,
     headers: {
@@ -295,6 +300,10 @@ app.post('/api/stresse/login', async (req, res) => {
         plan: planData
       });
     } catch (stepErr) {
+      // Basarisiz login durumunda olusturulan gecici session'i temizle
+      delete sessions[sessionId];
+      saveState();
+
       // Hangi adimda patladigini ve stresse.st'in dondugu govdeyi acikca gorelim
       const status = stepErr.response?.status;
       const body = stepErr.response?.data;
