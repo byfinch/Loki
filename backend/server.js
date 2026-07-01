@@ -11,6 +11,8 @@ const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 const net = require('net');
 const dns = require('dns');
+const fs = require('fs');
+const path = require('path');
 
 // Node 20'nin "Happy Eyeballs" (autoSelectFamily) ozelligi, IPv6'si bozuk/eksik
 // sunucularda IPv6 denemesi sirasinda "read ECONNRESET" hatasina yol aciyor.
@@ -38,11 +40,124 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// In-memory session store (single user for demo)
+// In-memory session store: { sessionId: { jar: CookieJar, username } }
 const sessions = {};
 
-// Active loop registry per session: { "sessionId::loopId": { running, params, startedAt, lastRoundAt, roundCount, errors } }
+// Active loop registry: { loopId: { running, params, startedAt, lastRoundAt, roundCount, errors, roundAttackIds } }
 const activeLoops = {};
+
+// Persistence: save/restore sessions and loops across restarts
+const DATA_DIR = path.join(__dirname, 'data');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function safeWriteJson(filePath, data) {
+  try {
+    const tmp = `${filePath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    console.error(`[persistence] Failed to write ${filePath}:`, err.message);
+  }
+}
+
+function saveState() {
+  ensureDataDir();
+
+  // Save sessions: serialize CookieJar to JSON
+  const sessionsToSave = {};
+  Object.entries(sessions).forEach(([sessionId, session]) => {
+    try {
+      sessionsToSave[sessionId] = {
+        username: session.username,
+        user: session.user,
+        plan: session.plan,
+        jar: session.jar.toJSON()
+      };
+    } catch (err) {
+      console.error(`[persistence] Failed to serialize session ${sessionId}:`, err.message);
+    }
+  });
+  safeWriteJson(SESSIONS_FILE, sessionsToSave);
+
+  // Save loops: only serializable fields
+  safeWriteJson(LOOPS_FILE, activeLoops);
+}
+
+function loadState() {
+  ensureDataDir();
+
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      Object.entries(parsed).forEach(([sessionId, data]) => {
+        try {
+          sessions[sessionId] = {
+            username: data.username,
+            user: data.user,
+            plan: data.plan,
+            jar: CookieJar.fromJSON(data.jar)
+          };
+        } catch (err) {
+          console.error(`[persistence] Failed to restore session ${sessionId}:`, err.message);
+        }
+      });
+      console.log(`[persistence] Restored ${Object.keys(sessions).length} session(s)`);
+    }
+  } catch (err) {
+    console.error('[persistence] Failed to load sessions:', err.message);
+  }
+
+  try {
+    if (fs.existsSync(LOOPS_FILE)) {
+      const raw = fs.readFileSync(LOOPS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      Object.entries(parsed).forEach(([loopId, loop]) => {
+        // Only restore infinite loops; finite loops with at least one round are considered done
+        if (loop.params?.infinite && loop.running !== false) {
+          activeLoops[loopId] = { ...loop, running: true, roundAttackIds: [] };
+        }
+      });
+      console.log(`[persistence] Restored ${Object.keys(activeLoops).length} infinite loop(s)`);
+
+      // Geri yuklenen loop'larin motorunu tekrar calistir
+      Object.keys(activeLoops).forEach((loopId) => {
+        console.log(`[persistence] Restarting loop ${loopId}`);
+        runLoop(loopId);
+      });
+    }
+  } catch (err) {
+    console.error('[persistence] Failed to load loops:', err.message);
+  }
+}
+
+// Auto-save every 30 seconds
+setInterval(saveState, 30000);
+
+function getSessionPlan(sessionId) {
+  return sessions[sessionId]?.plan || {};
+}
+
+function checkPlanLimits(sessionId, time, concurrents) {
+  const plan = getSessionPlan(sessionId);
+  const maxTime = plan.MaxTime || plan.attackTime || 86400;
+  const maxConcurrents = plan.Concurrents || plan.concurrents || 80;
+
+  if (parseInt(time) > parseInt(maxTime)) {
+    return { ok: false, message: `Maksimum sure ${maxTime} saniye olabilir` };
+  }
+  if (parseInt(concurrents) > parseInt(maxConcurrents)) {
+    return { ok: false, message: `Maksimum concurrent ${maxConcurrents} olabilir` };
+  }
+  return { ok: true };
+}
 
 /**
  * L4 host degerini normalize eder:
@@ -101,9 +216,9 @@ function normalizeUrl(url) {
 
 function getJar(sessionId) {
   if (!sessions[sessionId]) {
-    sessions[sessionId] = new CookieJar();
+    sessions[sessionId] = { jar: new CookieJar(), username: null };
   }
-  return sessions[sessionId];
+  return sessions[sessionId].jar;
 }
 
 function getClient(sessionId) {
@@ -138,10 +253,11 @@ app.post('/api/stresse/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Username and password required' });
     }
 
-    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const client = getClient(sessionId);
+      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      sessions[sessionId] = { jar: new CookieJar(), username: null };
+      const client = getClient(sessionId);
 
-    let step = 'GET /login';
+      let step = 'GET /login';
     try {
       // 1. Get login page to collect cookies
       await client.get('/login');
@@ -157,10 +273,26 @@ app.post('/api/stresse/login', async (req, res) => {
         return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
       }
 
+      // 4. Fetch user plan for backend-side limit enforcement
+      step = 'GET /plan';
+      let planData = {};
+      try {
+        const planRes = await client.get(`/plan/${vcookieRes.data.username}`);
+        planData = planRes.data || {};
+      } catch (planErr) {
+        console.warn(`[login] Plan alinamadi: ${planErr.message}`);
+      }
+
+      sessions[sessionId].username = vcookieRes.data.username || username;
+      sessions[sessionId].user = vcookieRes.data;
+      sessions[sessionId].plan = planData;
+      saveState();
+
       res.json({
         status: 'success',
         sessionId,
-        user: vcookieRes.data
+        user: vcookieRes.data,
+        plan: planData
       });
     } catch (stepErr) {
       // Hangi adimda patladigini ve stresse.st'in dondugu govdeyi acikca gorelim
@@ -275,6 +407,11 @@ app.post('/api/stresse/attack', async (req, res) => {
       return res.status(400).json({ status: 'error', message: `Minimum sure ${minTime} saniye (${method})` });
     }
 
+    const planCheck = checkPlanLimits(sessionId, time, 1);
+    if (!planCheck.ok) {
+      return res.status(403).json({ status: 'error', message: planCheck.message });
+    }
+
     const client = getClient(sessionId);
 
     // Fetch CSRF token first
@@ -346,6 +483,12 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     const count = Math.max(1, parseInt(concurrents) || 1);
+
+    const planCheck = checkPlanLimits(sessionId, time, count);
+    if (!planCheck.ok) {
+      return res.status(403).json({ status: 'error', message: planCheck.message });
+    }
+
     const client = getClient(sessionId);
 
     // Tek CSRF token ile tum istekleri gonder
@@ -402,6 +545,95 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 });
 
 /**
+ * Verilen loopId icin loop motorunu calistirir.
+ * startLoop ve loadState() tarafindan kullanilir.
+ */
+async function runLoop(loopId) {
+  const loop = activeLoops[loopId];
+  if (!loop || !loop.sessionId) {
+    console.error(`[loop ${loopId}] Baslatilamadi: loop veya sessionId bulunamadi`);
+    delete activeLoops[loopId];
+    saveState();
+    return;
+  }
+
+  const client = getClient(loop.sessionId);
+  let csrfToken = null;
+  try {
+    const csrfRes = await client.get('/csrf-token');
+    csrfToken = csrfRes.data.csrfToken;
+  } catch (err) {
+    console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
+    activeLoops[loopId].running = false;
+    activeLoops[loopId].errors += 1;
+    saveState();
+    return;
+  }
+
+  while (activeLoops[loopId] && activeLoops[loopId].running) {
+    const currentLoop = activeLoops[loopId];
+    if (!currentLoop) break;
+    currentLoop.roundCount += 1;
+    currentLoop.lastRoundAt = new Date().toISOString();
+
+    const round = currentLoop.roundCount;
+    const attackPayload = {
+      host: currentLoop.params.layer === 'L7' ? normalizeUrl(currentLoop.params.host) : normalizeHost(currentLoop.params.host),
+      port: currentLoop.params.port,
+      time: currentLoop.params.time.toString(),
+      method: currentLoop.params.method,
+      subnet: currentLoop.params.subnet,
+      geo: currentLoop.params.geo
+    };
+    const attackHeaders = {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken
+    };
+
+    // Her yeni turda once onceki tur ID'lerini temizle
+    currentLoop.roundAttackIds = [];
+
+    // Concurrent'lari ayni anda gonder ki stresse.st hepsi ayni zaman diliminde baslasin
+    const roundAttacks = [];
+    for (let c = 0; c < currentLoop.params.concurrents; c++) {
+      roundAttacks.push(
+        client.post('/attack', attackPayload, { headers: attackHeaders })
+          .then((res) => {
+            const attackId = res.data?.id || res.data?.attack_id;
+            if (attackId) {
+              currentLoop.roundAttackIds.push(attackId);
+            }
+            return res;
+          })
+          .catch((err) => {
+            currentLoop.errors += 1;
+            console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata:`, err.message);
+          })
+      );
+    }
+    await Promise.all(roundAttacks);
+    saveState();
+
+    // Sonsuz loop degilse bir set calistir ve bitir
+    if (!currentLoop.params.infinite) {
+      currentLoop.running = false;
+      break;
+    }
+
+    // Bir sonraki set icin bekle: time kadar (stresse.st zaten time sn saldiri yapar) + interval
+    const waitTime = (currentLoop.params.time + currentLoop.params.interval) * 1000;
+    const startWait = Date.now();
+    while (activeLoops[loopId] && activeLoops[loopId].running && Date.now() - startWait < waitTime) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  // Loop bittiginde veya durduruldugunda kaydi sil ki listede kalmasin
+  delete activeLoops[loopId];
+  saveState();
+}
+
+/**
  * POST /api/stresse/loop
  * Body: { loopId, host, port, time, method, subnet, geo, concurrents, interval, infinite }
  *
@@ -428,13 +660,18 @@ app.post('/api/stresse/loop', async (req, res) => {
       return res.status(400).json({ status: 'error', message: `Minimum süre ${minTime} saniye (${method})` });
     }
 
+    const planCheck = checkPlanLimits(sessionId, time, concurrents);
+    if (!planCheck.ok) {
+      return res.status(403).json({ status: 'error', message: planCheck.message });
+    }
+
     if (activeLoops[loopId] && activeLoops[loopId].running) {
       return res.status(409).json({ status: 'error', message: 'Loop already running', loopId });
     }
 
-    const client = getClient(sessionId);
     activeLoops[loopId] = {
       running: true,
+      sessionId,
       params: { host, port: parseInt(port), time: parseInt(time), method, subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
@@ -445,82 +682,10 @@ app.post('/api/stresse/loop', async (req, res) => {
     };
 
     // Loop'u arka planda calistir, response hemen donsun
-    const runLoop = async () => {
-      let csrfToken = null;
-      try {
-        const csrfRes = await client.get('/csrf-token');
-        csrfToken = csrfRes.data.csrfToken;
-      } catch (err) {
-        console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
-        activeLoops[loopId].running = false;
-        activeLoops[loopId].errors += 1;
-        return;
-      }
-
-      while (activeLoops[loopId] && activeLoops[loopId].running) {
-        const loop = activeLoops[loopId];
-        if (!loop) break;
-        loop.roundCount += 1;
-        loop.lastRoundAt = new Date().toISOString();
-
-        const round = loop.roundCount;
-        const attackPayload = {
-          host: loop.params.layer === 'L7' ? normalizeUrl(loop.params.host) : normalizeHost(loop.params.host),
-          port: loop.params.port,
-          time: loop.params.time.toString(),
-          method: loop.params.method,
-          subnet: loop.params.subnet,
-          geo: loop.params.geo
-        };
-        const attackHeaders = {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken
-        };
-
-        // Her yeni turda once onceki tur ID'lerini temizle
-        loop.roundAttackIds = [];
-
-        // Concurrent'lari ayni anda gonder ki stresse.st hepsi ayni zaman diliminde baslasin
-        const roundAttacks = [];
-        for (let c = 0; c < loop.params.concurrents; c++) {
-          roundAttacks.push(
-            client.post('/attack', attackPayload, { headers: attackHeaders })
-              .then((res) => {
-                const attackId = res.data?.id || res.data?.attack_id;
-                if (attackId) {
-                  loop.roundAttackIds.push(attackId);
-                }
-                return res;
-              })
-              .catch((err) => {
-                loop.errors += 1;
-                console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata:`, err.message);
-              })
-          );
-        }
-        await Promise.all(roundAttacks);
-
-        // Sonsuz loop degilse bir set calistir ve bitir
-        if (!loop.params.infinite) {
-          loop.running = false;
-          break;
-        }
-
-        // Bir sonraki set icin bekle: time kadar (stresse.st zaten time sn saldiri yapar) + interval
-        const waitTime = (loop.params.time + loop.params.interval) * 1000;
-        const startWait = Date.now();
-        while (activeLoops[loopId] && activeLoops[loopId].running && Date.now() - startWait < waitTime) {
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-    };
-
-    runLoop().finally(() => {
-      // Loop bittiginde veya durduruldugunda kaydi sil ki listede kalmasin
-      delete activeLoops[loopId];
-    });
+    runLoop(loopId);
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
+    saveState();
   } catch (error) {
     console.error('Loop error:', error.message);
     res.status(500).json({ status: 'error', message: error.message });
@@ -542,13 +707,16 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     // Eger durdurulan saldiri bir loop'a aitse, o loop'u tamamen durdur ki
     // loop sonraki turda tekrar saldiri baslatmasin.
+    let loopStopped = false;
     Object.keys(activeLoops).forEach((key) => {
       if (activeLoops[key]?.roundAttackIds?.includes(id)) {
         activeLoops[key].running = false;
         delete activeLoops[key];
+        loopStopped = true;
         console.log(`[stop] Loop durduruldu cunku attack ${id} durduruldu: ${key}`);
       }
     });
+    if (loopStopped) saveState();
 
     const client = getClient(sessionId);
     // CSRF token gonderilirse stresse.st "Attack not found" donuyor
@@ -644,6 +812,7 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
         delete activeLoops[key];
         console.log(`[stop/bulk] Loop durduruldu: ${key}`);
       });
+      if (loopsToStop.size > 0) saveState();
 
       // Son batch degilse kisa bir bekleme (rate limit korumasi)
       if (currentBatch < totalBatches) {
@@ -674,6 +843,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
         activeLoops[key].running = false;
         delete activeLoops[key];
       });
+      saveState();
       return res.json({ status: 'success', message: 'Tum looplar durduruldu' });
     }
 
@@ -683,6 +853,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
 
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
+    saveState();
     res.json({ status: 'success', message: 'Loop durduruldu', loopId });
   } catch (error) {
     console.error('Loop stop error:', error.message);
@@ -890,6 +1061,9 @@ app.get('/api/stresse/live/:username', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Load persisted sessions/loops before starting server
+loadState();
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`Loki backend running on http://localhost:${PORT}`);

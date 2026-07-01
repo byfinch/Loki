@@ -11,6 +11,7 @@ const LiveAttacks = () => {
   const [stopCancelled, setStopCancelled] = useState(false);
   const stopCancelledRef = useRef(false);
   const [activeStopKey, setActiveStopKey] = useState(null);
+  const [serverTimeLefts, setServerTimeLefts] = useState({});
 
   const stripPort = (url) => {
     try {
@@ -71,7 +72,16 @@ const LiveAttacks = () => {
 
   const groupedAttacks = useMemo(() => {
     const THRESHOLD = 7;
-    const sorted = [...state.liveAttacks].sort((a, b) => {
+
+    // En son sunucu degerini veya client-side geri sayimi kullan
+    const attacksWithTime = state.liveAttacks.map((attack) => {
+      const attackId = attack.attack_id;
+      const serverTime = parseInt(attack.timeLeft, 10);
+      const currentTime = serverTimeLefts[attackId] ?? serverTime;
+      return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
+    });
+
+    const sorted = [...attacksWithTime].sort((a, b) => {
       if (a.target !== b.target) return a.target.localeCompare(b.target);
       if (a.method !== b.method) return a.method.localeCompare(b.method);
       return b.timeLeft - a.timeLeft;
@@ -98,7 +108,7 @@ const LiveAttacks = () => {
     });
 
     return groups;
-  }, [state.liveAttacks]);
+  }, [state.liveAttacks, serverTimeLefts]);
 
   const handleStopSingle = async (attackId) => {
     if (!attackId) return;
@@ -286,10 +296,21 @@ const LiveAttacks = () => {
     const username = apiClient.getUsername();
     if (!username) return;
 
+    const updateTimeLefts = (attacks) => {
+      const next = {};
+      (attacks || []).forEach((a) => {
+        const t = parseInt(a.timeLeft, 10);
+        next[a.attack_id] = Number.isFinite(t) ? t : 0;
+      });
+      setServerTimeLefts(next);
+    };
+
     const poll = async () => {
       try {
         const data = await apiClient.getOngoing(username);
-        setLiveAttacks(Array.isArray(data) ? data : []);
+        const attacks = Array.isArray(data) ? data : [];
+        setLiveAttacks(attacks);
+        updateTimeLefts(attacks);
         setLastUpdate(new Date());
       } catch (err) {
         addLog(`Canlı veri alınamadı: ${err.message}`);
@@ -304,7 +325,10 @@ const LiveAttacks = () => {
       eventSource = apiClient.connectLiveStream(
         username,
         (data) => {
-          if (data.ongoing) setLiveAttacks(data.ongoing);
+          if (data.ongoing) {
+            setLiveAttacks(data.ongoing);
+            updateTimeLefts(data.ongoing);
+          }
           if (data.user) addLog(`Canlı güncelleme alındı`);
         },
         () => {}
@@ -317,6 +341,24 @@ const LiveAttacks = () => {
       clearInterval(interval);
       if (eventSource) eventSource.close();
     };
+  }, [state.isAuthenticated]);
+
+  // Client-side geri sayim: her saniye timeLeft'leri 1 azalt
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    const timer = setInterval(() => {
+      setServerTimeLefts((prev) => {
+        const next = {};
+        let changed = false;
+        Object.entries(prev).forEach(([id, time]) => {
+          const newTime = Math.max(0, time - 1);
+          next[id] = newTime;
+          if (newTime !== time) changed = true;
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
   }, [state.isAuthenticated]);
 
   return (
