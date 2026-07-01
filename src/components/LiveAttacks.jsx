@@ -23,15 +23,49 @@ const LiveAttacks = () => {
     }
   };
 
-  const handleCopy = async (target, key) => {
+  const fallbackCopyTextToClipboard = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '0';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
     try {
-      const cleanTarget = stripPort(target);
-      await navigator.clipboard.writeText(cleanTarget);
-      setCopiedKey(key);
-      addLog(`Hedef kopyalandı: ${cleanTarget}`);
-      setTimeout(() => setCopiedKey(null), 1500);
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (err) {
+      document.body.removeChild(textArea);
+      return false;
+    }
+  };
+
+  const copyTextToClipboard = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    return fallbackCopyTextToClipboard(text);
+  };
+
+  const handleCopy = async (target, key) => {
+    const cleanTarget = stripPort(target);
+    try {
+      const success = await copyTextToClipboard(cleanTarget);
+      if (success) {
+        setCopiedKey(key);
+        addLog(`Hedef kopyalandı: ${cleanTarget}`);
+        setTimeout(() => setCopiedKey(null), 1500);
+      } else {
+        throw new Error('Kopyalama başarısız');
+      }
     } catch (err) {
       addLog(`Kopyalama hatası: ${err.message}`);
+      showToast('Kopyalama başarısız. Lütfen bağlantınızı HTTPS üzerinden yapın.', 'error');
     }
   };
 
