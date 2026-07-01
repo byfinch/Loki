@@ -428,13 +428,12 @@ app.post('/api/stresse/loop', async (req, res) => {
       return res.status(400).json({ status: 'error', message: `Minimum süre ${minTime} saniye (${method})` });
     }
 
-    const fullLoopId = `${sessionId}::${loopId}`;
-    if (activeLoops[fullLoopId] && activeLoops[fullLoopId].running) {
+    if (activeLoops[loopId] && activeLoops[loopId].running) {
       return res.status(409).json({ status: 'error', message: 'Loop already running', loopId });
     }
 
     const client = getClient(sessionId);
-    activeLoops[fullLoopId] = {
+    activeLoops[loopId] = {
       running: true,
       params: { host, port: parseInt(port), time: parseInt(time), method, subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
@@ -453,13 +452,13 @@ app.post('/api/stresse/loop', async (req, res) => {
         csrfToken = csrfRes.data.csrfToken;
       } catch (err) {
         console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
-        activeLoops[fullLoopId].running = false;
-        activeLoops[fullLoopId].errors += 1;
+        activeLoops[loopId].running = false;
+        activeLoops[loopId].errors += 1;
         return;
       }
 
-      while (activeLoops[fullLoopId] && activeLoops[fullLoopId].running) {
-        const loop = activeLoops[fullLoopId];
+      while (activeLoops[loopId] && activeLoops[loopId].running) {
+        const loop = activeLoops[loopId];
         if (!loop) break;
         loop.roundCount += 1;
         loop.lastRoundAt = new Date().toISOString();
@@ -510,7 +509,7 @@ app.post('/api/stresse/loop', async (req, res) => {
         // Bir sonraki set icin bekle: time kadar (stresse.st zaten time sn saldiri yapar) + interval
         const waitTime = (loop.params.time + loop.params.interval) * 1000;
         const startWait = Date.now();
-        while (activeLoops[fullLoopId] && activeLoops[fullLoopId].running && Date.now() - startWait < waitTime) {
+        while (activeLoops[loopId] && activeLoops[loopId].running && Date.now() - startWait < waitTime) {
           await new Promise(r => setTimeout(r, 500));
         }
       }
@@ -518,7 +517,7 @@ app.post('/api/stresse/loop', async (req, res) => {
 
     runLoop().finally(() => {
       // Loop bittiginde veya durduruldugunda kaydi sil ki listede kalmasin
-      delete activeLoops[fullLoopId];
+      delete activeLoops[loopId];
     });
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
@@ -544,7 +543,7 @@ app.post('/api/stresse/stop', async (req, res) => {
     // Eger durdurulan saldiri bir loop'a aitse, o loop'u tamamen durdur ki
     // loop sonraki turda tekrar saldiri baslatmasin.
     Object.keys(activeLoops).forEach((key) => {
-      if (key.startsWith(`${sessionId}::`) && activeLoops[key]?.roundAttackIds?.includes(id)) {
+      if (activeLoops[key]?.roundAttackIds?.includes(id)) {
         activeLoops[key].running = false;
         delete activeLoops[key];
         console.log(`[stop] Loop durduruldu cunku attack ${id} durduruldu: ${key}`);
@@ -635,7 +634,7 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       const loopsToStop = new Set();
       batch.forEach((id) => {
         Object.keys(activeLoops).forEach((key) => {
-          if (key.startsWith(`${sessionId}::`) && activeLoops[key]?.roundAttackIds?.includes(id)) {
+          if (activeLoops[key]?.roundAttackIds?.includes(id)) {
             loopsToStop.add(key);
           }
         });
@@ -670,23 +669,20 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
 
     const { loopId } = req.body;
     if (!loopId) {
-      // loopId verilmezse session'a ait tum loop'lari durdur ve kayittan sil
+      // loopId verilmezse tum loop'lari durdur ve kayittan sil
       Object.keys(activeLoops).forEach((key) => {
-        if (key.startsWith(`${sessionId}::`)) {
-          activeLoops[key].running = false;
-          delete activeLoops[key];
-        }
+        activeLoops[key].running = false;
+        delete activeLoops[key];
       });
       return res.json({ status: 'success', message: 'Tum looplar durduruldu' });
     }
 
-    const fullLoopId = `${sessionId}::${loopId}`;
-    if (!activeLoops[fullLoopId]) {
+    if (!activeLoops[loopId]) {
       return res.status(404).json({ status: 'error', message: 'Loop bulunamadi', loopId });
     }
 
-    activeLoops[fullLoopId].running = false;
-    delete activeLoops[fullLoopId];
+    activeLoops[loopId].running = false;
+    delete activeLoops[loopId];
     res.json({ status: 'success', message: 'Loop durduruldu', loopId });
   } catch (error) {
     console.error('Loop stop error:', error.message);
@@ -696,18 +692,17 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
 
 /**
  * GET /api/stresse/loops
- * Session'a ait aktif loop listesini doner.
+ * Tum aktif loop listesini doner (global, herkes gorebilir).
  */
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
-    const prefix = `${sessionId}::`;
     const loops = Object.entries(activeLoops)
-      .filter(([key, value]) => key.startsWith(prefix) && value.running)
+      .filter(([_, value]) => value.running)
       .map(([key, value]) => ({
-        loopId: key.replace(prefix, ''),
+        loopId: key,
         ...value
       }));
 
@@ -728,8 +723,7 @@ app.get('/api/stresse/loop/:loopId', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { loopId } = req.params;
-    const fullLoopId = `${sessionId}::${loopId}`;
-    const loop = activeLoops[fullLoopId];
+    const loop = activeLoops[loopId];
     if (!loop) {
       return res.status(404).json({ status: 'error', message: 'Loop bulunamadi', loopId });
     }
