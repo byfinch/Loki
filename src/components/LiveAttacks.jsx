@@ -134,7 +134,18 @@ const LiveAttacks = () => {
     let successCount = 0;
     let failCount = 0;
 
-    setStopProgress({ currentBatch: 0, totalBatches, successCount, failCount, total: attackIds.length });
+    const updateProgress = (currentBatch, processed) => {
+      setStopProgress({
+        current: processed,
+        total: attackIds.length,
+        successCount,
+        failCount,
+        percentage: Math.round((processed / attackIds.length) * 100),
+        label: `Batch ${currentBatch}/${totalBatches}`
+      });
+    };
+
+    updateProgress(0, 0);
 
     for (let i = 0; i < attackIds.length; i += batchSize) {
       if (stopCancelledRef.current) {
@@ -146,8 +157,6 @@ const LiveAttacks = () => {
       const batch = attackIds.slice(i, i + batchSize);
       const currentBatch = Math.floor(i / batchSize) + 1;
 
-      setStopProgress({ currentBatch, totalBatches, successCount, failCount, total: attackIds.length });
-
       try {
         const data = await apiClient.stopAttacks(batch);
         const batchSuccess = data.results?.filter((r) => r.status === 'success' && !r.data?.error).length || 0;
@@ -158,11 +167,54 @@ const LiveAttacks = () => {
         addLog(`Batch ${currentBatch}/${totalBatches} hata: ${err.message}`);
       }
 
-      setStopProgress({ currentBatch, totalBatches, successCount, failCount, total: attackIds.length });
+      updateProgress(currentBatch, Math.min(i + batch.length, attackIds.length));
 
       if (i + batchSize < attackIds.length) {
         await sleep(delayMs);
       }
+    }
+
+    return { cancelled: false, successCount, failCount };
+  };
+
+  const stopOneByOne = async (attackIds) => {
+    let successCount = 0;
+    let failCount = 0;
+
+    const updateProgress = (processed) => {
+      setStopProgress({
+        current: processed,
+        total: attackIds.length,
+        successCount,
+        failCount,
+        percentage: Math.round((processed / attackIds.length) * 100),
+        label: 'Satır durduruluyor'
+      });
+    };
+
+    updateProgress(0);
+
+    for (let i = 0; i < attackIds.length; i++) {
+      if (stopCancelledRef.current) {
+        addLog('Satır durdurma kullanıcı tarafından iptal edildi.');
+        showToast('Durdurma işlemi iptal edildi', 'info');
+        return { cancelled: true, successCount, failCount };
+      }
+
+      const id = attackIds[i];
+      try {
+        const data = await apiClient.stopAttack(id);
+        if (data && data.error) {
+          failCount++;
+        } else {
+          successCount++;
+        }
+      } catch (err) {
+        failCount++;
+        addLog(`Saldırı durdurulamadı #${id}: ${err.message}`);
+      }
+
+      updateProgress(i + 1);
     }
 
     return { cancelled: false, successCount, failCount };
@@ -177,15 +229,7 @@ const LiveAttacks = () => {
     stopCancelledRef.current = false;
 
     try {
-      let result;
-      if (attackIds.length > 5) {
-        result = await stopBatch(attackIds);
-      } else {
-        const data = await apiClient.stopAttacks(attackIds);
-        const successCount = data.results?.filter((r) => r.status === 'success' && !r.data?.error).length || 0;
-        result = { cancelled: false, successCount, failCount: attackIds.length - successCount };
-      }
-
+      const result = attackIds.length > 5 ? await stopBatch(attackIds) : await stopOneByOne(attackIds);
       if (result.cancelled) return;
 
       const { successCount, failCount } = result;
@@ -293,19 +337,33 @@ const LiveAttacks = () => {
           </span>
         </h2>
         <div className="flex items-center gap-3">
-          {activeStopKey === '__ALL__' && stopProgress && (
-            <div className="flex items-center gap-2 text-xs glass-panel px-3 py-1.5 rounded-full">
-              <span className="text-gray-400">
-                {stopProgress.currentBatch}/{stopProgress.totalBatches} batch
-              </span>
-              <span className="text-green-400 font-bold">{stopProgress.successCount} başarılı</span>
-              <span className="text-red-400 font-bold">{stopProgress.failCount} başarısız</span>
-              <button
-                onClick={handleCancelStop}
-                className="text-xs bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full transition"
-              >
-                İptal
-              </button>
+          {activeStopKey && stopProgress && (
+            <div className="flex flex-col gap-1.5 min-w-[220px]">
+              <div className="flex items-center justify-between text-[10px] text-gray-400 uppercase tracking-wider">
+                <span>{stopProgress.label}</span>
+                <span className="text-white font-mono">%{stopProgress.percentage}</span>
+              </div>
+              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300"
+                  style={{ width: `${stopProgress.percentage}%` }}
+                ></div>
+              </div>
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">
+                  {stopProgress.current}/{stopProgress.total}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-green-400 font-bold">{stopProgress.successCount} başarılı</span>
+                  <span className="text-red-400 font-bold">{stopProgress.failCount} başarısız</span>
+                  <button
+                    onClick={handleCancelStop}
+                    className="text-[10px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full transition"
+                  >
+                    İptal
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           <button
