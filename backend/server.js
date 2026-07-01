@@ -141,23 +141,41 @@ app.post('/api/stresse/login', async (req, res) => {
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const client = getClient(sessionId);
 
-    // 1. Get login page to collect cookies
-    await client.get('/login');
+    let step = 'GET /login';
+    try {
+      // 1. Get login page to collect cookies
+      await client.get('/login');
 
-    // 2. Submit login credentials
-    const loginRes = await client.post('/login', { username, password });
+      // 2. Submit login credentials
+      step = 'POST /login';
+      const loginRes = await client.post('/login', { username, password });
 
-    // 3. Verify session
-    const vcookieRes = await client.get('/vcookie');
-    if (!vcookieRes.data || !vcookieRes.data.username) {
-      return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+      // 3. Verify session
+      step = 'GET /vcookie';
+      const vcookieRes = await client.get('/vcookie');
+      if (!vcookieRes.data || !vcookieRes.data.username) {
+        return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+      }
+
+      res.json({
+        status: 'success',
+        sessionId,
+        user: vcookieRes.data
+      });
+    } catch (stepErr) {
+      // Hangi adimda patladigini ve stresse.st'in dondugu govdeyi acikca gorelim
+      const status = stepErr.response?.status;
+      const body = stepErr.response?.data;
+      console.error(`Login error @ ${step}: ${stepErr.message}`);
+      console.error(`  upstream status: ${status}`);
+      console.error(`  upstream body:`, typeof body === 'string' ? body.slice(0, 500) : JSON.stringify(body)?.slice(0, 500));
+      return res.status(502).json({
+        status: 'error',
+        message: `stresse.st ${step} -> ${status || 'no-response'}: ${stepErr.message}`,
+        upstreamStatus: status,
+        upstreamBody: typeof body === 'string' ? body.slice(0, 300) : body
+      });
     }
-
-    res.json({
-      status: 'success',
-      sessionId,
-      user: vcookieRes.data
-    });
   } catch (error) {
     console.error('Login error:', error.message);
     res.status(500).json({ status: 'error', message: error.message });
