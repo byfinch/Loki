@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 
@@ -42,6 +42,7 @@ const AttackForm = () => {
   const [port, setPort] = useState(53);
   const [time, setTime] = useState(60);
   const [concurrents, setConcurrents] = useState(1);
+  const concurrentsRef = useRef(null);
   const [method, setMethod] = useState('');
   const [layer, setLayer] = useState('L4');
   const [loading, setLoading] = useState(false);
@@ -190,6 +191,9 @@ const AttackForm = () => {
 
     const normalizedHost = layer === 'L7' ? normalizeUrl(host) : normalizeHost(host);
     const effectivePort = layer === 'L7' ? 443 : parseInt(port);
+    // Input'tan gercek degeri dogrudan oku; state gecikmesi olursa bile dogru deger gider
+    const inputConcurrents = concurrentsRef.current ? parseInt(concurrentsRef.current.value) : parseInt(concurrents);
+    const effectiveConcurrents = Math.max(1, inputConcurrents || 1);
 
     try {
       const payload = {
@@ -200,7 +204,7 @@ const AttackForm = () => {
         method,
         subnet: '32',
         geo: 'worldwide',
-        concurrents: parseInt(concurrents),
+        concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval),
         infinite: loopActive
       };
@@ -219,7 +223,7 @@ const AttackForm = () => {
             method,
             subnet: '32',
             geo: 'worldwide',
-            concurrents: parseInt(concurrents),
+            concurrents: effectiveConcurrents,
             interval: parseInt(loopInterval),
             infinite: true
           },
@@ -345,6 +349,7 @@ const AttackForm = () => {
         <div>
           <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Concurrents</label>
           <input
+            ref={concurrentsRef}
             type="number"
             min={1}
             max={state.plan?.Concurrents || 80}
