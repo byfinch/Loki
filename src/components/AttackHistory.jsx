@@ -183,7 +183,7 @@ const AttackHistory = () => {
 
   return (
     <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300 w-full">
-      <div className="flex items-center justify-between gap-4 mb-4">
+      <div className="flex items-center gap-4 mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 whitespace-nowrap">
           Saldırı Geçmişi
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-purple-400 font-mono">
@@ -191,7 +191,15 @@ const AttackHistory = () => {
           </span>
         </h2>
 
-        <div className="flex gap-2">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Hedef, yöntem, port veya durum ara..."
+          className="flex-1 min-w-0 bg-black/60 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-600 focus:border-purple-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(168,85,247,0.1)] transition"
+        />
+
+        <div className="flex gap-2 flex-shrink-0">
           {[
             { id: 'all', label: 'Tümü' },
             { id: 'active', label: 'Aktif' },
@@ -211,16 +219,6 @@ const AttackHistory = () => {
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="mb-4">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Hedef, yöntem, port veya durum ara..."
-          className="w-full bg-black/60 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-600 focus:border-purple-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(168,85,247,0.1)] transition"
-        />
       </div>
 
       {loading && state.attackHistory.length === 0 ? (
