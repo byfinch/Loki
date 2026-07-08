@@ -370,7 +370,7 @@ function addAttackHistory(sessionId, params, options = {}) {
     port: params.port || null,
     method: params.method,
     time: parseInt(params.time) || 0,
-    concurrents: parseInt(params.concurrents) || 1,
+    concurrents: parseInt(options.concurrents) || parseInt(params.concurrents) || 1,
     loop: !!options.loop,
     status: 'active',
     startedAt: now.toISOString(),
