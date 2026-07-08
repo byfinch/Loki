@@ -227,7 +227,7 @@ const AttackHistory = () => {
               {paginatedRecords.map((record) => (
                 <tr
                   key={record.historyId}
-                  className="border-b border-white/5 hover:bg-white/[0.03] transition-colors"
+                  className="border-b border-white/5 hover:bg-white/[0.03] transition-colors h-12"
                 >
                   <td className="px-2 py-3">
                     <button
@@ -270,6 +270,11 @@ const AttackHistory = () => {
                   <td className="px-2 py-3 text-gray-400 text-[11px] whitespace-nowrap">
                     {record.status === 'active' ? '-' : formatDate(record.endedAt)}
                   </td>
+                </tr>
+              ))}
+              {Array.from({ length: Math.max(0, itemsPerPage - paginatedRecords.length) }).map((_, idx) => (
+                <tr key={`empty-${idx}`} className="border-b border-white/5 h-12">
+                  <td className="px-2 py-3" colSpan="9"></td>
                 </tr>
               ))}
             </tbody>
