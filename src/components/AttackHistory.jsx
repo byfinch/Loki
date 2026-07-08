@@ -53,6 +53,7 @@ const AttackHistory = () => {
   const { state, setAttackHistory, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all'); // all, active, completed, stopped
+  const [searchQuery, setSearchQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -86,8 +87,21 @@ const AttackHistory = () => {
   }, [state.isAuthenticated]);
 
   const filteredRecords = state.attackHistory.filter((record) => {
-    if (filter === 'all') return true;
-    return record.status === filter;
+    const statusMatch = filter === 'all' || record.status === filter;
+    if (!searchQuery.trim()) return statusMatch;
+
+    const q = searchQuery.toLowerCase();
+    const targetMatch = (record.target || '').toLowerCase().includes(q);
+    const methodMatch = (record.method || '').toLowerCase().includes(q);
+    const portMatch = String(record.port || '').includes(q);
+    const statusLabelMap = {
+      active: 'aktif',
+      completed: 'tamamlandı',
+      stopped: 'durduruldu'
+    };
+    const statusLabelMatch = (statusLabelMap[record.status] || '').includes(q);
+
+    return statusMatch && (targetMatch || methodMatch || portMatch || statusLabelMatch);
   });
 
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage) || 1;
@@ -98,7 +112,7 @@ const AttackHistory = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter]);
+  }, [filter, searchQuery]);
 
   const fallbackCopy = (text) => {
     const ta = document.createElement('textarea');
@@ -197,6 +211,16 @@ const AttackHistory = () => {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="mb-4">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Hedef, yöntem, port veya durum ara..."
+          className="w-full bg-black/60 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-600 focus:border-purple-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(168,85,247,0.1)] transition"
+        />
       </div>
 
       {loading && state.attackHistory.length === 0 ? (
