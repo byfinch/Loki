@@ -44,7 +44,8 @@ function getAllowedOrigins() {
 }
 
 function isOriginAllowed(origin) {
-  if (!origin) return false;
+  // Bazı proxy/geliştirme durumlarında origin undefined gelebilir; bu durumda izin ver.
+  if (!origin || origin === 'undefined' || origin === 'null') return true;
   const { defaults, envOrigins } = getAllowedOrigins();
   if (defaults.some((re) => re.test(origin))) return true;
   if (envOrigins.includes(origin)) return true;
