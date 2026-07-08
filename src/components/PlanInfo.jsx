@@ -61,7 +61,6 @@ const PlanInfo = () => {
   return (
     <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
       <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
         Abonelik Bilgileri
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

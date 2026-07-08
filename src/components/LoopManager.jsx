@@ -23,7 +23,7 @@ const LoopManager = () => {
   useEffect(() => {
     if (!state.isAuthenticated) return;
     refreshLoops();
-    const interval = setInterval(refreshLoops, 3000);
+    const interval = setInterval(refreshLoops, 1000);
     return () => clearInterval(interval);
   }, [state.isAuthenticated]);
 
@@ -43,6 +43,8 @@ const LoopManager = () => {
     setLoading(loopId);
     try {
       await apiClient.stopLoop(loopId);
+      // Hemen backendden yeni durumu cek ki loopun gittigi teyit edilsin
+      await refreshLoops();
       animateRemove(loopId, () => {
         removeLoop(loopId);
         addLog(`Loop durduruldu: ${loopId}`);
@@ -57,18 +59,20 @@ const LoopManager = () => {
     setLoading('__ALL__');
     try {
       await apiClient.stopLoop();
-      const allIds = Object.keys(state.activeLoops);
-      allIds.forEach((loopId) => setRemoving((prev) => new Set(prev).add(loopId)));
-      setTimeout(() => {
-        setLoops({});
-        setRemoving(new Set());
-        setLoading(false);
-        addLog('Tüm looplar durduruldu');
-      }, 400);
+      await refreshLoops();
+      addLog('Tüm looplar durduruldu');
     } catch (err) {
       addLog(`Loop durdurma hatası: ${err.message}`);
-      setLoading(false);
     }
+    // Backend cevabi ne olursa olsun frontend state'i temizle,
+    // cunku backend /loop/stop loopId verilmediginde tum loop'lari kapatir.
+    const allIds = Object.keys(state.activeLoops);
+    allIds.forEach((loopId) => setRemoving((prev) => new Set(prev).add(loopId)));
+    setTimeout(() => {
+      setLoops({});
+      setRemoving(new Set());
+      setLoading(false);
+    }, 400);
   };
 
   const loops = Object.entries(state.activeLoops);
@@ -77,7 +81,6 @@ const LoopManager = () => {
     <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
           Aktif Looplar
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-cyan-400 font-mono">
             {loops.length}

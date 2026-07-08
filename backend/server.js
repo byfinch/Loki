@@ -25,8 +25,40 @@ dns.setDefaultResultOrder('ipv4first');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+/**
+ * CORS whitelist:
+ * - Gelistirme ortamlari (localhost, 127.0.0.1 herhangi port)
+ * - LOKI_ALLOWED_ORIGINS env degiskeni ile virgulle ayrilmis domainler
+ * Ornek: LOKI_ALLOWED_ORIGINS=https://panel.site.com,https://app.site.com
+ */
+function getAllowedOrigins() {
+  const defaults = [
+    /^https?:\/\/localhost(:\d+)?$/,
+    /^https?:\/\/127\.0\.0\.1(:\d+)?$/
+  ];
+  const envOrigins = (process.env.LOKI_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  return { defaults, envOrigins };
+}
+
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+  const { defaults, envOrigins } = getAllowedOrigins();
+  if (defaults.some((re) => re.test(origin))) return true;
+  if (envOrigins.includes(origin)) return true;
+  return false;
+}
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, origin);
+    } else {
+      callback(new Error(`CORS policy: origin '${origin}' not allowed`));
+    }
+  },
   credentials: true,
   exposedHeaders: ['sessionId', 'content-type']
 }));
@@ -46,10 +78,18 @@ const sessions = {};
 // Active loop registry: { loopId: { running, params, startedAt, lastRoundAt, roundCount, errors, roundAttackIds } }
 const activeLoops = {};
 
-// Persistence: save/restore sessions and loops across restarts
+// Active normal attacks registry: { attackId: { username, host, port, method, time, startedAt, expiresAt } }
+const activeAttacks = {};
+
+// Attack history registry: { historyId: { username, target, port, method, time, concurrents, loop, status, startedAt, endedAt } }
+const attackHistory = {};
+
+// Persistence: save/restore sessions, loops, attacks and history across restarts
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
+const ATTACKS_FILE = path.join(DATA_DIR, 'active-attacks.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'attack-history.json');
 
 let saveStateRunning = false;
 let saveStatePending = false;
@@ -65,6 +105,12 @@ function safeWriteJson(filePath, data) {
     const tmp = `${filePath}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
     fs.renameSync(tmp, filePath);
+    // Sadece sahibin okuyabilecegi izinler (deploy ortaminda onemli)
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch (chmodErr) {
+      // Windows gibi platformlarda chmod desteklenmeyebilir, gormezden gel
+    }
   } catch (err) {
     console.error(`[persistence] Failed to write ${filePath}:`, err.message);
   }
@@ -99,6 +145,12 @@ function saveState() {
 
     // Save loops: only serializable fields
     safeWriteJson(LOOPS_FILE, activeLoops);
+
+    // Save normal attacks
+    safeWriteJson(ATTACKS_FILE, activeAttacks);
+
+    // Save attack history
+    safeWriteJson(HISTORY_FILE, attackHistory);
 
     cleanupOldSessions();
   } finally {
@@ -169,10 +221,157 @@ function loadState() {
   }
 
   cleanupOldSessions();
+
+  // Restore normal attacks
+  try {
+    if (fs.existsSync(ATTACKS_FILE)) {
+      const raw = fs.readFileSync(ATTACKS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      Object.entries(parsed).forEach(([attackId, attack]) => {
+        // Sadece gecerli session'a sahip saldirilari geri yukle
+        if (attack && sessions[attack.sessionId]) {
+          activeAttacks[attackId] = attack;
+        }
+      });
+      console.log(`[persistence] Restored ${Object.keys(activeAttacks).length} attack(s)`);
+    }
+  } catch (err) {
+    console.error('[persistence] Failed to load attacks:', err.message);
+    try {
+      fs.renameSync(ATTACKS_FILE, `${ATTACKS_FILE}.corrupt.${Date.now()}`);
+    } catch (renameErr) {
+      console.error('[persistence] Failed to backup corrupt attacks file:', renameErr.message);
+    }
+  }
+
+  cleanupExpiredAttacks();
+
+  // Restore attack history
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      Object.entries(parsed).forEach(([historyId, record]) => {
+        if (record && record.username) {
+          attackHistory[historyId] = record;
+        }
+      });
+      console.log(`[persistence] Restored ${Object.keys(attackHistory).length} history record(s)`);
+    }
+  } catch (err) {
+    console.error('[persistence] Failed to load attack history:', err.message);
+    try {
+      fs.renameSync(HISTORY_FILE, `${HISTORY_FILE}.corrupt.${Date.now()}`);
+    } catch (renameErr) {
+      console.error('[persistence] Failed to backup corrupt history file:', renameErr.message);
+    }
+  }
+
+  cleanupOldHistory();
 }
 
 // Auto-save every 30 seconds
 setInterval(saveState, 30000);
+
+function registerAttack(attackId, sessionId, params) {
+  if (!attackId || !sessionId) return;
+  activeAttacks[attackId] = {
+    attackId,
+    sessionId,
+    username: sessions[sessionId]?.username,
+    host: params.host,
+    port: params.port,
+    method: params.method,
+    time: parseInt(params.time) || 0,
+    startedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + (parseInt(params.time) || 0) * 1000).toISOString()
+  };
+  saveState();
+}
+
+function unregisterAttack(attackId) {
+  if (!attackId) return;
+  delete activeAttacks[attackId];
+  saveState();
+}
+
+function cleanupExpiredAttacks() {
+  const now = Date.now();
+  let removed = 0;
+  Object.entries(activeAttacks).forEach(([attackId, attack]) => {
+    const expires = new Date(attack.expiresAt || 0).getTime();
+    // 60 saniye tolerans: stresse.st bazen biraz gecikmeli sonlandirabilir
+    if (now - expires > 60 * 1000) {
+      delete activeAttacks[attackId];
+      removed++;
+    }
+  });
+  if (removed > 0) {
+    console.log(`[cleanup] Removed ${removed} expired attack(s)`);
+  }
+}
+
+// Expired attacks cleanup every 60 seconds
+setInterval(cleanupExpiredAttacks, 60000);
+
+function addAttackHistory(sessionId, params, options = {}) {
+  if (!sessionId) return;
+  const username = sessions[sessionId]?.username;
+  if (!username) return;
+
+  const historyId = options.historyId || `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = new Date();
+  attackHistory[historyId] = {
+    historyId,
+    username,
+    target: params.host,
+    port: params.port || null,
+    method: params.method,
+    time: parseInt(params.time) || 0,
+    concurrents: parseInt(params.concurrents) || 1,
+    loop: !!options.loop,
+    status: 'active',
+    startedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + (parseInt(params.time) || 0) * 1000).toISOString(),
+    endedAt: null,
+    attackIds: options.attackIds || []
+  };
+  saveState();
+  return historyId;
+}
+
+function updateAttackHistoryStatus(historyId, status) {
+  if (!historyId || !attackHistory[historyId]) return;
+  attackHistory[historyId].status = status;
+  attackHistory[historyId].endedAt = new Date().toISOString();
+  saveState();
+}
+
+function findActiveHistoryByAttackId(attackId) {
+  return Object.values(attackHistory).find(
+    (h) => h.status === 'active' && h.attackIds.includes(attackId)
+  );
+}
+
+const HISTORY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 gun
+
+function cleanupOldHistory() {
+  const now = Date.now();
+  let removed = 0;
+  Object.entries(attackHistory).forEach(([historyId, record]) => {
+    const started = new Date(record.startedAt || 0).getTime();
+    if (now - started > HISTORY_MAX_AGE_MS) {
+      delete attackHistory[historyId];
+      removed++;
+    }
+  });
+  if (removed > 0) {
+    console.log(`[cleanup] Removed ${removed} old history record(s)`);
+  }
+}
+
+// Old history cleanup every hour
+setInterval(cleanupOldHistory, 60 * 60 * 1000);
 
 function getSessionPlan(sessionId) {
   return sessions[sessionId]?.plan || {};
@@ -297,8 +496,8 @@ function getClient(sessionId) {
     baseURL: 'https://stresse.st',
     jar,
     withCredentials: true,
-    withCredentials: true,
     family: 4,
+    maxRedirects: 5,
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*',
@@ -306,7 +505,7 @@ function getClient(sessionId) {
       'Origin': 'https://stresse.st',
       'Referer': 'https://stresse.st/hub'
     },
-    timeout: 30000
+    timeout: 45000
   }));
 }
 
@@ -331,16 +530,48 @@ app.post('/api/stresse/login', async (req, res) => {
 
       let step = 'GET /login';
     try {
-      // 1. Get login page to collect cookies
-      await client.get('/login');
+      // 1. Get login page to collect cookies (retry ile)
+      let loginPageOk = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await client.get('/login');
+          loginPageOk = true;
+          break;
+        } catch (retryErr) {
+          console.warn(`[login] GET /login deneme ${attempt}/3 hata: ${retryErr.message}`);
+          if (attempt === 3) throw retryErr;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      if (!loginPageOk) throw new Error('Login sayfasi alinamadi');
 
-      // 2. Submit login credentials
+      // 2. Submit login credentials (retry ile)
       step = 'POST /login';
-      const loginRes = await client.post('/login', { username, password });
+      let loginRes;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          loginRes = await client.post('/login', { username, password });
+          break;
+        } catch (retryErr) {
+          console.warn(`[login] POST /login deneme ${attempt}/3 hata: ${retryErr.message}`);
+          if (attempt === 3) throw retryErr;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
 
-      // 3. Verify session
+      // 3. Verify session (retry ile)
       step = 'GET /vcookie';
-      const vcookieRes = await client.get('/vcookie');
+      let vcookieRes;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          vcookieRes = await client.get('/vcookie');
+          break;
+        } catch (retryErr) {
+          console.warn(`[login] GET /vcookie deneme ${attempt}/3 hata: ${retryErr.message}`);
+          if (attempt === 3) throw retryErr;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
       if (!vcookieRes.data || !vcookieRes.data.username) {
         return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
       }
@@ -440,15 +671,60 @@ app.get('/api/stresse/methods', async (req, res) => {
 
 /**
  * GET /api/stresse/ongoing/:username
+ *
+ * stresse.st'ten gelen gercek ongoing listesine, backend restart sonrasi
+ * hatirladigimiz attack ID'lerini de ekler. Boylece normal saldirilar da
+ * restart sonrasi panelde gorunmeye devam eder.
  */
 app.get('/api/stresse/ongoing/:username', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    const { username } = req.params;
     const client = getClient(sessionId);
-    const response = await client.get(`/ongoing/${req.params.username}`);
-    res.json(response.data);
+    const response = await client.get(`/ongoing/${username}`);
+
+    let ongoing = [];
+    if (Array.isArray(response.data)) {
+      ongoing = response.data;
+    } else if (response.data && Array.isArray(response.data.attacks)) {
+      ongoing = response.data.attacks;
+    }
+
+    const existingIds = new Set(ongoing.map((a) => a.attack_id || a.id));
+    const now = Date.now();
+
+    Object.values(activeAttacks).forEach((attack) => {
+      // Sadece ayni session'a ait saldirilari ekle (diger kullanicilarin saldirilarini karistirma)
+      if (attack.sessionId !== sessionId) return;
+      // Sadece ayni kullaniciya ait saldirilari ekle
+      if (attack.username && attack.username !== username) return;
+      // Zaten listede varsa tekrar ekleme
+      if (existingIds.has(attack.attackId)) return;
+
+      const expires = new Date(attack.expiresAt || 0).getTime();
+      const timeLeft = Math.max(0, Math.round((expires - now) / 1000));
+      if (timeLeft <= 0) return; // Suresi dolmussa ekleme
+
+      ongoing.push({
+        attack_id: attack.attackId,
+        id: attack.attackId,
+        target: attack.port ? `${attack.host}:${attack.port}` : attack.host,
+        host: attack.host,
+        port: attack.port,
+        method: attack.method,
+        timeLeft,
+        // Frontend'in diger alanlarini doldur
+        time: attack.time,
+        startedAt: attack.startedAt,
+        expiresAt: attack.expiresAt,
+        // stresse.st'den gelen gercek deger degil, "persisted" isareti
+        persisted: true
+      });
+    });
+
+    res.json(ongoing);
   } catch (error) {
     handleEndpointError(res, error, 'Ongoing fetch error');
   }
@@ -509,6 +785,16 @@ app.post('/api/stresse/attack', async (req, res) => {
         status: 'error',
         message: response.data.message || 'Saldiri baslatilamadi',
         data: response.data
+      });
+    }
+
+    // Basarili tek saldiriyi kaydet ki restart sonrasi gorulebilsin
+    const attackId = response.data?.id || response.data?.attack_id;
+    if (attackId) {
+      registerAttack(attackId, sessionId, { host, port, method, time });
+      addAttackHistory(sessionId, { host, port, method, time }, {
+        concurrents: 1,
+        attackIds: [attackId]
       });
     }
 
@@ -583,6 +869,23 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     const failResults = results.filter((r) => r.status === 'error' || r.data?.status === 'error');
 
     console.log(`[attack/bulk] ${host}:${port} ${method} x${count} -> ${successResults.length} success, ${failResults.length} fail`);
+
+    // Basarili bulk saldirilarin ID'lerini kaydet
+    const bulkAttackIds = [];
+    successResults.forEach((r) => {
+      const attackId = r.data?.id || r.data?.attack_id;
+      if (attackId) {
+        registerAttack(attackId, sessionId, { host, port, method, time });
+        bulkAttackIds.push(attackId);
+      }
+    });
+
+    if (bulkAttackIds.length > 0) {
+      addAttackHistory(sessionId, { host, port, method, time }, {
+        concurrents: count,
+        attackIds: bulkAttackIds
+      });
+    }
 
     res.json({
       status: 'success',
@@ -676,6 +979,8 @@ async function runLoop(loopId) {
             if (attackId) {
               currentLoop.roundAttackIds.push(attackId);
               roundSuccesses++;
+              // Loop attack'lerini de normal saldirilar gibi kaydet ki restart sonrasi gorunsun
+              registerAttack(attackId, loop.sessionId, currentLoop.params);
             } else {
               currentLoop.errors += 1;
             }
@@ -718,6 +1023,13 @@ async function runLoop(loopId) {
   }
 
   // Loop bittiginde veya durduruldugunda kaydi sil ki listede kalmasin
+  const finishedLoop = activeLoops[loopId];
+  if (finishedLoop?.historyId && attackHistory[finishedLoop.historyId]) {
+    // Eger zaten durduruldu olarak isaretlenmemisse tamamlandi olarak isaretle
+    if (attackHistory[finishedLoop.historyId].status === 'active') {
+      updateAttackHistoryStatus(finishedLoop.historyId, 'completed');
+    }
+  }
   delete activeLoops[loopId];
   saveState();
 }
@@ -758,9 +1070,17 @@ app.post('/api/stresse/loop', async (req, res) => {
       return res.status(409).json({ status: 'error', message: 'Loop already running', loopId });
     }
 
+    // Loop saldirisini history'ye sadece bir kez kaydet
+    const historyId = addAttackHistory(sessionId, { host, port, method, time }, {
+      loop: true,
+      concurrents: parseInt(concurrents),
+      historyId: `hist_loop_${loopId}`
+    });
+
     activeLoops[loopId] = {
       running: true,
       sessionId,
+      historyId,
       params: { host, port: parseInt(port), time: parseInt(time), method, subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
@@ -812,6 +1132,16 @@ app.post('/api/stresse/stop', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       timeout: 60000
     });
+
+    // Durdurulan saldiriyi kayittan sil
+    unregisterAttack(id);
+
+    // History durumunu guncelle
+    const history = findActiveHistoryByAttackId(id);
+    if (history) {
+      updateAttackHistoryStatus(history.historyId, 'stopped');
+    }
+
     res.json(response.data);
   } catch (error) {
     handleEndpointError(res, error, 'Stop error');
@@ -900,6 +1230,15 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       }
     }
 
+    // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle
+    ids.forEach((id) => {
+      unregisterAttack(id);
+      const history = findActiveHistoryByAttackId(id);
+      if (history) {
+        updateAttackHistoryStatus(history.historyId, 'stopped');
+      }
+    });
+
     res.json({ status: 'success', total: ids.length, results });
   } catch (error) {
     handleEndpointError(res, error, 'Bulk stop error');
@@ -930,6 +1269,22 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Loop bulunamadi', loopId });
     }
 
+    const loop = activeLoops[loopId];
+    if (loop && Array.isArray(loop.roundAttackIds)) {
+      loop.roundAttackIds.forEach((id) => {
+        unregisterAttack(id);
+        const history = findActiveHistoryByAttackId(id);
+        if (history && history.loop) {
+          updateAttackHistoryStatus(history.historyId, 'stopped');
+        }
+      });
+    }
+
+    // Loop history kaydini durduruldu olarak isaretle
+    if (loop?.historyId && attackHistory[loop.historyId]) {
+      updateAttackHistoryStatus(loop.historyId, 'stopped');
+    }
+
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
     saveState();
@@ -958,6 +1313,33 @@ app.get('/api/stresse/loops', async (req, res) => {
     res.json({ status: 'success', count: loops.length, loops });
   } catch (error) {
     handleEndpointError(res, error, 'Loop list error');
+  }
+});
+
+/**
+ * GET /api/stresse/history/:username
+ * Kullanicinin saldiri gecmisini doner.
+ */
+app.get('/api/stresse/history/:username', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const { username } = req.params;
+
+    // Sadece kendi gecmisini gorebilir
+    const sessionUser = sessions[sessionId]?.username;
+    if (sessionUser && sessionUser !== username) {
+      return res.status(403).json({ status: 'error', message: 'Forbidden' });
+    }
+
+    const records = Object.values(attackHistory)
+      .filter((h) => h.username === username)
+      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+
+    res.json({ status: 'success', count: records.length, records });
+  } catch (error) {
+    handleEndpointError(res, error, 'History fetch error');
   }
 });
 
@@ -1095,8 +1477,14 @@ app.get('/api/fofa', async (req, res) => {
  * GET /api/stresse/live/:username
  * Server-Sent Events stream of ongoing attacks
  */
+// Session ID'yi loglarda gostermemek icin maskele
+function maskSessionId(id) {
+  if (!id || id.length < 8) return '***';
+  return `${id.slice(0, 3)}...${id.slice(-3)}`;
+}
+
 app.get('/api/stresse/live/:username', async (req, res) => {
-  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'] || req.query.sid || req.query.SID;
   const { username } = req.params;
 
   if (!sessionId) {

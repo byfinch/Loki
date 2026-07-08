@@ -18,6 +18,7 @@ const initialState = {
   isAuthenticated: false,
   activeTab: 'attack', // attack, tools, loops
   activeLoops: {}, // { [loopId]: { running, params, startedAt, lastRoundAt, roundCount, errors } }
+  attackHistory: [], // Saldiri gecmis kayitlari
   toasts: [] // [{ id, message, type, duration }]
 };
 
@@ -85,6 +86,8 @@ function stressTestReducer(state, action) {
       return { ...state, activeLoops: nextLoops };
     case 'SET_LOOPS':
       return { ...state, activeLoops: action.payload };
+    case 'SET_ATTACK_HISTORY':
+      return { ...state, attackHistory: action.payload };
     case 'ADD_TOAST':
       return { ...state, toasts: [...state.toasts, action.payload] };
     case 'REMOVE_TOAST':
@@ -114,6 +117,7 @@ export const StressTestProvider = ({ children }) => {
   const updateLoop = (loopId, updates) => dispatch({ type: 'UPDATE_LOOP', payload: { loopId, updates } });
   const removeLoop = (loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } });
   const setLoops = (loops) => dispatch({ type: 'SET_LOOPS', payload: loops });
+  const setAttackHistory = (history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history });
 
   const showToast = (message, type = 'info', duration = 3000) => {
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -144,6 +148,7 @@ export const StressTestProvider = ({ children }) => {
         updateLoop,
         removeLoop,
         setLoops,
+        setAttackHistory,
         showToast,
         removeToast,
         logout

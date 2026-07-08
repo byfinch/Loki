@@ -14,7 +14,18 @@ function getHeaders() {
 }
 
 async function handleResponse(response) {
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    // Parse hatasi durumunda ham govdeyi gorebilmek icin clone ediyoruz
+    const cloned = response.clone();
+    try {
+      data = await response.json();
+    } catch (parseErr) {
+      const text = await cloned.text().catch(() => '');
+      throw new Error(`Sunucu yanıtı JSON değil: ${text.slice(0, 200) || parseErr.message}`);
+    }
+  }
   if (!response.ok) {
     throw new Error(data.message || `HTTP ${response.status}`);
   }
@@ -104,6 +115,14 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // History
+  async getHistory(username) {
+    const res = await fetch(`${API_BASE}/stresse/history/${username}`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // Loop
   async startLoop(payload) {
     const res = await fetch(`${API_BASE}/stresse/loop`, {
@@ -156,12 +175,11 @@ export const apiClient = {
   },
 
   // Live SSE
+  // EventSource constructor header desteklemez, sessionId'yi kisa query anahtari ile gonderiyoruz.
   connectLiveStream(username, onData, onError) {
     const sessionId = this.getSessionId();
-    const eventSource = new EventSource(
-      `${API_BASE}/stresse/live/${username}`,
-      { headers: { sessionId } }
-    );
+    const url = `${API_BASE}/stresse/live/${username}?sid=${encodeURIComponent(sessionId || '')}`;
+    const eventSource = new EventSource(url);
 
     eventSource.onmessage = (event) => {
       try {

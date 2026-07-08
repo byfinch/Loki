@@ -13,14 +13,15 @@ const LiveAttacks = () => {
   const [activeStopKey, setActiveStopKey] = useState(null);
   const [serverTimeLefts, setServerTimeLefts] = useState({});
 
-  const stripPort = (url) => {
+  const stripPort = (target) => {
+    if (!target || typeof target !== 'string') return target;
     try {
-      return url
-        .replace(/\/:\d+(?=\/|$)/g, '')
-        .replace(/:\d+(?=\/|$)/g, '')
-        .replace(/\/$/, '');
+      // URL API ile port haric hostname'i al; IP veya domain olabilir
+      const url = new URL(target.includes('://') ? target : `http://${target}`);
+      return url.hostname;
     } catch {
-      return url;
+      // Fallback: basit regex ile portu kaldir
+      return target.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
     }
   };
 
@@ -314,6 +315,10 @@ const LiveAttacks = () => {
         setLastUpdate(new Date());
       } catch (err) {
         addLog(`Canlı veri alınamadı: ${err.message}`);
+        // Oturum hatası varsa kullanıcıyı bilgilendir
+        if (err.message?.includes('401') || err.message?.toLowerCase().includes('session')) {
+          showToast('Aktif saldırılar alınamıyor: oturum geçersiz olabilir', 'error');
+        }
       }
     };
 
@@ -365,7 +370,6 @@ const LiveAttacks = () => {
     <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
           Aktif Saldırılar
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-green-400 font-mono">
             {state.liveAttacks.length}

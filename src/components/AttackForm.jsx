@@ -48,7 +48,7 @@ const AttackForm = () => {
 
   // Loop controls (integrated into the same form)
   const [loopActive, setLoopActive] = useState(false);
-  const [interval, setInterval] = useState(5);
+  const [loopInterval, setLoopInterval] = useState(5);
   const [starting, setStarting] = useState(false);
 
   const withMinimumLoading = async (fn, minMs = 1000) => {
@@ -154,6 +154,8 @@ const AttackForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (loading) return; // Cift tiklamayi onle
+
     const validation = validateLimits();
     if (!validation.ok) {
       addLog(`Limit hatası: ${validation.message}`);
@@ -165,8 +167,13 @@ const AttackForm = () => {
       return;
     }
 
+    setLoading(true);
+    if (loopActive) setStarting(true);
+
     const busyLoopId = isTargetBusyInState();
     if (busyLoopId) {
+      setLoading(false);
+      setStarting(false);
       addLog(`Bu hedef için zaten aktif loop var: ${busyLoopId}`);
       showToast('Bu hedef için aktif loop var. Önce loopu durdurun.', 'warning');
       return;
@@ -174,6 +181,8 @@ const AttackForm = () => {
 
     const busyLoopOnBackend = await isTargetBusyOnBackend();
     if (busyLoopOnBackend) {
+      setLoading(false);
+      setStarting(false);
       addLog(`Bu hedef için sunucuda aktif loop var: ${busyLoopOnBackend.loopId}`);
       showToast('Bu hedef için sunucuda aktif loop var. Önce loopu durdurun.', 'warning');
       return;
@@ -181,9 +190,6 @@ const AttackForm = () => {
 
     const normalizedHost = layer === 'L7' ? normalizeUrl(host) : normalizeHost(host);
     const effectivePort = layer === 'L7' ? 443 : parseInt(port);
-
-    setLoading(true);
-    if (loopActive) setStarting(true);
 
     try {
       const payload = {
@@ -195,12 +201,15 @@ const AttackForm = () => {
         subnet: '32',
         geo: 'worldwide',
         concurrents: parseInt(concurrents),
-        interval: parseInt(interval),
+        interval: parseInt(loopInterval),
         infinite: loopActive
       };
 
       if (loopActive) {
         const loopId = `${host}:${port}_${method}_${Date.now()}`;
+        addLog(`Loop saldırısı başlatılıyor: ${host}:${port} (${method})`);
+        await withMinimumLoading(() => apiClient.startLoop({ ...payload, loopId }));
+        // Sadece backend basarili olursa state'e ekle
         addLoop(loopId, {
           params: {
             host: normalizedHost,
@@ -211,7 +220,7 @@ const AttackForm = () => {
             subnet: '32',
             geo: 'worldwide',
             concurrents: parseInt(concurrents),
-            interval: parseInt(interval),
+            interval: parseInt(loopInterval),
             infinite: true
           },
           startedAt: new Date().toISOString(),
@@ -219,12 +228,11 @@ const AttackForm = () => {
           roundCount: 0,
           errors: 0
         });
-        addLog(`Loop saldırısı başlatıldı: ${host}:${port} (${method})`);
-        await withMinimumLoading(() => apiClient.startLoop({ ...payload, loopId }));
         startTest(`loop_${loopId}`);
         showToast('Loop başlatıldı', 'success');
       } else {
         const data = await withMinimumLoading(() => apiClient.startAttacks(payload));
+        if (!data) throw new Error('Sunucu yanıtı boş döndü');
         startTest(data.attack_id || `attack_${Date.now()}`);
         const ok = data.successCount ?? 1;
         const fail = data.failCount ?? 0;
@@ -367,8 +375,8 @@ const AttackForm = () => {
             <input
               type="number"
               min={0}
-              value={interval}
-              onChange={(e) => setInterval(parseInt(e.target.value) || 0)}
+              value={loopInterval}
+              onChange={(e) => setLoopInterval(parseInt(e.target.value) || 0)}
               className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
               required
             />

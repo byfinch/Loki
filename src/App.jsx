@@ -5,15 +5,28 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 
 const AppContent = () => {
-  const { state, setUser, addLog } = useStressTest();
+  const { state, setUser, logout, addLog, showToast } = useStressTest();
 
   useEffect(() => {
-    const sessionId = apiClient.getSessionId();
-    const username = apiClient.getUsername();
-    if (sessionId && username) {
-      setUser({ username });
-      addLog('Oturum geri yüklendi');
-    }
+    const validateSession = async () => {
+      const sessionId = apiClient.getSessionId();
+      const username = apiClient.getUsername();
+      if (!sessionId || !username) return;
+
+      try {
+        // Session'ın backend'de hâlâ geçerli olduğunu doğrula
+        const user = await apiClient.getUser(username);
+        setUser(user);
+        addLog('Oturum geri yüklendi');
+      } catch (err) {
+        apiClient.logout();
+        logout();
+        addLog('Oturum geçersiz, çıkış yapıldı');
+        showToast('Oturumunuz sonlanmış, lütfen tekrar giriş yapın', 'error');
+      }
+    };
+
+    validateSession();
   }, []);
 
   if (!state.isAuthenticated) {

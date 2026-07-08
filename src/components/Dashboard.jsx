@@ -6,6 +6,7 @@ import AttackForm from './AttackForm';
 import LiveAttacks from './LiveAttacks';
 import ToolsPanel from './ToolsPanel';
 import LoopManager from './LoopManager';
+import AttackHistory from './AttackHistory';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
@@ -20,7 +21,8 @@ const Dashboard = () => {
   const tabs = [
     { id: 'attack', label: 'Saldırı' },
     { id: 'loops', label: 'Looplar' },
-    { id: 'tools', label: 'Araçlar' }
+    { id: 'tools', label: 'Araçlar' },
+    { id: 'history', label: 'Geçmiş' }
   ];
 
   return (
@@ -31,7 +33,8 @@ const Dashboard = () => {
         {[
           { id: 'attack', icon: 'ph-lightning' },
           { id: 'loops', icon: 'ph-repeat' },
-          { id: 'tools', icon: 'ph-wrench' }
+          { id: 'tools', icon: 'ph-wrench' },
+          { id: 'history', icon: 'ph-clock-counter-clockwise' }
         ].map((item) => (
           <button
             key={item.id}
@@ -96,6 +99,10 @@ const Dashboard = () => {
               <ToolsPanel />
               <LiveAttacks />
             </>
+          )}
+
+          {state.activeTab === 'history' && (
+            <AttackHistory />
           )}
         </div>
       </main>
