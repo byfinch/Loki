@@ -54,6 +54,8 @@ const AttackHistory = () => {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all'); // all, active, completed, stopped
   const [copiedKey, setCopiedKey] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     if (!state.isAuthenticated) return;
@@ -87,6 +89,16 @@ const AttackHistory = () => {
     if (filter === 'all') return true;
     return record.status === filter;
   });
+
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage) || 1;
+  const paginatedRecords = filteredRecords.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   const fallbackCopy = (text) => {
     const ta = document.createElement('textarea');
@@ -212,7 +224,7 @@ const AttackHistory = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map((record) => (
+              {paginatedRecords.map((record) => (
                 <tr
                   key={record.historyId}
                   className="border-b border-white/5 hover:bg-white/[0.03] transition-colors"
@@ -262,6 +274,30 @@ const AttackHistory = () => {
               ))}
             </tbody>
           </table>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
+              <span className="text-xs text-gray-500">
+                Sayfa {currentPage} / {totalPages} ({filteredRecords.length} kayıt)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Önceki
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Sonraki
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
