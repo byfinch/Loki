@@ -18,6 +18,9 @@ apt install -y nodejs
 echo "==> pm2 kuruluyor..."
 npm install -g pm2
 
+echo "==> Nginx kuruluyor..."
+apt install -y nginx
+
 echo "==> Uygulama dizini hazirlaniyor..."
 cd $APP_DIR
 
@@ -38,11 +41,18 @@ ALLOWED="http://${SERVER_IP}:4173,http://localhost:4173,http://127.0.0.1:4173"
 # Ecosystem dosyasindaki LOKI_ALLOWED_ORIGINS degerini guncelle
 sed -i "s|LOKI_ALLOWED_ORIGINS: '.*'|LOKI_ALLOWED_ORIGINS: '${ALLOWED}'|" ecosystem.config.cjs
 
+echo "==> Nginx yapilandiriliyor..."
+rm -f /etc/nginx/sites-enabled/default
+ln -sf ${APP_DIR}/nginx/loki.conf /etc/nginx/sites-enabled/loki.conf
+nginx -t
+systemctl restart nginx
+systemctl enable nginx
+
 echo "==> Eski pm2 surecleri durduruluyor..."
 pm2 delete loki-backend 2>/dev/null || true
 pm2 delete loki-frontend 2>/dev/null || true
 
-echo "==> Uygulama baslatiliyor..."
+echo "==> Backend baslatiliyor..."
 pm2 start ecosystem.config.cjs --env production
 
 echo "==> pm2 autostart ayarlaniyor..."
