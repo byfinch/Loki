@@ -1114,18 +1114,16 @@ app.post('/api/stresse/stop', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
 
-    // Eger durdurulan saldiri bir loop'a aitse, o loop'u tamamen durdur ki
-    // loop sonraki turda tekrar saldiri baslatmasin.
-    let loopStopped = false;
+    // Eger durdurulan saldiri bir loop'a aitse, sadece o saldiriyi loop'un
+    // round listesinden cikar; loop kendi intervaliyle devam etsin.
     Object.keys(activeLoops).forEach((key) => {
-      if (activeLoops[key]?.roundAttackIds?.includes(id)) {
-        activeLoops[key].running = false;
-        delete activeLoops[key];
-        loopStopped = true;
-        console.log(`[stop] Loop durduruldu cunku attack ${id} durduruldu: ${key}`);
+      const loop = activeLoops[key];
+      if (loop?.roundAttackIds?.includes(id)) {
+        loop.roundAttackIds = loop.roundAttackIds.filter((attackId) => attackId !== id);
+        console.log(`[stop] Loop roundundan attack ${id} cikarildi: ${key}`);
       }
     });
-    if (loopStopped) saveState();
+    saveState();
 
     const client = getClient(sessionId);
     // CSRF token gonderilirse stresse.st "Attack not found" donuyor
@@ -1139,7 +1137,10 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     // History durumunu guncelle
     const history = findActiveHistoryByAttackId(id);
-    if (history) {
+    if (history && !history.loop) {
+      // Sadece normal saldirilarin history'si durduruldu olarak isaretlenir.
+      // Loop'a ait round saldirilari durdurulunca loop history'si etkilenmez;
+      // loop kendi intervaliyle devam eder.
       updateAttackHistoryStatus(history.historyId, 'stopped');
     }
 
@@ -1209,21 +1210,18 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       const batchResults = await runWithConcurrency(batch, stopSingle, concurrent);
       results.push(...batchResults);
 
-      // Durdurulan ID'lerden herhangi biri bir loop'a aitse o loop'u kapat
-      const loopsToStop = new Set();
+      // Durdurulan ID'leri ilgili loop'larin round listelerinden cikar;
+      // loop'lar kendi intervaliyle devam etsin.
       batch.forEach((id) => {
         Object.keys(activeLoops).forEach((key) => {
-          if (activeLoops[key]?.roundAttackIds?.includes(id)) {
-            loopsToStop.add(key);
+          const loop = activeLoops[key];
+          if (loop?.roundAttackIds?.includes(id)) {
+            loop.roundAttackIds = loop.roundAttackIds.filter((attackId) => attackId !== id);
+            console.log(`[stop/bulk] Loop ${key} roundundan attack ${id} cikarildi`);
           }
         });
       });
-      loopsToStop.forEach((key) => {
-        activeLoops[key].running = false;
-        delete activeLoops[key];
-        console.log(`[stop/bulk] Loop durduruldu: ${key}`);
-      });
-      if (loopsToStop.size > 0) saveState();
+      saveState();
 
       // Son batch degilse kisa bir bekleme (rate limit korumasi)
       if (currentBatch < totalBatches) {
@@ -1231,11 +1229,12 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       }
     }
 
-    // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle
+    // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle.
+    // Loop'a ait history'ler dokunulmaz; loop kendi halinde devam eder.
     ids.forEach((id) => {
       unregisterAttack(id);
       const history = findActiveHistoryByAttackId(id);
-      if (history) {
+      if (history && !history.loop) {
         updateAttackHistoryStatus(history.historyId, 'stopped');
       }
     });
