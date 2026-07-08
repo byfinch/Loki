@@ -317,7 +317,7 @@ function unregisterAttack(attackId) {
 function cleanupExpiredAttacks() {
   const now = Date.now();
   let removed = 0;
-  const completedLoopHistories = new Set();
+  const completedHistories = new Set();
 
   Object.entries(activeAttacks).forEach(([attackId, attack]) => {
     const expires = new Date(attack.expiresAt || 0).getTime();
@@ -327,25 +327,33 @@ function cleanupExpiredAttacks() {
       delete activeAttacks[attackId];
       removed++;
 
-      // Eger bu saldiri bir loop'a aitse ve loop artik aktif degilse,
-      // o loop'a ait baska aktif saldiri kalmadiginda history'yi tamamlandi olarak isaretle.
-      if (loopId && !activeLoops[loopId]) {
-        const stillActive = Object.values(activeAttacks).some(
-          (a) => a.loopId === loopId
-        );
-        if (!stillActive) {
-          const historyId = `hist_loop_${loopId}`;
-          if (attackHistory[historyId] && attackHistory[historyId].status === 'active') {
-            completedLoopHistories.add(historyId);
+      if (loopId) {
+        // Eger bu saldiri bir loop'a aitse ve loop artik aktif degilse,
+        // o loop'a ait baska aktif saldiri kalmadiginda loop history'sini tamamlandi olarak isaretle.
+        if (!activeLoops[loopId]) {
+          const stillActive = Object.values(activeAttacks).some(
+            (a) => a.loopId === loopId
+          );
+          if (!stillActive) {
+            const historyId = `hist_loop_${loopId}`;
+            if (attackHistory[historyId] && attackHistory[historyId].status === 'active') {
+              completedHistories.add(historyId);
+            }
           }
+        }
+      } else {
+        // Normal (loopsuz) saldiri: history'yi tamamlandi olarak isaretle
+        const history = findActiveHistoryByAttackId(attackId);
+        if (history && history.status === 'active') {
+          completedHistories.add(history.historyId);
         }
       }
     }
   });
 
-  completedLoopHistories.forEach((historyId) => {
+  completedHistories.forEach((historyId) => {
     updateAttackHistoryStatus(historyId, 'completed');
-    console.log(`[cleanup] Loop history completed: ${historyId}`);
+    console.log(`[cleanup] History completed: ${historyId}`);
   });
 
   if (removed > 0) {
