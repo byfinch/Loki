@@ -46,7 +46,8 @@ const LiveAttacks = () => {
     if (!target || typeof target !== 'string') return target;
     try {
       const url = new URL(target.includes('://') ? target : `http://${target}`);
-      return url.hostname;
+      url.port = '';
+      return url.toString().replace(/\/$/, '');
     } catch {
       return target.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
     }
