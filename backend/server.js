@@ -291,7 +291,7 @@ function buildTargetUrl(host, port) {
   return port ? `${cleanHost}:${port}` : cleanHost;
 }
 
-function registerAttack(attackId, sessionId, params) {
+function registerAttack(attackId, sessionId, params, loopId = null) {
   if (!attackId || !sessionId) return;
   activeAttacks[attackId] = {
     attackId,
@@ -301,6 +301,7 @@ function registerAttack(attackId, sessionId, params) {
     port: params.port,
     method: params.method,
     time: parseInt(params.time) || 0,
+    loopId: loopId || null,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + (parseInt(params.time) || 0) * 1000).toISOString()
   };
@@ -316,14 +317,37 @@ function unregisterAttack(attackId) {
 function cleanupExpiredAttacks() {
   const now = Date.now();
   let removed = 0;
+  const completedLoopHistories = new Set();
+
   Object.entries(activeAttacks).forEach(([attackId, attack]) => {
     const expires = new Date(attack.expiresAt || 0).getTime();
     // 60 saniye tolerans: stresse.st bazen biraz gecikmeli sonlandirabilir
     if (now - expires > 60 * 1000) {
+      const loopId = attack.loopId;
       delete activeAttacks[attackId];
       removed++;
+
+      // Eger bu saldiri bir loop'a aitse ve loop artik aktif degilse,
+      // o loop'a ait baska aktif saldiri kalmadiginda history'yi tamamlandi olarak isaretle.
+      if (loopId && !activeLoops[loopId]) {
+        const stillActive = Object.values(activeAttacks).some(
+          (a) => a.loopId === loopId
+        );
+        if (!stillActive) {
+          const historyId = `hist_loop_${loopId}`;
+          if (attackHistory[historyId] && attackHistory[historyId].status === 'active') {
+            completedLoopHistories.add(historyId);
+          }
+        }
+      }
     }
   });
+
+  completedLoopHistories.forEach((historyId) => {
+    updateAttackHistoryStatus(historyId, 'completed');
+    console.log(`[cleanup] Loop history completed: ${historyId}`);
+  });
+
   if (removed > 0) {
     console.log(`[cleanup] Removed ${removed} expired attack(s)`);
   }
@@ -998,7 +1022,7 @@ async function runLoop(loopId) {
               currentLoop.roundAttackIds.push(attackId);
               roundSuccesses++;
               // Loop attack'lerini de normal saldirilar gibi kaydet ki restart sonrasi gorunsun
-              registerAttack(attackId, loop.sessionId, currentLoop.params);
+              registerAttack(attackId, loop.sessionId, currentLoop.params, loopId);
             } else {
               currentLoop.errors += 1;
             }
@@ -1150,15 +1174,25 @@ app.post('/api/stresse/stop', async (req, res) => {
     });
 
     // Durdurulan saldiriyi kayittan sil
+    const attackRecord = activeAttacks[id];
+    const loopIdOfAttack = attackRecord?.loopId;
     unregisterAttack(id);
 
     // History durumunu guncelle
     const history = findActiveHistoryByAttackId(id);
     if (history && !history.loop) {
       // Sadece normal saldirilarin history'si durduruldu olarak isaretlenir.
-      // Loop'a ait round saldirilari durdurulunca loop history'si etkilenmez;
-      // loop kendi intervaliyle devam eder.
       updateAttackHistoryStatus(history.historyId, 'stopped');
+    }
+
+    // Eger durdurulan saldiri bir loop'a aitse ve o loop artik aktif degilse,
+    // loop history'sini durduruldu olarak isaretle (kullanici loop modundan cikarilmis
+    // loop'un saldirilarini tek tek durduruyor demektir).
+    if (loopIdOfAttack && !activeLoops[loopIdOfAttack]) {
+      const loopHistoryId = `hist_loop_${loopIdOfAttack}`;
+      if (attackHistory[loopHistoryId] && attackHistory[loopHistoryId].status === 'active') {
+        updateAttackHistoryStatus(loopHistoryId, 'stopped');
+      }
     }
 
     res.json(response.data);
@@ -1247,12 +1281,26 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
     }
 
     // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle.
-    // Loop'a ait history'ler dokunulmaz; loop kendi halinde devam eder.
+    const stoppedLoopIds = new Set();
     ids.forEach((id) => {
+      const attackRecord = activeAttacks[id];
+      const loopIdOfAttack = attackRecord?.loopId;
       unregisterAttack(id);
       const history = findActiveHistoryByAttackId(id);
       if (history && !history.loop) {
         updateAttackHistoryStatus(history.historyId, 'stopped');
+      }
+      if (loopIdOfAttack && !activeLoops[loopIdOfAttack]) {
+        stoppedLoopIds.add(loopIdOfAttack);
+      }
+    });
+
+    // Loop modu sonlandirilmis ve kullanici o loop'un saldirilarini tek tek
+    // veya toplu durdurursa, loop history'sini durduruldu olarak isaretle.
+    stoppedLoopIds.forEach((loopId) => {
+      const loopHistoryId = `hist_loop_${loopId}`;
+      if (attackHistory[loopHistoryId] && attackHistory[loopHistoryId].status === 'active') {
+        updateAttackHistoryStatus(loopHistoryId, 'stopped');
       }
     });
 
@@ -1287,25 +1335,14 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     }
 
     const loop = activeLoops[loopId];
-    if (loop && Array.isArray(loop.roundAttackIds)) {
-      loop.roundAttackIds.forEach((id) => {
-        unregisterAttack(id);
-        const history = findActiveHistoryByAttackId(id);
-        if (history && history.loop) {
-          updateAttackHistoryStatus(history.historyId, 'stopped');
-        }
-      });
-    }
 
-    // Loop history kaydini durduruldu olarak isaretle
-    if (loop?.historyId && attackHistory[loop.historyId]) {
-      updateAttackHistoryStatus(loop.historyId, 'stopped');
-    }
-
+    // Loop'u "loop modundan" cikar: yeni round baslatma, ama mevcut round'daki
+    // saldirilari durdurma. Loop history'si hala "active" kalir; saldirilar
+    // normal surelerince bittiginde cleanupExpiredAttacks onu "completed" yapar.
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
     saveState();
-    res.json({ status: 'success', message: 'Loop durduruldu', loopId });
+    res.json({ status: 'success', message: 'Loop modu sonlandirildi; mevcut saldirilar devam ediyor', loopId });
   } catch (error) {
     handleEndpointError(res, error, 'Loop stop error');
   }
