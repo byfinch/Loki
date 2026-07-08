@@ -432,6 +432,7 @@ const LiveAttacks = () => {
             </thead>
             <tbody>
               {groupedAttacks.map((attack) => {
+                const displayTarget = stripPortFromUrl(attack.target);
                 const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
@@ -442,13 +443,13 @@ const LiveAttacks = () => {
                     <td className="py-3 pr-2 pl-3">
                       <button
                         onClick={() => handleCopy(attack.target, rowKey)}
-                        title="Hedefi kopyala"
+                        title="Hostname'i kopyala"
                         className="text-left text-gray-300 font-mono truncate max-w-[220px] hover:text-green-400 transition-colors"
                       >
                         {copiedKey === rowKey ? (
                           <span className="text-green-400 text-xs font-bold">Kopyalandı!</span>
                         ) : (
-                          attack.target
+                          displayTarget
                         )}
                       </button>
                     </td>
