@@ -44,12 +44,14 @@ const LiveAttacks = () => {
 
   const stripPortFromUrl = (target) => {
     if (!target || typeof target !== 'string') return target;
+    // Garip formatlar icin once duzeltme: "https://host/:443" -> "https://host:443"
+    let normalized = target.replace(/\/:(\d+)$/, ':$1');
     try {
-      const url = new URL(target.includes('://') ? target : `http://${target}`);
+      const url = new URL(normalized.includes('://') ? normalized : `http://${normalized}`);
       url.port = '';
       return url.toString().replace(/\/$/, '');
     } catch {
-      return target.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
+      return normalized.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
     }
   };
 

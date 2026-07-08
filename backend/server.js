@@ -274,6 +274,23 @@ function loadState() {
 // Auto-save every 30 seconds
 setInterval(saveState, 30000);
 
+function buildTargetUrl(host, port) {
+  if (!host) return '';
+  const cleanHost = host.trim().replace(/\/$/, '');
+  if (!cleanHost) return '';
+  // Zaten URL ise portu URL API ile birlestir
+  if (/^https?:\/\//i.test(cleanHost)) {
+    try {
+      const url = new URL(cleanHost);
+      if (port && parseInt(port) > 0) url.port = String(port);
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      return port ? `${cleanHost}:${port}` : cleanHost;
+    }
+  }
+  return port ? `${cleanHost}:${port}` : cleanHost;
+}
+
 function registerAttack(attackId, sessionId, params) {
   if (!attackId || !sessionId) return;
   activeAttacks[attackId] = {
@@ -711,7 +728,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       ongoing.push({
         attack_id: attack.attackId,
         id: attack.attackId,
-        target: attack.port ? `${attack.host}:${attack.port}` : attack.host,
+        target: buildTargetUrl(attack.host, attack.port),
         host: attack.host,
         port: attack.port,
         method: attack.method,
