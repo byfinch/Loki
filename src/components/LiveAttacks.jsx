@@ -42,12 +42,23 @@ const LiveAttacks = () => {
     return fallbackCopyTextToClipboard(text);
   };
 
-  const handleCopy = async (target, key) => {
+  const stripPortFromUrl = (target) => {
+    if (!target || typeof target !== 'string') return target;
     try {
-      const success = await copyTextToClipboard(target);
+      const url = new URL(target.includes('://') ? target : `http://${target}`);
+      return url.hostname;
+    } catch {
+      return target.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
+    }
+  };
+
+  const handleCopy = async (target, key) => {
+    const copyTarget = stripPortFromUrl(target);
+    try {
+      const success = await copyTextToClipboard(copyTarget);
       if (success) {
         setCopiedKey(key);
-        addLog(`Hedef kopyalandı: ${target}`);
+        addLog(`Hedef kopyalandı: ${copyTarget}`);
         setTimeout(() => setCopiedKey(null), 1500);
       } else {
         throw new Error('Kopyalama başarısız');
