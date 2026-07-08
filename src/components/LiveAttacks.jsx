@@ -13,18 +13,6 @@ const LiveAttacks = () => {
   const [activeStopKey, setActiveStopKey] = useState(null);
   const [serverTimeLefts, setServerTimeLefts] = useState({});
 
-  const stripPort = (target) => {
-    if (!target || typeof target !== 'string') return target;
-    try {
-      // URL API ile port haric hostname'i al; IP veya domain olabilir
-      const url = new URL(target.includes('://') ? target : `http://${target}`);
-      return url.hostname;
-    } catch {
-      // Fallback: basit regex ile portu kaldir
-      return target.replace(/:\d+(?=\/|$)/g, '').replace(/\/$/, '');
-    }
-  };
-
   const fallbackCopyTextToClipboard = (text) => {
     const textArea = document.createElement('textarea');
     textArea.value = text;
@@ -55,12 +43,11 @@ const LiveAttacks = () => {
   };
 
   const handleCopy = async (target, key) => {
-    const cleanTarget = stripPort(target);
     try {
-      const success = await copyTextToClipboard(cleanTarget);
+      const success = await copyTextToClipboard(target);
       if (success) {
         setCopiedKey(key);
-        addLog(`Hedef kopyalandı: ${cleanTarget}`);
+        addLog(`Hedef kopyalandı: ${target}`);
         setTimeout(() => setCopiedKey(null), 1500);
       } else {
         throw new Error('Kopyalama başarısız');
@@ -435,7 +422,6 @@ const LiveAttacks = () => {
             <tbody>
               {groupedAttacks.map((attack) => {
                 const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
-                const cleanTarget = stripPort(attack.target);
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
                 const isFirstStopping = stopping.has(firstId);
@@ -445,13 +431,13 @@ const LiveAttacks = () => {
                     <td className="py-3 pr-2 pl-3">
                       <button
                         onClick={() => handleCopy(attack.target, rowKey)}
-                        title="Port haric kopyala"
+                        title="Hedefi kopyala"
                         className="text-left text-gray-300 font-mono truncate max-w-[220px] hover:text-green-400 transition-colors"
                       >
                         {copiedKey === rowKey ? (
                           <span className="text-green-400 text-xs font-bold">Kopyalandı!</span>
                         ) : (
-                          cleanTarget
+                          attack.target
                         )}
                       </button>
                     </td>
