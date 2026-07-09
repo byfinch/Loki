@@ -1125,6 +1125,13 @@ async function runLoopRound(loopId) {
     loop.consecutiveErrors = 0;
   }
 
+  // Saldiri stresse.st uzerinde time saniye surer; loop'un siradaki turu
+  // icin saldiri bitene kadar bekle. Kullanici durdurursa erken cik.
+  const waitUntil = Date.now() + (loop.params.time * 1000);
+  while (loop.running && Date.now() < waitUntil) {
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
   // Sonsuz loop degilse bu tek turdu, loop'u durdur
   if (!loop.params.infinite) {
     loop.running = false;
