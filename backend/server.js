@@ -65,10 +65,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate limiting
+// Rate limiting: frontend polling (loop list + ongoing + history) dakikada
+// 60+ istek atabildigi icin limiti yukseltiyoruz.
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 500,
   message: { status: 'error', message: 'Too many requests' }
 });
 app.use('/api', limiter);
