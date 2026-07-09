@@ -19,6 +19,9 @@ const initialState = {
   activeTab: 'attack', // attack, tools, loops
   activeLoops: {}, // { [loopId]: { running, params, startedAt, lastRoundAt, roundCount, errors } }
   attackHistory: [], // Saldiri gecmis kayitlari
+  stopProgress: null, // { current, total, successCount, failCount, percentage, label }
+  activeStopKey: null, // Hangi satir/tum saldirilar durduruluyor
+  stopCancelled: false, // Durdurma iptal edildi mi
   toasts: [] // [{ id, message, type, duration }]
 };
 
@@ -88,6 +91,14 @@ function stressTestReducer(state, action) {
       return { ...state, activeLoops: action.payload };
     case 'SET_ATTACK_HISTORY':
       return { ...state, attackHistory: action.payload };
+    case 'SET_STOP_PROGRESS':
+      return { ...state, stopProgress: action.payload };
+    case 'SET_ACTIVE_STOP_KEY':
+      return { ...state, activeStopKey: action.payload };
+    case 'SET_STOP_CANCELLED':
+      return { ...state, stopCancelled: action.payload };
+    case 'RESET_STOP_PROGRESS':
+      return { ...state, stopProgress: null, activeStopKey: null, stopCancelled: false };
     case 'ADD_TOAST':
       return { ...state, toasts: [...state.toasts, action.payload] };
     case 'REMOVE_TOAST':
@@ -118,6 +129,10 @@ export const StressTestProvider = ({ children }) => {
   const removeLoop = (loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } });
   const setLoops = (loops) => dispatch({ type: 'SET_LOOPS', payload: loops });
   const setAttackHistory = (history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history });
+  const setStopProgress = (progress) => dispatch({ type: 'SET_STOP_PROGRESS', payload: progress });
+  const setActiveStopKey = (key) => dispatch({ type: 'SET_ACTIVE_STOP_KEY', payload: key });
+  const setStopCancelled = (cancelled) => dispatch({ type: 'SET_STOP_CANCELLED', payload: cancelled });
+  const resetStopProgress = () => dispatch({ type: 'RESET_STOP_PROGRESS' });
 
   const showToast = (message, type = 'info', duration = 3000) => {
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -149,6 +164,10 @@ export const StressTestProvider = ({ children }) => {
         removeLoop,
         setLoops,
         setAttackHistory,
+        setStopProgress,
+        setActiveStopKey,
+        setStopCancelled,
+        resetStopProgress,
         showToast,
         removeToast,
         logout
