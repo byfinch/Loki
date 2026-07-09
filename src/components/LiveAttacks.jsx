@@ -3,15 +3,17 @@ import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 
 const LiveAttacks = () => {
-  const { state, setLiveAttacks, addLog, showToast } = useStressTest();
+  const { state, setLiveAttacks, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
   const [lastUpdate, setLastUpdate] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const [stopping, setStopping] = useState(new Set());
-  const [stopProgress, setStopProgress] = useState(null);
-  const [stopCancelled, setStopCancelled] = useState(false);
-  const stopCancelledRef = useRef(false);
-  const [activeStopKey, setActiveStopKey] = useState(null);
+  const stopCancelledRef = useRef(state.stopCancelled || false);
   const [serverTimeLefts, setServerTimeLefts] = useState({});
+
+  // Sayfa degisince ref'i context ile senkronize tut
+  useEffect(() => {
+    stopCancelledRef.current = state.stopCancelled || false;
+  }, [state.stopCancelled]);
 
   const fallbackCopyTextToClipboard = (text) => {
     const textArea = document.createElement('textarea');
@@ -239,8 +241,7 @@ const LiveAttacks = () => {
         next.delete(key);
         return next;
       });
-      setActiveStopKey(null);
-      setStopProgress(null);
+      resetStopProgress();
     }
   };
 
@@ -282,8 +283,7 @@ const LiveAttacks = () => {
         next.delete('__ALL__');
         return next;
       });
-      setActiveStopKey(null);
-      setStopProgress(null);
+      resetStopProgress();
     }
   };
 
@@ -377,25 +377,25 @@ const LiveAttacks = () => {
           </span>
         </h2>
         <div className="flex items-center gap-3">
-          {activeStopKey && stopProgress && (
+          {state.activeStopKey && state.stopProgress && (
             <div className="flex flex-col gap-1.5 min-w-[220px]">
               <div className="flex items-center justify-between text-[10px] text-gray-400 uppercase tracking-wider">
-                <span>{stopProgress.label}</span>
-                <span className="text-white font-mono">%{stopProgress.percentage}</span>
+                <span>{state.stopProgress.label}</span>
+                <span className="text-white font-mono">%{state.stopProgress.percentage}</span>
               </div>
               <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300"
-                  style={{ width: `${stopProgress.percentage}%` }}
+                  style={{ width: `${state.stopProgress.percentage}%` }}
                 ></div>
               </div>
               <div className="flex items-center justify-between text-[10px]">
                 <span className="text-gray-500">
-                  {stopProgress.current}/{stopProgress.total}
+                  {state.stopProgress.current}/{state.stopProgress.total}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-green-400 font-bold">{stopProgress.successCount} başarılı</span>
-                  <span className="text-red-400 font-bold">{stopProgress.failCount} başarısız</span>
+                  <span className="text-green-400 font-bold">{state.stopProgress.successCount} başarılı</span>
+                  <span className="text-red-400 font-bold">{state.stopProgress.failCount} başarısız</span>
                   <button
                     onClick={handleCancelStop}
                     className="text-[10px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full transition"
