@@ -1072,15 +1072,16 @@ app.post('/api/stresse/test-api', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    const { port, time, method, geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
+    const { port, time, method, geo = 'worldwide', layer = 'L4', concurrents = 1, apiToken: bodyToken } = req.body;
     const rawHost = req.body.host;
     const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
 
+    const apiToken = (typeof bodyToken === 'string' && bodyToken.trim()) ? bodyToken.trim() : session.apiToken;
     const apiClient = getApiClient(sessionId);
-    const url = buildApiUrl(session.apiToken, {
+    const url = buildApiUrl(apiToken, {
       host,
       port: parseInt(port),
       time: parseInt(time),
@@ -1101,7 +1102,8 @@ app.post('/api/stresse/test-api', async (req, res) => {
     res.json({
       status: 'debug',
       requestedUrl: url,
-      tokenPrefix: session.apiToken.slice(0, 8),
+      tokenSource: (typeof bodyToken === 'string' && bodyToken.trim()) ? 'body' : 'session',
+      tokenPrefix: apiToken.slice(0, 8),
       upstreamStatus: upstreamRes?.status,
       upstreamData: upstreamRes?.data,
       upstreamError: upstreamErr ? {
