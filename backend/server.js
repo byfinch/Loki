@@ -1019,6 +1019,66 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 });
 
 /**
+ * POST /api/stresse/test-api
+ * Body: { host, port, time, method, layer, concurrents, geo }
+ *
+ * stresse.st API'sine dogrudan bir istek atip ham yaniti doner.
+ * Sistem calismadiginda debug icin kullanilir.
+ */
+app.post('/api/stresse/test-api', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const session = sessions[sessionId];
+    if (!session || !session.apiToken) {
+      return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
+    }
+
+    const { port, time, method, geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
+    const rawHost = req.body.host;
+    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    if (!host || !port || !time || !method) {
+      return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
+    }
+
+    const apiClient = getApiClient(sessionId);
+    const url = buildApiUrl(session.apiToken, {
+      host,
+      port: parseInt(port),
+      time: parseInt(time),
+      method,
+      geo,
+      layer,
+      concurrents: parseInt(concurrents)
+    });
+
+    let upstreamRes = null;
+    let upstreamErr = null;
+    try {
+      upstreamRes = await apiClient.get(url);
+    } catch (err) {
+      upstreamErr = err;
+    }
+
+    res.json({
+      status: 'debug',
+      requestedUrl: url,
+      tokenPrefix: session.apiToken.slice(0, 8),
+      upstreamStatus: upstreamRes?.status,
+      upstreamData: upstreamRes?.data,
+      upstreamError: upstreamErr ? {
+        message: upstreamErr.message,
+        status: upstreamErr.response?.status,
+        data: upstreamErr.response?.data
+      } : null
+    });
+  } catch (error) {
+    handleEndpointError(res, error, 'Test API error');
+  }
+});
+
+/**
  * Verilen loopId icin loop motorunu calistirir.
  * startLoop ve loadState() tarafindan kullanilir.
  */
