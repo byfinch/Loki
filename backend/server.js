@@ -144,6 +144,7 @@ function saveState() {
           username: session.username,
           user: session.user,
           plan: session.plan,
+          apiToken: session.apiToken || null,
           createdAt: session.createdAt,
           jar: session.jar.toJSON()
         };
@@ -185,6 +186,7 @@ function loadState() {
             username: data.username,
             user: data.user,
             plan: data.plan,
+            apiToken: data.apiToken || null,
             createdAt: data.createdAt || new Date().toISOString(),
             jar: CookieJar.fromJSON(data.jar)
           };
