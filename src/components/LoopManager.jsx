@@ -3,9 +3,38 @@ import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 
 const LoopManager = () => {
-  const { state, setLoops, removeLoop, addLog } = useStressTest();
+  const { state, setLoops, removeLoop, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState(new Set());
+  const [copiedKey, setCopiedKey] = useState(null);
+
+  const fallbackCopyTextToClipboard = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '0';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (err) {
+      document.body.removeChild(textArea);
+      return false;
+    }
+  };
+
+  const copyTextToClipboard = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    return fallbackCopyTextToClipboard(text);
+  };
 
   const refreshLoops = async () => {
     try {
@@ -39,6 +68,23 @@ const LoopManager = () => {
       t += '/';
     }
     return t;
+  };
+
+  const handleCopyTarget = async (target, key) => {
+    const copyTarget = formatTargetForDisplay(target);
+    try {
+      const ok = await copyTextToClipboard(copyTarget);
+      if (ok) {
+        setCopiedKey(key);
+        addLog(`Hedef kopyalandı: ${copyTarget}`);
+        setTimeout(() => setCopiedKey(null), 4000);
+      } else {
+        throw new Error('Kopyalama başarısız');
+      }
+    } catch (err) {
+      addLog(`Kopyalama hatası: ${err.message}`);
+      showToast('Kopyalama başarısız', 'error');
+    }
   };
 
   const animateRemove = (loopId, onComplete) => {
@@ -139,9 +185,26 @@ const LoopManager = () => {
               {loops.map(([loopId, loop]) => (
                 <tr key={loopId} className={`border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300 ${removing.has(loopId) ? 'animate-row-exit' : ''}`}>
                   <td className="px-4 py-3.5 pr-4">
-                    <span className="inline-block text-gray-200 font-mono text-[13px] truncate max-w-[260px]">
-                      {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '')}
-                    </span>
+                    <button
+                      onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId)}
+                      title="URL'yi kopyala"
+                      className="relative block text-left w-[220px] h-5 cursor-pointer"
+                    >
+                      <span
+                        className={`absolute inset-0 text-left text-gray-200 font-mono text-[13px] truncate hover:text-green-400 transition-opacity duration-200 ${
+                          copiedKey === loopId ? 'opacity-0' : 'opacity-100'
+                        }`}
+                      >
+                        {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '')}
+                      </span>
+                      <span
+                        className={`absolute inset-0 flex items-center text-left text-green-400 text-xs font-bold transition-opacity duration-200 ${
+                          copiedKey === loopId ? 'opacity-100' : 'opacity-0'
+                        }`}
+                      >
+                        Kopyalandı!
+                      </span>
+                    </button>
                   </td>
                   <td className="px-4 py-3.5">
                     <span className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
