@@ -210,9 +210,10 @@ const AttackForm = () => {
       };
 
       if (loopActive) {
-        const loopId = `${host}:${port}_${method}_${Date.now()}`;
         addLog(`Loop saldırısı başlatılıyor: ${host}:${port} (${method})`);
-        await withMinimumLoading(() => apiClient.startLoop({ ...payload, loopId }));
+        const loopRes = await withMinimumLoading(() => apiClient.startLoop({ ...payload }));
+        const loopId = loopRes?.loopId;
+        if (!loopId) throw new Error('Sunucu loop ID dondurmedi');
         // Sadece backend basarili olursa state'e ekle
         addLoop(loopId, {
           params: {

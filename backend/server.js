@@ -25,6 +25,10 @@ dns.setDefaultResultOrder('ipv4first');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Nginx gibi bir reverse proxy arkasında calisirken X-Forwarded-For'a given,
+// ayni zamanda express-rate-limit uyarisini onler.
+app.set('trust proxy', 1);
+
 /**
  * CORS whitelist:
  * - Gelistirme ortamlari (localhost, 127.0.0.1 herhangi port)
@@ -541,12 +545,16 @@ function cleanupOldSessions() {
  * Boylece disaridan verilen port ile cakisma olmaz.
  */
 function normalizeHost(host) {
-  if (!host || typeof host !== 'string') return host;
+  if (!host || typeof host !== 'string') return '';
   let h = host.trim();
+  // Protokol, path, query, fragment, port ve www. prefix'ini kaldir.
   h = h.replace(/^https?:\/\//i, '');
+  h = h.replace(/^www\./i, '');
   h = h.split('/')[0];
+  h = h.split('?')[0];
+  h = h.split('#')[0];
   h = h.replace(/:\d+$/, '');
-  return h;
+  return h.toLowerCase();
 }
 
 /**
@@ -1307,12 +1315,15 @@ app.post('/api/stresse/loop', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
-    const { loopId, port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
+    const { port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
     const rawHost = req.body.host;
     const host = normalizeHost(rawHost);
-    if (!loopId || !host || !port || !time || !method) {
-      return res.status(400).json({ status: 'error', message: 'loopId, host, port, time and method required' });
+    if (!host || !port || !time || !method) {
+      return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
+    // Loop ID'yi normalize edilmis host uzerinden backend uretir; frontend'in URL protokolu iceren
+    // loop ID'leri gecersiz olur. Frontend response'taki loopId'yi kullanir.
+    const loopId = `${host}:${port}_${method}_${Date.now()}`;
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
