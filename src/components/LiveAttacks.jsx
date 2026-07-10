@@ -71,7 +71,7 @@ const LiveAttacks = () => {
       if (success) {
         setCopiedKey(key);
         addLog(`Hedef kopyalandı: ${copyTarget}`);
-        setTimeout(() => setCopiedKey(null), 4000);
+        setTimeout(() => setCopiedKey(null), 3000);
       } else {
         throw new Error('Kopyalama başarısız');
       }
@@ -443,9 +443,7 @@ const LiveAttacks = () => {
             <tbody>
               {groupedAttacks.map((attack) => {
                 const displayTarget = formatTargetForDisplay(attack.target);
-                // rowKey unique olmali: ayni hedef+method'dan birden fazla satir
-                // (farkli attack_id gruplari) olabilir. attack.ids ile ayirt edilir.
-                const rowKey = attack.ids.join(',');
+                const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
@@ -454,26 +452,35 @@ const LiveAttacks = () => {
                 return (
                   <tr key={rowKey} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
                     <td className="h-12 pr-2 pl-3 align-middle">
-                      <button
-                        onClick={() => handleCopy(attack.target, rowKey)}
-                        title="URL'yi kopyala"
-                        className="relative block text-left w-[220px] h-6 cursor-pointer"
-                      >
+                      <div className="flex items-center gap-2 h-full">
                         <span
-                          className={`absolute inset-0 text-left text-gray-300 font-mono truncate hover:text-green-400 transition-opacity duration-200 ${
-                            isCopied ? 'opacity-0' : 'opacity-100'
-                          }`}
+                          title="URL'yi kopyala"
+                          className="inline-block text-left text-gray-300 font-mono truncate w-[220px] hover:text-green-400 transition-colors cursor-pointer"
+                          onClick={() => handleCopy(attack.target, rowKey)}
                         >
                           {displayTarget}
                         </span>
-                        <span
-                          className={`absolute inset-0 flex items-center text-left text-green-400 text-xs font-bold transition-opacity duration-200 ${
-                            isCopied ? 'opacity-100' : 'opacity-0'
+                        <button
+                          onClick={() => handleCopy(attack.target, rowKey)}
+                          title="URL'yi kopyala"
+                          className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center border transition-colors duration-200 ${
+                            isCopied
+                              ? 'bg-green-500/20 border-green-500/40 text-green-400'
+                              : 'bg-white/5 border-white/10 text-gray-500 hover:text-green-400 hover:border-green-500/30'
                           }`}
                         >
-                          Kopyalandı!
-                        </span>
-                      </button>
+                          {isCopied ? (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </td>
                     <td className="py-3 whitespace-nowrap">
                       <span className="px-2.5 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
