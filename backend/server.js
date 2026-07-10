@@ -100,6 +100,18 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
 const ATTACKS_FILE = path.join(DATA_DIR, 'active-attacks.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'attack-history.json');
+const API_TOKEN_FILE = path.join(DATA_DIR, 'api-token.txt');
+
+function getFallbackApiToken() {
+  try {
+    if (fs.existsSync(API_TOKEN_FILE)) {
+      return fs.readFileSync(API_TOKEN_FILE, 'utf8').trim();
+    }
+  } catch (err) {
+    console.error('[apiToken] Fallback token okunamadi:', err.message);
+  }
+  return '';
+}
 
 let saveStateRunning = false;
 let saveStatePending = false;
@@ -708,12 +720,20 @@ app.post('/api/stresse/login', async (req, res) => {
       let apiToken = null;
       try {
         const tokenRes = await client.get('/getApiToken');
-        apiToken = tokenRes.data?.apitoken || null;
+        apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
         if (apiToken) {
           console.log(`[login] API token alindi: ${apiToken.slice(0, 8)}...`);
+        } else {
+          console.warn('[login] /getApiToken bos dondu, fallback token kullanilacak');
         }
       } catch (tokenErr) {
         console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
+      }
+      if (!apiToken) {
+        apiToken = getFallbackApiToken();
+        if (apiToken) {
+          console.log(`[login] Fallback API token kullaniliyor: ${apiToken.slice(0, 8)}...`);
+        }
       }
 
       sessions[sessionId].username = vcookieRes.data.username || username;
