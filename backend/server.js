@@ -404,8 +404,8 @@ function cleanupExpiredAttacks() {
 
   Object.entries(activeAttacks).forEach(([attackId, attack]) => {
     const expires = new Date(attack.expiresAt || 0).getTime();
-    // 60 saniye tolerans: stresse.st bazen biraz gecikmeli sonlandirabilir
-    if (now - expires > 60 * 1000) {
+    // 300 saniye tolerans: stresse.t gecikmeli baslatabilir veya bitirebilir.
+    if (now - expires > 5 * 60 * 1000) {
       const loopId = attack.loopId;
       delete activeAttacks[attackId];
       removed++;
@@ -454,10 +454,14 @@ function addAttackHistory(sessionId, params, options = {}) {
 
   const historyId = options.historyId || `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date();
+  const bareHost = normalizeHost(params.host);
+  const isL7 = params.layer === 'L7';
+  // Gecmiste hedefi L7 icin https://host/, L4 icin host:port olarak goster
+  const target = isL7 ? `https://${bareHost}/` : (params.port ? `${bareHost}:${params.port}` : bareHost);
   attackHistory[historyId] = {
     historyId,
     username,
-    target: params.host,
+    target,
     port: params.port || null,
     method: params.method,
     time: parseInt(params.time) || 0,
@@ -873,6 +877,20 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     const existingIds = new Set(ongoing.map((a) => a.attack_id || a.id));
     const now = Date.now();
 
+    // stresse.st'te hala gecerli olan saldirilarin local expiresAt degerini uzat.
+    // Boylece cleanup erken silmez ve liste azalip artmaz.
+    ongoing.forEach((item) => {
+      const id = item.attack_id || item.id;
+      const localAttack = activeAttacks[id];
+      if (localAttack) {
+        const remaining = parseInt(item.timeLeft || item.time || localAttack.time) || 60;
+        const newExpires = new Date(now + remaining * 1000).toISOString();
+        if (newExpires > (localAttack.expiresAt || '')) {
+          localAttack.expiresAt = newExpires;
+        }
+      }
+    });
+
     Object.values(activeAttacks).forEach((attack) => {
       // Sadece ayni session'a ait saldirilari ekle (diger kullanicilarin saldirilarini karistirma)
       if (attack.sessionId !== sessionId) return;
@@ -957,7 +975,7 @@ app.post('/api/stresse/attack', async (req, res) => {
     const attackId = data?.id || data?.attack_id;
     if (attackId) {
       registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time });
-      addAttackHistory(sessionId, { host, port, method, time }, {
+      addAttackHistory(sessionId, { host, port, method, time, layer }, {
         concurrents: 1,
         attackIds: [attackId]
       });
@@ -1037,7 +1055,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     });
 
     if (attackIds.length > 0) {
-      addAttackHistory(sessionId, { host, port, method, time }, {
+      addAttackHistory(sessionId, { host, port, method, time, layer }, {
         concurrents: count,
         attackIds
       });
