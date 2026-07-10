@@ -157,6 +157,22 @@ const AttackHistory = () => {
     }
   };
 
+  const handleClearHistory = async () => {
+    if (!confirm('Tüm saldırı geçmişiniz silinecek. Emin misiniz?')) return;
+    setLoading(true);
+    try {
+      await apiClient.deleteHistory({ all: true });
+      setAttackHistory([]);
+      addLog('Saldırı geçmişi temizlendi');
+      showToast('Saldırı geçmişi temizlendi', 'success');
+    } catch (err) {
+      addLog(`Geçmiş temizleme hatası: ${err.message}`);
+      showToast(`Hata: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDate = (iso) => {
     if (!iso) return '-';
     const d = new Date(iso);
@@ -218,6 +234,13 @@ const AttackHistory = () => {
               {f.label}
             </button>
           ))}
+          <button
+            onClick={handleClearHistory}
+            disabled={loading || state.attackHistory.length === 0}
+            className="inline-flex items-center justify-center px-3 h-7 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            Temizle
+          </button>
         </div>
       </div>
 

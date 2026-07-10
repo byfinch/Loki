@@ -237,9 +237,17 @@ const AttackForm = () => {
       } else {
         const data = await withMinimumLoading(() => apiClient.startAttacks(payload));
         if (!data) throw new Error('Sunucu yanıtı boş döndü');
-        startTest(data.attack_id || `attack_${Date.now()}`);
-        const ok = data.successCount ?? 1;
+
+        const ok = data.successCount ?? 0;
         const fail = data.failCount ?? 0;
+        const total = data.total ?? (ok + fail);
+
+        if (ok === 0) {
+          const reason = data.data?.message || data.message || `${fail}/${total} saldırı başarısız`;
+          throw new Error(`Saldırı başlatılamadı: ${reason}`);
+        }
+
+        startTest(data.attack_id || `attack_${Date.now()}`);
         addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s) x${ok} başarılı${fail > 0 ? `, ${fail} başarısız` : ''}`);
         showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
       }

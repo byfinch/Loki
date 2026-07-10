@@ -24,6 +24,14 @@ apt install -y nginx
 echo "==> Uygulama dizini hazirlaniyor..."
 cd $APP_DIR
 
+# Data dosyalarini git pull'dan once yedekle
+DATA_DIR="${APP_DIR}/backend/data"
+BACKUP_DIR="${APP_DIR}/backend/data.bak.$(date +%s)"
+if [ -d "$DATA_DIR" ]; then
+  echo "==> Mevcut data dosyalari yedekleniyor: $BACKUP_DIR"
+  cp -a "$DATA_DIR" "$BACKUP_DIR"
+fi
+
 echo "==> Backend bagimliliklari kuruluyor..."
 cd backend
 npm install

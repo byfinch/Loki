@@ -33,3 +33,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Runtime data (sessions, attacks, history)
+backend/data/
+backend/data.bak.*

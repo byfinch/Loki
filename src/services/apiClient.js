@@ -123,6 +123,15 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async deleteHistory(options = {}) {
+    const res = await fetch(`${API_BASE}/stresse/history`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+      body: JSON.stringify(options)
+    });
+    return handleResponse(res);
+  },
+
   // Loop
   async startLoop(payload) {
     const res = await fetch(`${API_BASE}/stresse/loop`, {
