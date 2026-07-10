@@ -304,17 +304,9 @@ function buildTargetUrl(host, port) {
 
 function buildApiUrl(apiToken, params) {
   const isL7 = params.layer === 'L7';
-  let host = isL7 ? normalizeUrl(params.host) : normalizeHost(params.host);
-  // L7 host'ta http:// veya https:// var, API URL'de host olarak geçmeli
-  if (isL7 && host.startsWith('https://')) {
-    host = host.replace('https://', '');
-  } else if (isL7 && host.startsWith('http://')) {
-    host = host.replace('http://', '');
-  }
-  // L7 URL'lerde trailing slash API'de istenmez (ornegin badlandsmotel.ca/ hatali olur)
-  if (isL7) {
-    host = host.replace(/\/$/, '');
-  }
+  // stresse.st API her iki katmanda da sadece IP/domain bekler; URL protokol/path istemez.
+  // Kullanici https://example.com/, http://example.com veya example.com girse de ayni sonuc cikmalidir.
+  let host = normalizeHost(params.host);
   // L7 geo suffix .txt olmali
   const geo = isL7 ? `${params.geo || 'russia'}.txt` : (params.geo || 'russia');
   const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(params.method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
@@ -879,7 +871,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4' } = req.body;
     const rawHost = req.body.host;
-    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -943,7 +935,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
     const rawHost = req.body.host;
-    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -1037,7 +1029,7 @@ app.post('/api/stresse/test-api', async (req, res) => {
 
     const { port, time, method, geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
     const rawHost = req.body.host;
-    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -1297,7 +1289,7 @@ app.post('/api/stresse/loop', async (req, res) => {
 
     const { loopId, port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
     const rawHost = req.body.host;
-    const host = layer === 'L7' ? normalizeUrl(rawHost) : normalizeHost(rawHost);
+    const host = normalizeHost(rawHost);
     if (!loopId || !host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'loopId, host, port, time and method required' });
     }
