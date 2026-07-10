@@ -1239,13 +1239,43 @@ async function runLoopRound(loopId) {
 
   const apiClient = getApiClient(loop.sessionId);
 
-  // NOT: Onceki turun saldirilari zaten kendi time suresi doldugunda stresse.st
-  // tarafindan otomatik sonlanir. Burada stop cagrisi yapmak, stresse.st'in
-  // listeyi gecikmeli guncellemesi nedeniyle yeni turu baslatirken 80 concurrent
-  // limitini asmaniza yol acar. O yuzden durdurma yapmiyoruz.
+  // Onceki turun saldirilari kendi time suresi doldugunda stresse.st tarafindan
+  // otomatik sonlanir. Yeni tur baslatmadan once onceki turun attack ID'lerinin
+  // stresse.st /ongoing listesinden dustugunu dogrulariz. Boylece 80 concurrent
+  // limitini asmayiz.
   const previousRoundIds = loop.roundAttackIds || [];
   if (previousRoundIds.length > 0) {
-    // Eski saldiri ID'lerini local kayittan temizle; stresse.st bunlari kendi bitecek.
+    const webClient = getClient(loop.sessionId);
+    const username = session.username;
+    const maxWaitMs = 60 * 1000;
+    const checkIntervalMs = 2000;
+    const startedWaiting = Date.now();
+    let stillActive = new Set(previousRoundIds);
+
+    while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
+      try {
+        const ongoingRes = await webClient.get(`/ongoing/${username}`);
+        const ongoingList = Array.isArray(ongoingRes.data)
+          ? ongoingRes.data
+          : (ongoingRes.data?.attacks || []);
+        const ongoingIds = new Set(ongoingList.map((a) => a.attack_id || a.id));
+        stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(id)));
+        if (stillActive.size > 0) {
+          console.log(`[loop ${loopId}] ${stillActive.size} onceki saldiri hala aktif, bekleniyor...`);
+          await new Promise((r) => setTimeout(r, checkIntervalMs));
+        }
+      } catch (err) {
+        console.warn(`[loop ${loopId}] /ongoing kontrolu hatasi:`, err.message);
+        await new Promise((r) => setTimeout(r, checkIntervalMs));
+      }
+    }
+
+    if (stillActive.size > 0) {
+      console.warn(`[loop ${loopId}] ${stillActive.size} onceki saldiri ${maxWaitMs}ms icinde sonlanmadi, yine de devam ediliyor`);
+    } else {
+      console.log(`[loop ${loopId}] Onceki tur saldirilari sonlandi, yeni tur baslatiliyor`);
+    }
+
     previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
   }
 
