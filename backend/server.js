@@ -333,9 +333,11 @@ function buildTargetUrl(host, port) {
 
 function buildApiUrl(apiToken, params) {
   const isL7 = params.layer === 'L7';
-  // stresse.st API her iki katmanda da sadece IP/domain bekler; URL protokol/path istemez.
-  // Kullanici https://example.com/, http://example.com veya example.com girse de ayni sonuc cikmalidir.
-  let host = normalizeHost(params.host);
+  // stresse.st API L4 icin IP/domain, L7 icin tam URL (https://...) bekler.
+  // Kullanici https://example.com/, http://example.com veya example.com girse de
+  // L7'de https://example.com, L4'te example.com olmalidir.
+  const bareHost = normalizeHost(params.host);
+  const host = isL7 ? `https://${bareHost}` : bareHost;
   // stresse.st API method isimlerini kucuk harfle bekler (ornegin go-nebula, cloudflare)
   const method = String(params.method || '').toLowerCase();
   // L7 geo suffix .txt olmali
