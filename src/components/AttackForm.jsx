@@ -69,7 +69,12 @@ const AttackForm = () => {
       try {
         const data = await apiClient.getMethods();
         setMethods(data);
-        const defaultMethod = data.find(m => layer === 'L4' ? m.IsLayer4 : m.IsLayer7);
+        // İlk uygun (ücretsiz olmayan, layera uygun) methodu otomatik seç
+        const defaultMethod = data.find((m) => {
+          const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
+          const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
+          return isLayerMatch && !isFreeMethod;
+        });
         if (defaultMethod) setMethod(defaultMethod.method);
       } catch (err) {
         addLog(`Yöntemler yüklenemedi: ${err.message}`);
@@ -337,7 +342,6 @@ const AttackForm = () => {
               className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition appearance-none"
               required
             >
-              <option value="">Yöntem seçin</option>
               {filteredMethods.map((m) => (
                 <option key={m.method} value={m.method}>
                   {m.method} - {m.description}
