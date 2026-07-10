@@ -84,11 +84,12 @@ const sessions = {};
 // Active loop registry: { loopId: { running, params, startedAt, lastRoundAt, roundCount, errors, roundAttackIds } }
 const activeLoops = {};
 
-// Global loop scheduler: ayni anda sadece 1 loop turu calissin,
-// loop'lar arasinda 5 saniye gecikme olsun (ilk biten ilk baslar).
+// Global loop scheduler: her loop bagimsiz calisir. Ayni loopId'den ayni anda
+// sadece 1 tur calisir. Bir loop'un turu bittikten sonra kendi arasinda
+// LOOP_QUEUE_DELAY_MS kadar bekler.
 let loopQueue = [];
 let isProcessingLoopQueue = false;
-let activeLoopRoundCount = 0;
+const activeLoopRounds = new Set();
 const LOOP_QUEUE_DELAY_MS = 5000;
 const MAX_REQUEST_RETRIES = 3;
 
@@ -1156,29 +1157,31 @@ async function processLoopQueue() {
   isProcessingLoopQueue = true;
 
   while (loopQueue.length > 0) {
-    // Ayni anda sadece 1 loop turu calissin; aktif tur varsa bekle
-    if (activeLoopRoundCount > 0) {
-      await new Promise(r => setTimeout(r, 500));
-      continue;
-    }
-
     const loopId = loopQueue.shift();
     const loop = activeLoops[loopId];
     if (!loop || !loop.running) continue;
 
-    // Kuyrukta baska loop varsa (bu son degilse), loop'lar arasi 5 saniye bekle.
-    // Tek loop varsa bekleme olmaz.
-    if (loopQueue.length > 0) {
-      console.log(`[scheduler] ${loopId} icin ${LOOP_QUEUE_DELAY_MS}ms bekleniyor (kuyrukta ${loopQueue.length} loop daha var)`);
-      await new Promise(r => setTimeout(r, LOOP_QUEUE_DELAY_MS));
+    // Ayni loopId'den ayni anda sadece 1 tur calissin; aktif turu varsa bekle.
+    if (activeLoopRounds.has(loopId)) {
+      if (!loopQueue.includes(loopId)) {
+        loopQueue.push(loopId);
+      }
+      await new Promise(r => setTimeout(r, 500));
+      continue;
     }
 
-    activeLoopRoundCount++;
+    activeLoopRounds.add(loopId);
     console.log(`[scheduler] ${loopId} turu baslatiliyor`);
-    runLoopRound(loopId).finally(() => {
-      activeLoopRoundCount--;
-      // Tur bittikten sonra loop hala calisiyorsa kuyrugun sonuna ekle
+    runLoopRound(loopId).finally(async () => {
+      activeLoopRounds.delete(loopId);
+      // Tur bittikten sonra loop hala calisiyorsa kendi intervali kadar bekle,
+      // sonra kuyrugun sonuna ekle.
       if (activeLoops[loopId]?.running) {
+        const delayMs = Math.max(0, parseInt(loop.params?.interval) || 0) * 1000;
+        if (delayMs > 0) {
+          console.log(`[scheduler] ${loopId} sonraki tur icin ${delayMs}ms bekleniyor`);
+          await new Promise(r => setTimeout(r, delayMs));
+        }
         if (!loopQueue.includes(loopId)) {
           loopQueue.push(loopId);
           console.log(`[loop ${loopId}] tur tamamlandi, kuyruga geri eklendi`);
