@@ -333,17 +333,18 @@ function buildTargetUrl(host, port) {
 
 function buildApiUrl(apiToken, params) {
   const isL7 = params.layer === 'L7';
-  // stresse.st API L4 icin IP/domain, L7 icin tam URL (https://...) bekler.
-  // Kullanici https://example.com/, http://example.com veya example.com girse de
-  // L7'de https://example.com, L4'te example.com olmalidir.
   const bareHost = normalizeHost(params.host);
+  // stresse.st API L7 icin tam URL (https://...), L4 icin IP/domain bekler.
+  // Kullanici https://example.com/, http://example.com veya example.com girse de
+  // L7'de https://example.com, L4'te example.com olur.
   const host = isL7 ? `https://${bareHost}` : bareHost;
-  // stresse.st API method isimlerini kucuk harfle bekler (ornegin go-nebula, cloudflare)
-  const method = String(params.method || '').toLowerCase();
-  // L7 geo suffix .txt olmali
-  const geo = isL7 ? `${params.geo || 'russia'}.txt` : (params.geo || 'russia');
+  // geo degeri kullanicidan geldigi gibi kullanilir. L7'de bazi geolar .txt ile
+  // calisir (ornegin russia.txt); bazi geolar txt'siz (ornegin worldwide).
+  // Bu yuzden backend zorla .txt eklemez.
+  const geo = params.geo || 'russia';
+  const method = String(params.method || '');
   const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
-  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} url=${url}`);
+  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} geo=${geo} url=${url}`);
   return url;
 }
 
