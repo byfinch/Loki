@@ -141,13 +141,28 @@ const AttackHistory = () => {
     return fallbackCopy(text);
   };
 
+  const formatTargetForDisplay = (target) => {
+    if (!target || typeof target !== 'string') return target;
+    let t = target.trim();
+    t = t.replace(/:(\d+)(?=\/|$)/, '');
+    if (!/^https?:\/\//i.test(t)) {
+      t = `https://${t}`;
+    }
+    t = t.replace(/^http:\/\//i, 'https://');
+    if (!t.endsWith('/')) {
+      t += '/';
+    }
+    return t;
+  };
+
   const handleCopyTarget = async (target, key) => {
+    const copyTarget = formatTargetForDisplay(target);
     try {
-      const ok = await copyToClipboard(target);
+      const ok = await copyToClipboard(copyTarget);
       if (ok) {
         setCopiedKey(key);
-        addLog(`Hedef kopyalandı: ${target}`);
-        setTimeout(() => setCopiedKey(null), 1500);
+        addLog(`Hedef kopyalandı: ${copyTarget}`);
+        setTimeout(() => setCopiedKey(null), 3000);
       } else {
         throw new Error('Kopyalama başarısız');
       }
@@ -274,18 +289,36 @@ const AttackHistory = () => {
                   key={record.historyId}
                   className="border-b border-white/5 hover:bg-white/[0.03] transition-colors h-12"
                 >
-                  <td className="px-2 py-3">
-                    <button
-                      onClick={() => handleCopyTarget(record.target, record.historyId)}
-                      title="Hedefi kopyala"
-                      className="text-left text-gray-200 font-mono text-xs hover:text-green-400 transition-colors"
-                    >
-                      {copiedKey === record.historyId ? (
-                        <span className="text-green-400 text-xs font-bold">Kopyalandı!</span>
-                      ) : (
-                        record.target
-                      )}
-                    </button>
+                  <td className="px-2 h-12 align-middle">
+                    <div className="flex items-center gap-2 h-full">
+                      <span
+                        title="URL'yi kopyala"
+                        onClick={() => handleCopyTarget(record.target, record.historyId)}
+                        className="inline-block text-left text-gray-200 font-mono text-xs truncate w-[180px] hover:text-green-400 transition-colors cursor-pointer"
+                      >
+                        {formatTargetForDisplay(record.target)}
+                      </span>
+                      <button
+                        onClick={() => handleCopyTarget(record.target, record.historyId)}
+                        title="URL'yi kopyala"
+                        className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center border transition-colors duration-200 ${
+                          copiedKey === record.historyId
+                            ? 'bg-green-500/20 border-green-500/40 text-green-400'
+                            : 'bg-white/5 border-white/10 text-gray-500 hover:text-green-400 hover:border-green-500/30'
+                        }`}
+                      >
+                        {copiedKey === record.historyId ? (
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        ) : (
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-3 text-gray-300 font-mono text-center text-xs">
                     {record.port || '-'}

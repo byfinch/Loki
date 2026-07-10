@@ -27,6 +27,20 @@ const LoopManager = () => {
     return () => clearInterval(interval);
   }, [state.isAuthenticated]);
 
+  const formatTargetForDisplay = (target) => {
+    if (!target || typeof target !== 'string') return target;
+    let t = target.trim();
+    t = t.replace(/:(\d+)(?=\/|$)/, '');
+    if (!/^https?:\/\//i.test(t)) {
+      t = `https://${t}`;
+    }
+    t = t.replace(/^http:\/\//i, 'https://');
+    if (!t.endsWith('/')) {
+      t += '/';
+    }
+    return t;
+  };
+
   const animateRemove = (loopId, onComplete) => {
     setRemoving((prev) => new Set(prev).add(loopId));
     setTimeout(() => {
@@ -125,10 +139,8 @@ const LoopManager = () => {
               {loops.map(([loopId, loop]) => (
                 <tr key={loopId} className={`border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300 ${removing.has(loopId) ? 'animate-row-exit' : ''}`}>
                   <td className="px-4 py-3.5 pr-4">
-                    <span className="text-gray-200 font-mono text-[13px]">
-                      {loop.displayTarget || (loop.params?.layer === 'L7'
-                        ? loop.params?.host
-                        : `${loop.params?.host}:${loop.params?.port}`)}
+                    <span className="inline-block text-gray-200 font-mono text-[13px] truncate max-w-[260px]">
+                      {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '')}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
