@@ -1239,19 +1239,14 @@ async function runLoopRound(loopId) {
 
   const apiClient = getApiClient(loop.sessionId);
 
-  // Yeni tur baslamadan once onceki turun saldirilarini durdur ki
-  // stresse.st concurrent limiti asilmasin.
+  // NOT: Onceki turun saldirilari zaten kendi time suresi doldugunda stresse.st
+  // tarafindan otomatik sonlanir. Burada stop cagrisi yapmak, stresse.st'in
+  // listeyi gecikmeli guncellemesi nedeniyle yeni turu baslatirken 80 concurrent
+  // limitini asmaniza yol acar. O yuzden durdurma yapmiyoruz.
   const previousRoundIds = loop.roundAttackIds || [];
   if (previousRoundIds.length > 0) {
-    console.log(`[loop ${loopId}] Onceki turun ${previousRoundIds.length} saldirisi durduruluyor`);
-    for (const attackId of previousRoundIds) {
-      try {
-        await stopAttackApi(apiClient, session.apiToken, attackId);
-        unregisterAttack(attackId);
-      } catch (err) {
-        console.warn(`[loop ${loopId}] Eski saldiri ${attackId} durdurulamadi:`, err.message);
-      }
-    }
+    // Eski saldiri ID'lerini local kayittan temizle; stresse.st bunlari kendi bitecek.
+    previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
   }
 
   loop.roundCount += 1;
