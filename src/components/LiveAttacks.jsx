@@ -451,30 +451,30 @@ const LiveAttacks = () => {
 
                 return (
                   <tr key={rowKey} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
-                    <td className="py-3 pr-2 pl-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleCopy(attack.target, rowKey)}
+                    <td className="h-12 pr-2 pl-3 align-middle">
+                      <div className="flex items-center gap-2 h-full">
+                        <span
                           title="URL'yi kopyala"
-                          className="text-left text-gray-300 font-mono truncate max-w-[220px] hover:text-green-400 transition-colors"
+                          className="inline-block text-left text-gray-300 font-mono truncate w-[220px] hover:text-green-400 transition-colors cursor-pointer"
+                          onClick={() => handleCopy(attack.target, rowKey)}
                         >
                           {displayTarget}
-                        </button>
+                        </span>
                         <button
                           onClick={() => handleCopy(attack.target, rowKey)}
                           title="URL'yi kopyala"
-                          className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center border transition-all duration-200 ${
+                          className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center border transition-colors duration-200 ${
                             isCopied
                               ? 'bg-green-500/20 border-green-500/40 text-green-400'
                               : 'bg-white/5 border-white/10 text-gray-500 hover:text-green-400 hover:border-green-500/30'
                           }`}
                         >
                           {isCopied ? (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="20 6 9 17 4 12"/>
                             </svg>
                           ) : (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                             </svg>
