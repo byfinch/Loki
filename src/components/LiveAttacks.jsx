@@ -443,9 +443,9 @@ const LiveAttacks = () => {
             <tbody>
               {groupedAttacks.map((attack) => {
                 const displayTarget = formatTargetForDisplay(attack.target);
-                // rowKey'de timeLeft olmamali; client-side geri sayim her saniye
-                // timeLeft'i degistirir ve kopyalama durumunu sifirlar.
-                const rowKey = `${attack.target}::${attack.method}`;
+                // rowKey unique olmali: ayni hedef+method'dan birden fazla satir
+                // (farkli attack_id gruplari) olabilir. attack.ids ile ayirt edilir.
+                const rowKey = attack.ids.join(',');
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
