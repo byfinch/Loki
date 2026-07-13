@@ -386,8 +386,8 @@ async function launchAttacksPost(sessionId, params, concurrents) {
   }
   const results = await Promise.all(promises);
 
-  // Ongoing listesinin guncellenmesi icin kisa bekle
-  await new Promise((r) => setTimeout(r, 3000));
+  // Ongoing listesinin guncellenmesi icin bekle (stresse.st asenkron yansitiyor olabilir)
+  await new Promise((r) => setTimeout(r, 6000));
 
   const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
   const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
@@ -1240,11 +1240,12 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
       const method = String(a.method || '').toLowerCase();
       const expectedMethod = String(params.method || '').toLowerCase();
       if (method !== expectedMethod) return false;
-      const target = String(a.target || a.host || '');
-      if (!target.includes(params.host)) return false;
-      if (params.layer !== 'L7') {
-        if (String(a.port) !== String(params.port)) return false;
-      }
+      // L4 hedef target icinde IP:port olarak gelir; portu ayirarak host karsilastir.
+      let target = String(a.target || a.host || '');
+      target = target.replace(/^https?:\/\//i, '');
+      if (target.endsWith('/')) target = target.slice(0, -1);
+      const hostPart = target.split(':')[0];
+      if (hostPart !== params.host) return false;
       const startedAt = new Date(a.startedAt || a.start_time || a.started_at || now).getTime();
       return now - startedAt < 2 * 60 * 1000;
     });
@@ -1252,7 +1253,9 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
       new Date(b.startedAt || b.start_time || b.started_at || 0).getTime() -
       new Date(a.startedAt || a.start_time || a.started_at || 0).getTime()
     );
-    return matching.slice(0, limit).map((a) => a.attack_id || a.id).filter(Boolean);
+    const ids = matching.slice(0, limit).map((a) => a.attack_id || a.id).filter(Boolean);
+    console.log(`[fetchOngoingAttackIds] ${params.method}@${params.host} => ${ids.length} ID (toplam ${ongoingList.length})`);
+    return ids;
   } catch (err) {
     console.warn('[fetchOngoingAttackIds] hata:', err.message);
     return [];
