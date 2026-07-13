@@ -1362,7 +1362,10 @@ async function runLoopRound(loopId) {
   let roundSuccesses = 0;
   let roundError = null;
 
-  for (let attempt = 0; attempt <= MAX_REQUEST_RETRIES; attempt++) {
+  // L4'te retry'ler gereksiz yere fazla saldiri baslatir, sadece tek deneme yap.
+  const maxRetries = loop.params.layer === 'L4' ? 0 : MAX_REQUEST_RETRIES;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const data = await startAttackApi(apiClient, {
         apiToken: session.apiToken,
@@ -1420,7 +1423,7 @@ async function runLoopRound(loopId) {
       roundError = new Error('API attackId donmedi');
     } catch (err) {
       roundError = err;
-      console.warn(`[loop ${loopId}] round ${round} deneme ${attempt + 1}/${MAX_REQUEST_RETRIES + 1} hata:`, err.message);
+      console.warn(`[loop ${loopId}] round ${round} deneme ${attempt + 1}/${maxRetries + 1} hata:`, err.message);
       if (attempt < MAX_REQUEST_RETRIES) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
