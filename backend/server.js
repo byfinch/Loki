@@ -936,6 +936,9 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4' } = req.body;
     const rawHost = req.body.host;
+    if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
+      return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
+    }
     const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
@@ -1000,6 +1003,9 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
     const rawHost = req.body.host;
+    if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
+      return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
+    }
     const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
