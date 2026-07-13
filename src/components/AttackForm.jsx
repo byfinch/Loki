@@ -173,6 +173,13 @@ const AttackForm = () => {
       return;
     }
 
+    // L4 katmaninda hedef sadece IP/domain olmalidir; URL protokolu/path kabul edilmez
+    if (layer === 'L4' && /https?:\/\/|\//.test(host.trim())) {
+      addLog('L4 saldırılarında hedef sadece IP veya domain olmalıdır (örn: 1.1.1.1)');
+      showToast('L4 hedefinde URL protokolü (https://) veya / kullanılamaz', 'error');
+      return;
+    }
+
     setLoading(true);
     if (loopActive) setStarting(true);
 
