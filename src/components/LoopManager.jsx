@@ -56,22 +56,27 @@ const LoopManager = () => {
     return () => clearInterval(interval);
   }, [state.isAuthenticated]);
 
-  const formatTargetForDisplay = (target) => {
+  const formatTargetForDisplay = (target, layer = 'L7') => {
     if (!target || typeof target !== 'string') return target;
     let t = target.trim();
-    t = t.replace(/:(\d+)(?=\/|$)/, '');
-    if (!/^https?:\/\//i.test(t)) {
-      t = `https://${t}`;
-    }
-    t = t.replace(/^http:\/\//i, 'https://');
-    if (!t.endsWith('/')) {
-      t += '/';
+    const isL7 = layer === 'L7';
+    if (isL7) {
+      t = t.replace(/:(\d+)(?=\/|$)/, '');
+      if (!/^https?:\/\//i.test(t)) {
+        t = `https://${t}`;
+      }
+      t = t.replace(/^http:\/\//i, 'https://');
+      if (!t.endsWith('/')) {
+        t += '/';
+      }
+    } else {
+      t = t.replace(/^https?:\/\//i, '');
     }
     return t;
   };
 
-  const handleCopyTarget = async (target, key) => {
-    const copyTarget = formatTargetForDisplay(target);
+  const handleCopyTarget = async (target, key, layer = 'L7') => {
+    const copyTarget = formatTargetForDisplay(target, layer);
     try {
       const ok = await copyTextToClipboard(copyTarget);
       if (ok) {
@@ -186,7 +191,7 @@ const LoopManager = () => {
                 <tr key={loopId} className={`border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300 ${removing.has(loopId) ? 'animate-row-exit' : ''}`}>
                   <td className="px-4 py-3.5 pr-4">
                     <button
-                      onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId)}
+                      onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
                       title="URL'yi kopyala"
                       className="relative block text-left w-[220px] h-5 cursor-pointer"
                     >
@@ -195,7 +200,7 @@ const LoopManager = () => {
                           copiedKey === loopId ? 'opacity-0' : 'opacity-100'
                         }`}
                       >
-                        {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '')}
+                        {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer)}
                       </span>
                       <span
                         className={`absolute inset-0 flex items-center text-left text-green-400 text-xs font-bold transition-opacity duration-200 ${
