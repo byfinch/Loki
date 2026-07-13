@@ -44,9 +44,15 @@ const LiveAttacks = () => {
     return fallbackCopyTextToClipboard(text);
   };
 
-  const formatTargetForDisplay = (target, layer) => {
+  const L7_METHODS = ['CLOUDFLARE', 'HTTP-TEMPESTA', 'BROWSER', 'BYPASS', 'PPS', 'HTTP-RAWPACKET', 'HTTP-SOCKETS'];
+
+  const formatTargetForDisplay = (target, layer, method) => {
     if (!target || typeof target !== 'string') return target;
-    const isL7 = layer === 'L7';
+    let effectiveLayer = layer;
+    if (!effectiveLayer && method) {
+      effectiveLayer = L7_METHODS.includes(method.toUpperCase()) ? 'L7' : 'L4';
+    }
+    const isL7 = effectiveLayer === 'L7' || /^https?:\/\//i.test(target);
     let t = target.trim();
     if (isL7) {
       // Port bilgisini kaldir (L7'de 443 varsayilir)
@@ -69,8 +75,8 @@ const LiveAttacks = () => {
     return t;
   };
 
-  const handleCopy = async (target, layer, key) => {
-    const copyTarget = formatTargetForDisplay(target, layer);
+  const handleCopy = async (target, layer, method, key) => {
+    const copyTarget = formatTargetForDisplay(target, layer, method);
     try {
       const success = await copyTextToClipboard(copyTarget);
       if (success) {
@@ -447,7 +453,7 @@ const LiveAttacks = () => {
             </thead>
             <tbody>
               {groupedAttacks.map((attack) => {
-                const displayTarget = formatTargetForDisplay(attack.target, attack.layer);
+                const displayTarget = formatTargetForDisplay(attack.target, attack.layer, attack.method);
                 const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
@@ -461,12 +467,12 @@ const LiveAttacks = () => {
                         <span
                           title="URL'yi kopyala"
                           className="inline-block text-left text-gray-300 font-mono truncate w-[220px] hover:text-green-400 transition-colors cursor-pointer"
-                          onClick={() => handleCopy(attack.target, attack.layer, rowKey)}
+                          onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
                         >
                           {displayTarget}
                         </span>
                         <button
-                          onClick={() => handleCopy(attack.target, attack.layer, rowKey)}
+                          onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
                           title="URL'yi kopyala"
                           className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center border transition-colors duration-200 ${
                             isCopied
