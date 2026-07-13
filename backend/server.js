@@ -1323,7 +1323,10 @@ async function runLoopRound(loopId) {
         attackIds.forEach((attackId) => {
           registerAttack(attackId, loop.sessionId, loop.params, loopId);
         });
-        console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri`);
+        console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri (istenen: ${loop.params.concurrents})`);
+        if (attackIds.length !== loop.params.concurrents) {
+          console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attack_id dondurdu`);
+        }
         break;
       }
 
@@ -1396,6 +1399,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     // Loop ID'yi normalize edilmis host uzerinden backend uretir; frontend'in URL protokolu iceren
     // loop ID'leri gecersiz olur. Frontend response'taki loopId'yi kullanir.
     const loopId = `${host}:${port}_${method}_${Date.now()}`;
+    console.log(`[loop/create] ${host}:${port} ${method} layer=${layer} time=${time} concurrents=${concurrents} interval=${interval}`);
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
