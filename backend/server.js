@@ -977,12 +977,31 @@ app.post('/api/stresse/attack', async (req, res) => {
       concurrents: 1
     });
 
-    const attackId = data?.id || data?.attack_id;
-    if (attackId) {
-      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time });
+    let attackIds = [];
+    if (Array.isArray(data?.attack_id)) {
+      attackIds = data.attack_id;
+    } else if (data?.attack_id) {
+      attackIds = [data.attack_id];
+    } else if (data?.id) {
+      attackIds = [data.id];
+    }
+
+    if (attackIds.length === 0 && data?.status === 'success') {
+      try {
+        const foundIds = await fetchOngoingAttackIds(sessionId, { host, port: parseInt(port), method, time, layer }, 1);
+        if (foundIds.length > 0) attackIds = foundIds;
+      } catch (err) {
+        console.warn(`[attack] /ongoing'den attackId arama hatasi:`, err.message);
+      }
+    }
+
+    if (attackIds.length > 0) {
+      attackIds.forEach((attackId) => {
+        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
+      });
       addAttackHistory(sessionId, { host, port, method, time, layer }, {
         concurrents: 1,
-        attackIds: [attackId]
+        attackIds
       });
     }
 
@@ -1058,8 +1077,20 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       attackIds = [data.id];
     }
 
+    if (attackIds.length === 0 && data?.status === 'success') {
+      try {
+        const foundIds = await fetchOngoingAttackIds(sessionId, { host, port: parseInt(port), method, time, layer }, count);
+        if (foundIds.length > 0) {
+          attackIds = foundIds;
+          console.log(`[attack/bulk] /ongoing'den ${attackIds.length} attackId bulundu`);
+        }
+      } catch (err) {
+        console.warn(`[attack/bulk] /ongoing'den attackId arama hatasi:`, err.message);
+      }
+    }
+
     attackIds.forEach((attackId) => {
-      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time });
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
     });
 
     if (attackIds.length > 0) {
@@ -1223,6 +1254,39 @@ async function processLoopQueue() {
   isProcessingLoopQueue = false;
 }
 
+async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
+  try {
+    const session = sessions[sessionId];
+    if (!session?.username) return [];
+    const webClient = getClient(sessionId);
+    const ongoingRes = await webClient.get(`/ongoing/${session.username}`);
+    const ongoingList = Array.isArray(ongoingRes.data)
+      ? ongoingRes.data
+      : (ongoingRes.data?.attacks || []);
+    const now = Date.now();
+    const matching = ongoingList.filter((a) => {
+      const method = String(a.method || '').toLowerCase();
+      const expectedMethod = String(params.method || '').toLowerCase();
+      if (method !== expectedMethod) return false;
+      const target = String(a.target || a.host || '');
+      if (!target.includes(params.host)) return false;
+      if (params.layer !== 'L7') {
+        if (String(a.port) !== String(params.port)) return false;
+      }
+      const startedAt = new Date(a.startedAt || a.start_time || a.started_at || now).getTime();
+      return now - startedAt < 2 * 60 * 1000;
+    });
+    matching.sort((a, b) =>
+      new Date(b.startedAt || b.start_time || b.started_at || 0).getTime() -
+      new Date(a.startedAt || a.start_time || a.started_at || 0).getTime()
+    );
+    return matching.slice(0, limit).map((a) => a.attack_id || a.id).filter(Boolean);
+  } catch (err) {
+    console.warn('[fetchOngoingAttackIds] hata:', err.message);
+    return [];
+  }
+}
+
 async function runLoopRound(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return;
@@ -1319,6 +1383,20 @@ async function runLoopRound(loopId) {
         attackIds = [data.id];
       }
 
+      // API attack_id donmediyse ama status=success ise /ongoing'den bul;
+      // aksi halde retry'ler gereksiz yere fazladan saldiri baslatir.
+      if (attackIds.length === 0 && data?.status === 'success') {
+        try {
+          const foundIds = await fetchOngoingAttackIds(loop.sessionId, loop.params, loop.params.concurrents);
+          if (foundIds.length > 0) {
+            attackIds = foundIds;
+            console.log(`[loop ${loopId}] /ongoing'den ${attackIds.length} attackId bulundu`);
+          }
+        } catch (err) {
+          console.warn(`[loop ${loopId}] /ongoing'den attackId arama hatasi:`, err.message);
+        }
+      }
+
       if (attackIds.length > 0) {
         roundSuccesses = attackIds.length;
         loop.roundAttackIds = attackIds;
@@ -1332,6 +1410,12 @@ async function runLoopRound(loopId) {
         break;
       }
 
+      // API attack_id donmediyse ve /ongoing'den de bulunamadiysa,
+      // saldiri baslatilmis olabileceginden retry yapma (fazla saldiri olusur).
+      if (data?.status === 'success') {
+        roundError = new Error('API attackId donmedi; /ongoingden de bulunamadi');
+        break;
+      }
       roundError = new Error('API attackId donmedi');
     } catch (err) {
       roundError = err;
@@ -1422,7 +1506,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     }
 
     // Loop saldirisini history'ye sadece bir kez kaydet
-    const historyId = addAttackHistory(sessionId, { host, port, method, time }, {
+    const historyId = addAttackHistory(sessionId, { host, port, method, time, layer }, {
       loop: true,
       concurrents: parseInt(concurrents),
       historyId: `hist_loop_${loopId}`
