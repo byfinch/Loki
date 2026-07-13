@@ -465,6 +465,7 @@ function addAttackHistory(sessionId, params, options = {}) {
     target,
     port: params.port || null,
     method: params.method,
+    layer: params.layer || 'L4',
     time: parseInt(params.time) || 0,
     concurrents: parseInt(options.concurrents) || parseInt(params.concurrents) || 1,
     loop: !!options.loop,
