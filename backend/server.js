@@ -392,11 +392,16 @@ async function launchAttacksPost(sessionId, params, concurrents) {
   const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
   const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
 
-  console.log(`[launchAttacksPost] before=${beforeIds.size} after=${afterIds.size} new=${newIds.length} requested=${concurrents}`);
+  const allStarted = results.every((r) => r?.message === 'Attack started');
+  const anyError = results.some((r) => r?.status === 'error' || (r?.message && r.message !== 'Attack started'));
+
+  console.log(`[launchAttacksPost] before=${beforeIds.size} after=${afterIds.size} new=${newIds.length} requested=${concurrents} allStarted=${allStarted} anyError=${anyError}`);
 
   return {
     results,
-    attackIds: newIds.slice(0, concurrents)
+    attackIds: newIds.slice(0, concurrents),
+    allStarted,
+    anyError
   };
 }
 
@@ -1061,13 +1066,15 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     // stresse.st paneli concurrents kadar ayri POST /attack istegi atar.
-    const { results, attackIds } = await launchAttacksPost(sessionId, {
+    const { results, attackIds, allStarted } = await launchAttacksPost(sessionId, {
       host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
     }, count);
 
     attackIds.forEach((attackId) => {
       registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
     });
+
+    const successCount = attackIds.length > 0 ? attackIds.length : (allStarted ? count : 0);
 
     if (attackIds.length > 0) {
       addAttackHistory(sessionId, { host, port, method, time, layer }, {
@@ -1078,10 +1085,10 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 
     const firstMessage = results?.[0]?.message || '';
     res.json({
-      status: attackIds.length > 0 ? 'success' : 'error',
+      status: successCount > 0 ? 'success' : 'error',
       total: count,
-      successCount: attackIds.length,
-      failCount: count - attackIds.length,
+      successCount,
+      failCount: count - successCount,
       message: firstMessage,
       data: results[0] || null,
       id: attackIds[0] || null,
@@ -1335,9 +1342,11 @@ async function runLoopRound(loopId) {
   let roundError = null;
 
   // stresse.st paneli concurrents kadar ayri POST /attack istegi atar.
-  // Biz de aynisini yapip ID'leri /ongoing diff'inden aliriz.
+  // ID'leri /ongoing diff'inden almaya calisiriz; bulunamazsa ama tum istekler
+  // Attack started dondururse basarili kabul ederiz (L4 saldirilari zaten
+  // durdurulamaz, panelde /ongoing uzerinden gorunurler).
   try {
-    const { results, attackIds } = await launchAttacksPost(loop.sessionId, loop.params, loop.params.concurrents);
+    const { results, attackIds, allStarted } = await launchAttacksPost(loop.sessionId, loop.params, loop.params.concurrents);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -1348,6 +1357,10 @@ async function runLoopRound(loopId) {
       if (attackIds.length !== loop.params.concurrents) {
         console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attackId dondurdu`);
       }
+    } else if (allStarted) {
+      roundSuccesses = loop.params.concurrents;
+      loop.roundAttackIds = [];
+      console.log(`[loop ${loopId}] round ${round} basarili: ${roundSuccesses} saldiri baslatildi (ID bulunamadi, /ongoing'den gorunecek)`);
     } else {
       const messages = results.map((r) => r?.message).filter(Boolean).join('; ');
       roundError = new Error(`POST /attack basarisiz: ${messages || 'attackId bulunamadi'}`);
