@@ -383,6 +383,7 @@ function registerAttack(attackId, sessionId, params, loopId = null) {
     host: params.host,
     port: params.port,
     method: params.method,
+    layer: params.layer || 'L4',
     time: parseInt(params.time) || 0,
     loopId: loopId || null,
     startedAt: new Date().toISOString(),
@@ -910,6 +911,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         host: attack.host,
         port: attack.port,
         method: attack.method,
+        layer: attack.layer || 'L4',
         timeLeft,
         // Frontend'in diger alanlarini doldur
         time: attack.time,
