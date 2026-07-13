@@ -71,6 +71,7 @@ const LoopManager = () => {
       }
     } else {
       t = t.replace(/^https?:\/\//i, '');
+      t = t.replace(/:(\d+)(?=\/|$)/, '');
     }
     return t;
   };

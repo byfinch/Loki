@@ -156,8 +156,9 @@ const AttackHistory = () => {
         t += '/';
       }
     } else {
-      // L4 hedeflerde protokol kaldir, port varsa koru
+      // L4 hedeflerde protokol ve portu kaldir, sadece IP/domain birak
       t = t.replace(/^https?:\/\//i, '');
+      t = t.replace(/:(\d+)(?=\/|$)/, '');
     }
     return t;
   };
