@@ -214,7 +214,7 @@ const LoopManager = () => {
                   </td>
                   <td className="px-4 py-3.5">
                     <span className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
-                      {loop.params?.method}
+                      {loop.params?.method?.toUpperCase()}
                     </span>
                   </td>
                   <td className="px-4 py-3.5 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.time}s</td>
