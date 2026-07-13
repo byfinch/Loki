@@ -44,28 +44,33 @@ const LiveAttacks = () => {
     return fallbackCopyTextToClipboard(text);
   };
 
-  const formatTargetForDisplay = (target) => {
+  const formatTargetForDisplay = (target, layer) => {
     if (!target || typeof target !== 'string') return target;
-    // Gelen target protokol icerebilir veya icermeyebilir. L7 hedefler icin
-    // her zaman https://host/ formatinda goster.
+    const isL7 = layer === 'L7';
     let t = target.trim();
-    // Port bilgisini kaldir (L7'de 443 varsayilir)
-    t = t.replace(/:(\d+)(?=\/|$)/, '');
-    // Protokol yoksa ekle
-    if (!/^https?:\/\//i.test(t)) {
-      t = `https://${t}`;
+    if (isL7) {
+      // Port bilgisini kaldir (L7'de 443 varsayilir)
+      t = t.replace(/:(\d+)(?=\/|$)/, '');
+      // Protokol yoksa ekle
+      if (!/^https?:\/\//i.test(t)) {
+        t = `https://${t}`;
+      }
+      // http:// varsa https:// yap
+      t = t.replace(/^http:\/\//i, 'https://');
+      // Sonunda / olsun
+      if (!t.endsWith('/')) {
+        t += '/';
+      }
+      return t;
     }
-    // http:// varsa https:// yap
-    t = t.replace(/^http:\/\//i, 'https://');
-    // Sonunda / olsun
-    if (!t.endsWith('/')) {
-      t += '/';
-    }
+    // L4 hedeflerde protokol/path kabul edilmez, sadece IP/domain:port goster
+    t = t.replace(/^https?:\/\//i, '');
+    if (t.endsWith('/')) t = t.slice(0, -1);
     return t;
   };
 
-  const handleCopy = async (target, key) => {
-    const copyTarget = formatTargetForDisplay(target);
+  const handleCopy = async (target, layer, key) => {
+    const copyTarget = formatTargetForDisplay(target, layer);
     try {
       const success = await copyTextToClipboard(copyTarget);
       if (success) {
@@ -442,7 +447,7 @@ const LiveAttacks = () => {
             </thead>
             <tbody>
               {groupedAttacks.map((attack) => {
-                const displayTarget = formatTargetForDisplay(attack.target);
+                const displayTarget = formatTargetForDisplay(attack.target, attack.layer);
                 const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
@@ -456,12 +461,12 @@ const LiveAttacks = () => {
                         <span
                           title="URL'yi kopyala"
                           className="inline-block text-left text-gray-300 font-mono truncate w-[220px] hover:text-green-400 transition-colors cursor-pointer"
-                          onClick={() => handleCopy(attack.target, rowKey)}
+                          onClick={() => handleCopy(attack.target, attack.layer, rowKey)}
                         >
                           {displayTarget}
                         </span>
                         <button
-                          onClick={() => handleCopy(attack.target, rowKey)}
+                          onClick={() => handleCopy(attack.target, attack.layer, rowKey)}
                           title="URL'yi kopyala"
                           className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center border transition-colors duration-200 ${
                             isCopied
