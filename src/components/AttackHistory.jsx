@@ -141,10 +141,16 @@ const AttackHistory = () => {
     return fallbackCopy(text);
   };
 
-  const formatTargetForDisplay = (target, layer = 'L7') => {
+  const L7_METHODS = ['CLOUDFLARE', 'HTTP-TEMPESTA', 'BROWSER', 'BYPASS', 'PPS', 'HTTP-RAWPACKET', 'HTTP-SOCKETS'];
+
+  const formatTargetForDisplay = (target, layer, method) => {
     if (!target || typeof target !== 'string') return target;
+    let effectiveLayer = layer;
+    if (!effectiveLayer && method) {
+      effectiveLayer = L7_METHODS.includes(method.toUpperCase()) ? 'L7' : 'L4';
+    }
     let t = target.trim();
-    const isL7 = layer === 'L7';
+    const isL7 = effectiveLayer === 'L7' || /^https?:\/\//i.test(target);
     if (isL7) {
       // L7 hedeflerde portu kaldir, https:// ekle, trailing slash ekle
       t = t.replace(/:(\d+)(?=\/|$)/, '');
@@ -163,8 +169,8 @@ const AttackHistory = () => {
     return t;
   };
 
-  const handleCopyTarget = async (target, key, layer = 'L7') => {
-    const copyTarget = formatTargetForDisplay(target, layer);
+  const handleCopyTarget = async (target, key, layer, method) => {
+    const copyTarget = formatTargetForDisplay(target, layer, method);
     try {
       const ok = await copyToClipboard(copyTarget);
       if (ok) {
@@ -301,13 +307,13 @@ const AttackHistory = () => {
                     <div className="flex items-center gap-2 h-full">
                       <span
                         title="URL'yi kopyala"
-                        onClick={() => handleCopyTarget(record.target, record.historyId, record.layer)}
+                          onClick={() => handleCopyTarget(record.target, record.historyId, record.layer, record.method)}
                         className="inline-block text-left text-gray-200 font-mono text-xs truncate w-[180px] hover:text-green-400 transition-colors cursor-pointer"
                       >
-                        {formatTargetForDisplay(record.target, record.layer)}
+                        {formatTargetForDisplay(record.target, record.layer, record.method)}
                       </span>
                       <button
-                        onClick={() => handleCopyTarget(record.target, record.historyId, record.layer)}
+                          onClick={() => handleCopyTarget(record.target, record.historyId, record.layer, record.method)}
                         title="URL'yi kopyala"
                         className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center border transition-colors duration-200 ${
                           copiedKey === record.historyId
