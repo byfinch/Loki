@@ -69,8 +69,9 @@ const LiveAttacks = () => {
       }
       return t;
     }
-    // L4 hedeflerde protokol/path kabul edilmez, sadece IP/domain:port goster
+    // L4 hedeflerde protokol/path/port kaldır, sadece IP/domain göster
     t = t.replace(/^https?:\/\//i, '');
+    t = t.replace(/:\d+$/, '');
     if (t.endsWith('/')) t = t.slice(0, -1);
     return t;
   };
