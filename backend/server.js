@@ -382,20 +382,15 @@ async function startAttackPostApi(sessionId, params) {
 async function launchAttacksPost(sessionId, params, concurrents, loopId = null) {
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
 
-  // Cok fazla paralel istek stresse.st'te timeout'a yol acar;
-  // bunlari 5'erli gruplar halinde gonderiyoruz.
+  // Paralel istekler stresse.st'te timeout/duplicate hatasina yol aciyor;
+  // istekleri sirayla (serial) gonderiyoruz. Daha yavas ama daha guvenilir.
   const results = [];
-  const chunkSize = 5;
-  for (let i = 0; i < concurrents; i += chunkSize) {
-    const chunkPromises = [];
-    const end = Math.min(i + chunkSize, concurrents);
-    for (let j = i; j < end; j++) {
-      chunkPromises.push(startAttackPostApi(sessionId, params));
-    }
-    const chunkResults = await Promise.all(chunkPromises);
-    results.push(...chunkResults);
-    if (end < concurrents) {
-      await new Promise((r) => setTimeout(r, 500));
+  for (let i = 0; i < concurrents; i++) {
+    try {
+      const result = await startAttackPostApi(sessionId, params);
+      results.push(result);
+    } catch (err) {
+      results.push({ status: 'error', message: err.message });
     }
   }
 
