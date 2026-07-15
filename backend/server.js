@@ -342,7 +342,7 @@ async function stopAttackApi(apiClient, apiToken, attackId) {
 // Asagidaki fonksiyonlar panelin gercek davranisini taklit eder.
 async function getCsrfToken(sessionId) {
   const client = getClient(sessionId);
-  const res = await client.get('/csrf-token', { timeout: 90000 });
+  const res = await client.get('/csrf-token', { timeout: 15000 });
   return res.data?.csrfToken || res.data?.token || '';
 }
 
@@ -365,7 +365,7 @@ async function startAttackPostApi(sessionId, params) {
   try {
     const res = await client.post('/attack', body, {
       headers: { 'X-CSRF-Token': csrfToken },
-      timeout: 90000
+      timeout: 15000
     });
     console.log(`[POST /attack] status=${res.status} data=${JSON.stringify(res.data).slice(0, 200)}`);
     return res.data;
@@ -379,7 +379,7 @@ async function startAttackPostApi(sessionId, params) {
   }
 }
 
-async function launchAttacksPost(sessionId, params, concurrents) {
+async function launchAttacksPost(sessionId, params, concurrents, loopId = null) {
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
 
   // Cok fazla paralel istek stresse.st'te timeout'a yol acar;
@@ -408,6 +408,14 @@ async function launchAttacksPost(sessionId, params, concurrents) {
   const allStarted = results.every((r) => r?.message === 'Attack started');
   const anyError = results.some((r) => r?.status === 'error' || (r?.message && r.message !== 'Attack started'));
 
+  // ID bulunamadi ama tum istekler basariliysa, limit kontrolu icin pending kayit ekle.
+  if (attackIds.length === 0 && allStarted && concurrents > 0) {
+    for (let i = 0; i < concurrents; i++) {
+      const pendingId = `pending_${sessionId.slice(0, 8)}_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
+      registerAttack(pendingId, sessionId, params, loopId, 1);
+    }
+  }
+
   console.log(`[launchAttacksPost] before=${beforeIds.size} after=${afterIds.size} new=${newIds.length} requested=${concurrents} allStarted=${allStarted} anyError=${anyError}`);
 
   return {
@@ -418,7 +426,7 @@ async function launchAttacksPost(sessionId, params, concurrents) {
   };
 }
 
-function registerAttack(attackId, sessionId, params, loopId = null) {
+function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1) {
   if (!attackId || !sessionId) return;
   activeAttacks[attackId] = {
     attackId,
@@ -429,6 +437,7 @@ function registerAttack(attackId, sessionId, params, loopId = null) {
     method: params.method,
     layer: params.layer || 'L4',
     time: parseInt(params.time) || 0,
+    concurrents: parseInt(concurrents) || 1,
     loopId: loopId || null,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + (parseInt(params.time) || 0) * 1000).toISOString()
@@ -586,6 +595,20 @@ function checkPlanLimits(sessionId, time, concurrents) {
   if (parseInt(concurrents) > parseInt(maxConcurrents)) {
     return { ok: false, message: `Maksimum concurrent ${maxConcurrents} olabilir` };
   }
+
+  // Mevcut aktif saldirilarin toplam concurrents'ini hesapla.
+  // ID'siz saldirilar icin pending kayitlar da dahil.
+  const currentConcurrents = Object.values(activeAttacks)
+    .filter((a) => a.sessionId === sessionId)
+    .reduce((sum, a) => sum + (parseInt(a.concurrents) || 1), 0);
+
+  if (currentConcurrents + parseInt(concurrents) > parseInt(maxConcurrents)) {
+    return {
+      ok: false,
+      message: `Mevcut ${currentConcurrents} aktif saldiri var. Maksimum toplam ${maxConcurrents} concurrent. Kalan: ${Math.max(0, maxConcurrents - currentConcurrents)}`
+    };
+  }
+
   return { ok: true };
 }
 
@@ -692,7 +715,7 @@ function getClient(sessionId) {
       'Origin': 'https://stresse.st',
       'Referer': 'https://stresse.st/hub'
     },
-    timeout: 90000
+    timeout: 15000
   }));
 }
 
@@ -1251,7 +1274,7 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
     const session = sessions[sessionId];
     if (!session?.username) return [];
     const webClient = getClient(sessionId);
-    const ongoingRes = await webClient.get(`/ongoing/${session.username}`, { timeout: 90000 });
+    const ongoingRes = await webClient.get(`/ongoing/${session.username}`, { timeout: 15000 });
     const ongoingList = Array.isArray(ongoingRes.data)
       ? ongoingRes.data
       : (ongoingRes.data?.attacks || []);
@@ -1359,7 +1382,7 @@ async function runLoopRound(loopId) {
   // Attack started dondururse basarili kabul ederiz (L4 saldirilari zaten
   // durdurulamaz, panelde /ongoing uzerinden gorunurler).
   try {
-    const { results, attackIds, allStarted } = await launchAttacksPost(loop.sessionId, loop.params, loop.params.concurrents);
+    const { results, attackIds, allStarted } = await launchAttacksPost(loop.sessionId, loop.params, loop.params.concurrents, loopId);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -1418,9 +1441,17 @@ function cleanupLoop(loopId) {
       updateAttackHistoryStatus(finishedLoop.historyId, 'completed');
     }
   }
+  // Bu loop'a ait pending/active attack kayitlarini temizle
+  let removed = 0;
+  Object.keys(activeAttacks).forEach((attackId) => {
+    if (activeAttacks[attackId].loopId === loopId) {
+      delete activeAttacks[attackId];
+      removed++;
+    }
+  });
   delete activeLoops[loopId];
   saveState();
-  console.log(`[loop ${loopId}] temizlendi`);
+  console.log(`[loop ${loopId}] temizlendi (${removed} pending kayit silindi)`);
 }
 
 /**
