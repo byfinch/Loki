@@ -342,7 +342,7 @@ async function stopAttackApi(apiClient, apiToken, attackId) {
 // Asagidaki fonksiyonlar panelin gercek davranisini taklit eder.
 async function getCsrfToken(sessionId) {
   const client = getClient(sessionId);
-  const res = await client.get('/csrf-token');
+  const res = await client.get('/csrf-token', { timeout: 90000 });
   return res.data?.csrfToken || res.data?.token || '';
 }
 
@@ -364,7 +364,8 @@ async function startAttackPostApi(sessionId, params) {
   }
   try {
     const res = await client.post('/attack', body, {
-      headers: { 'X-CSRF-Token': csrfToken }
+      headers: { 'X-CSRF-Token': csrfToken },
+      timeout: 90000
     });
     console.log(`[POST /attack] status=${res.status} data=${JSON.stringify(res.data).slice(0, 200)}`);
     return res.data;
@@ -380,11 +381,23 @@ async function startAttackPostApi(sessionId, params) {
 
 async function launchAttacksPost(sessionId, params, concurrents) {
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
-  const promises = [];
-  for (let i = 0; i < concurrents; i++) {
-    promises.push(startAttackPostApi(sessionId, params));
+
+  // Cok fazla paralel istek stresse.st'te timeout'a yol acar;
+  // bunlari 5'erli gruplar halinde gonderiyoruz.
+  const results = [];
+  const chunkSize = 5;
+  for (let i = 0; i < concurrents; i += chunkSize) {
+    const chunkPromises = [];
+    const end = Math.min(i + chunkSize, concurrents);
+    for (let j = i; j < end; j++) {
+      chunkPromises.push(startAttackPostApi(sessionId, params));
+    }
+    const chunkResults = await Promise.all(chunkPromises);
+    results.push(...chunkResults);
+    if (end < concurrents) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
-  const results = await Promise.all(promises);
 
   // Ongoing listesinin guncellenmesi icin bekle (stresse.st asenkron yansitiyor olabilir)
   await new Promise((r) => setTimeout(r, 6000));
@@ -679,7 +692,7 @@ function getClient(sessionId) {
       'Origin': 'https://stresse.st',
       'Referer': 'https://stresse.st/hub'
     },
-    timeout: 45000
+    timeout: 90000
   }));
 }
 
@@ -1238,7 +1251,7 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
     const session = sessions[sessionId];
     if (!session?.username) return [];
     const webClient = getClient(sessionId);
-    const ongoingRes = await webClient.get(`/ongoing/${session.username}`);
+    const ongoingRes = await webClient.get(`/ongoing/${session.username}`, { timeout: 90000 });
     const ongoingList = Array.isArray(ongoingRes.data)
       ? ongoingRes.data
       : (ongoingRes.data?.attacks || []);
