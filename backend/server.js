@@ -495,10 +495,11 @@ function cleanupExpiredAttacks() {
   let removed = 0;
   const completedHistories = new Set();
 
+  // 1) Aktif saldirilari temizle ve ilgili history'leri tamamlandi olarak isaretle.
   Object.entries(activeAttacks).forEach(([attackId, attack]) => {
     const expires = new Date(attack.expiresAt || 0).getTime();
-    // 300 saniye tolerans: stresse.t gecikmeli baslatabilir veya bitirebilir.
-    if (now - expires > 5 * 60 * 1000) {
+    // 30 saniye tolerans: stresse.t gecikmeli baslatabilir veya bitirebilir.
+    if (now - expires > 30 * 1000) {
       const loopId = attack.loopId;
       delete activeAttacks[attackId];
       removed++;
@@ -524,6 +525,15 @@ function cleanupExpiredAttacks() {
           completedHistories.add(history.historyId);
         }
       }
+    }
+  });
+
+  // 2) activeAttacks'te kalmamis ama attackHistory'de hala active olan expired kayitlari da temizle.
+  Object.entries(attackHistory).forEach(([historyId, history]) => {
+    if (history.status !== 'active') return;
+    const expires = new Date(history.expiresAt || 0).getTime();
+    if (now - expires > 30 * 1000) {
+      completedHistories.add(historyId);
     }
   });
 
