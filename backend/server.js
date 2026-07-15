@@ -351,8 +351,10 @@ function buildApiUrl(apiToken, params) {
 
 async function startAttackApi(apiClient, params) {
   const url = buildApiUrl(params.apiToken, params);
+  // L4 saldirilari stresse.st'te daha uzun sure basliyor; L7'ye gore daha fazla timeout ver.
+  const timeout = params.layer === 'L7' ? 15000 : 60000;
   try {
-    const res = await apiClient.get(url, { timeout: 15000 });
+    const res = await apiClient.get(url, { timeout });
     console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
     if (res.data?.status === 'error') {
       throw new Error(res.data.message || 'API attack failed');
