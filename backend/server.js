@@ -2122,6 +2122,9 @@ app.get('/api/stresse/live/:username', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  // nginx'in SSE event'lerini buffer'lamasini engelle; aksi halde canli akis
+  // toplu/gecikmeli gelir.
+  res.setHeader('X-Accel-Buffering', 'no');
 
   let client;
   try {
