@@ -531,6 +531,11 @@ function cleanupExpiredAttacks() {
   // 2) activeAttacks'te kalmamis ama attackHistory'de hala active olan expired kayitlari da temizle.
   Object.entries(attackHistory).forEach(([historyId, history]) => {
     if (history.status !== 'active') return;
+    // Loop'a ait kayitlar: loop hala calisiyorsa completed yapma;
+    // loop bitince cleanupLoop / 1. faz isaretler. expiresAt sadece ilk turun suresini tasir.
+    if (history.loop && Object.values(activeLoops).some((l) => l.running && l.historyId === historyId)) {
+      return;
+    }
     const expires = new Date(history.expiresAt || 0).getTime();
     if (now - expires > 30 * 1000) {
       completedHistories.add(historyId);
