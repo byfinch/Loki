@@ -7,6 +7,25 @@
 const BOT_TOKEN = process.env.LOKI_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID = process.env.LOKI_TELEGRAM_CHAT_ID || '';
 
+// Etiketlenecek uyeler: "id:isim,id:isim" formatinda env'den okunur.
+// Orn: LOKI_TELEGRAM_MENTIONS="8849693458:Burak,123456789:Ahmet"
+// Telegram API grup uyelerini listeleme izni vermedigi icin ID'ler elle tanimlanir.
+const MENTIONS = (process.env.LOKI_TELEGRAM_MENTIONS || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean)
+  .map((entry) => {
+    const [id, ...nameParts] = entry.split(':');
+    return { id: id.trim(), name: nameParts.join(':').trim() || 'uye' };
+  })
+  .filter((m) => /^\d+$/.test(m.id));
+
+function mentionLine() {
+  if (MENTIONS.length === 0) return '';
+  const tags = MENTIONS.map((m) => `<a href="tg://user?id=${m.id}">${m.name}</a>`).join(' ');
+  return `\n🔔 ${tags}`;
+}
+
 function isEnabled() {
   return Boolean(BOT_TOKEN && CHAT_ID);
 }
@@ -26,7 +45,7 @@ async function sendTelegram(message) {
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'HTML' }),
+      body: JSON.stringify({ chat_id: CHAT_ID, text: message + mentionLine(), parse_mode: 'HTML' }),
       signal: AbortSignal.timeout(10000)
     });
     if (!res.ok) {
