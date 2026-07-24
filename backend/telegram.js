@@ -26,7 +26,7 @@ async function sendTelegram(message) {
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: message }),
+      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'HTML' }),
       signal: AbortSignal.timeout(10000)
     });
     if (!res.ok) {
@@ -37,4 +37,12 @@ async function sendTelegram(message) {
   }
 }
 
-module.exports = { sendTelegram, initTelegram, isEnabled };
+// Kullanici verisini (host, username vb.) HTML parse mode icin guvenli hale getirir.
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+module.exports = { sendTelegram, initTelegram, isEnabled, esc };
