@@ -498,7 +498,9 @@ function checkSlotsEmpty() {
 // action: 'durduruldu' (manuel stop) veya 'tamamlandi' (dogal bitis).
 function notifyLoopRemoved(loop, action) {
   if (!loop) return;
-  const target = loop.displayTarget || `${loop.params?.host}:${loop.params?.port}`;
+  // Hedef portsuz gosterilir; L7 ise history formatiyla ayni sekilde https://host/
+  const host = loop.params?.host || loop.displayTarget || 'bilinmiyor';
+  const target = loop.params?.layer === 'L7' ? `https://${host}/` : host;
   const method = (loop.params?.method || 'BİLİNMİYOR').toUpperCase();
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
