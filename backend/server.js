@@ -502,6 +502,7 @@ function notifyLoopRemoved(loop, action) {
   const host = loop.params?.host || loop.displayTarget || 'bilinmiyor';
   const target = loop.params?.layer === 'L7' ? `https://${host}/` : host;
   const method = (loop.params?.method || 'BİLİNMİYOR').toUpperCase();
+  const concurrents = loop.params?.concurrents ?? '?';
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
   const message = [
@@ -509,6 +510,7 @@ function notifyLoopRemoved(loop, action) {
     '─────────────────',
     `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
     `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
+    `🔁 <b>Concurrents:</b> <code>${esc(concurrents)}</code>`,
     `🕐 <i>${telegramTimestamp()}</i>`
   ].join('\n');
   sendTelegram(message).catch(() => {});
