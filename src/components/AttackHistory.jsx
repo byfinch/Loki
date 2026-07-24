@@ -63,6 +63,13 @@ const AttackHistory = () => {
     setCurrentPage(1);
   }, [filter, searchQuery]);
 
+  // Poll ile kayit sayisi azalinca bos sayfada kalmayi onle
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [totalPages]);
+
   const L7_METHODS = ['CLOUDFLARE', 'HTTP-TEMPESTA', 'BROWSER', 'BYPASS', 'PPS', 'HTTP-RAWPACKET', 'HTTP-SOCKETS'];
 
   const formatTargetForDisplay = (target, layer, method) => {

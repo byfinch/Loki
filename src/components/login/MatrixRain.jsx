@@ -82,7 +82,13 @@ const MatrixRain = () => {
     };
 
     resize();
-    window.addEventListener('resize', resize);
+    // reducedMotion'da animasyon loop'u calismadigi icin resize sonrasi
+    // sifirlanan arkaplanin uzerine statik kareyi bir kez yeniden ciz
+    const onResize = () => {
+      resize();
+      if (reducedMotion) draw();
+    };
+    window.addEventListener('resize', onResize);
 
     if (reducedMotion) {
       // Animasyon yok: tek hafif statik kare
@@ -93,7 +99,7 @@ const MatrixRain = () => {
 
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', onResize);
     };
   }, []);
 

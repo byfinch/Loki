@@ -46,7 +46,10 @@ async function handleResponse(response) {
     }
   }
   if (!response.ok) {
-    throw new Error(data.message || `HTTP ${response.status}`);
+    // HTTP status kodunu hataya yansit ki cagiran oturum hatasini (401/403) ayirabilsin
+    const err = new Error(data.message || `HTTP ${response.status}`);
+    err.status = response.status;
+    throw err;
   }
   // Backend bazen 200 OK ile { status: 'error', message: '...' } donebilir
   if (data && data.status === 'error') {
@@ -116,15 +119,6 @@ export const apiClient = {
   },
 
   // Attack
-  async startAttack(payload) {
-    const res = await apiFetch(`${API_BASE}/stresse/attack`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(payload)
-    });
-    return handleResponse(res);
-  },
-
   async startAttacks(payload) {
     const res = await apiFetch(`${API_BASE}/stresse/attack/bulk`, {
       method: 'POST',
@@ -177,27 +171,11 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async getLoopStatus(loopId) {
-    const res = await apiFetch(`${API_BASE}/stresse/loop/${loopId}`, {
-      headers: getHeaders()
-    });
-    return handleResponse(res);
-  },
-
   async stopAttack(id) {
     const res = await apiFetch(`${API_BASE}/stresse/stop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ id })
-    });
-    return handleResponse(res);
-  },
-
-  async stopAttacks(ids) {
-    const res = await apiFetch(`${API_BASE}/stresse/stop/bulk`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ ids })
     });
     return handleResponse(res);
   },

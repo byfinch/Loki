@@ -65,25 +65,39 @@ const AttackForm = () => {
   };
 
   useEffect(() => {
+    // Hizli L4/L7 toggle'inda eski istegin yaniti yeniyi ezmesin
+    let cancelled = false;
+
+    // Method her zaman secili layer'a uygun gecerli bir degere resetlensin (fallback: ilk eleman)
+    const applyLayerMethods = (data) => {
+      const layerMethods = data.filter((m) => {
+        const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
+        const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
+        return isLayerMatch && !isFreeMethod;
+      });
+      setMethod((prev) =>
+        layerMethods.some((m) => m.method === prev) ? prev : (layerMethods[0]?.method || '')
+      );
+    };
+
     const loadMethods = async () => {
+      // state.methods zaten cache'liyse yeniden fetch etme; sadece layer'a gore filtrele
+      if (state.methods.length > 0) {
+        applyLayerMethods(state.methods);
+        return;
+      }
       try {
         const data = await apiClient.getMethods();
+        if (cancelled) return;
         setMethods(data);
-        // Method her zaman secili layer'a uygun gecerli bir degere resetlensin (fallback: ilk eleman)
-        const layerMethods = data.filter((m) => {
-          const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
-          const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
-          return isLayerMatch && !isFreeMethod;
-        });
-        setMethod((prev) =>
-          layerMethods.some((m) => m.method === prev) ? prev : (layerMethods[0]?.method || '')
-        );
+        applyLayerMethods(data);
       } catch (err) {
-        addLog(`Yöntemler yüklenemedi: ${err.message}`);
+        if (!cancelled) addLog(`Yöntemler yüklenemedi: ${err.message}`);
       }
     };
 
     if (state.isAuthenticated) loadMethods();
+    return () => { cancelled = true; };
   }, [state.isAuthenticated, layer]);
 
   // L4/L7 gecisinde port default'unu ayarla
