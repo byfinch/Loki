@@ -37,3 +37,7 @@ Thumbs.db
 # Runtime data (sessions, attacks, history)
 backend/data/
 backend/data.bak.*
+
+# Local test scripts (may contain credentials)
+backend/test-*.cjs
+backend/screenshot*.png
