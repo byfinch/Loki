@@ -4,6 +4,7 @@
  */
 
 const API_BASE = '/api';
+const REQUEST_TIMEOUT_MS = 30000;
 
 function getHeaders() {
   const sessionId = localStorage.getItem('lokiSessionId');
@@ -11,6 +12,14 @@ function getHeaders() {
     'Content-Type': 'application/json',
     'sessionId': sessionId || ''
   };
+}
+
+function getRequestOptions(extra = {}) {
+  return { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...extra };
+}
+
+async function apiFetch(url, options = {}) {
+  return fetch(url, getRequestOptions(options));
 }
 
 async function handleResponse(response) {
@@ -39,7 +48,7 @@ async function handleResponse(response) {
 export const apiClient = {
   // Auth
   async login(username, password) {
-    const res = await fetch(`${API_BASE}/stresse/login`, {
+    const res = await apiFetch(`${API_BASE}/stresse/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -67,14 +76,14 @@ export const apiClient = {
 
   // User & Plan
   async getUser(username) {
-    const res = await fetch(`${API_BASE}/stresse/user/${username}`, {
+    const res = await apiFetch(`${API_BASE}/stresse/user/${username}`, {
       headers: getHeaders()
     });
     return handleResponse(res);
   },
 
   async getPlan(username) {
-    const res = await fetch(`${API_BASE}/stresse/plan/${username}`, {
+    const res = await apiFetch(`${API_BASE}/stresse/plan/${username}`, {
       headers: getHeaders()
     });
     return handleResponse(res);
@@ -82,7 +91,7 @@ export const apiClient = {
 
   // Methods
   async getMethods() {
-    const res = await fetch(`${API_BASE}/stresse/methods`, {
+    const res = await apiFetch(`${API_BASE}/stresse/methods`, {
       headers: getHeaders()
     });
     return handleResponse(res);
@@ -90,7 +99,7 @@ export const apiClient = {
 
   // Ongoing
   async getOngoing(username) {
-    const res = await fetch(`${API_BASE}/stresse/ongoing/${username}`, {
+    const res = await apiFetch(`${API_BASE}/stresse/ongoing/${username}`, {
       headers: getHeaders()
     });
     return handleResponse(res);
@@ -98,7 +107,7 @@ export const apiClient = {
 
   // Attack
   async startAttack(payload) {
-    const res = await fetch(`${API_BASE}/stresse/attack`, {
+    const res = await apiFetch(`${API_BASE}/stresse/attack`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -107,7 +116,7 @@ export const apiClient = {
   },
 
   async startAttacks(payload) {
-    const res = await fetch(`${API_BASE}/stresse/attack/bulk`, {
+    const res = await apiFetch(`${API_BASE}/stresse/attack/bulk`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -117,14 +126,14 @@ export const apiClient = {
 
   // History
   async getHistory(username) {
-    const res = await fetch(`${API_BASE}/stresse/history/${username}`, {
+    const res = await apiFetch(`${API_BASE}/stresse/history/${username}`, {
       headers: getHeaders()
     });
     return handleResponse(res);
   },
 
   async deleteHistory(options = {}) {
-    const res = await fetch(`${API_BASE}/stresse/history`, {
+    const res = await apiFetch(`${API_BASE}/stresse/history`, {
       method: 'DELETE',
       headers: getHeaders(),
       body: JSON.stringify(options)
@@ -134,7 +143,7 @@ export const apiClient = {
 
   // Loop
   async startLoop(payload) {
-    const res = await fetch(`${API_BASE}/stresse/loop`, {
+    const res = await apiFetch(`${API_BASE}/stresse/loop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -143,7 +152,7 @@ export const apiClient = {
   },
 
   async stopLoop(loopId) {
-    const res = await fetch(`${API_BASE}/stresse/loop/stop`, {
+    const res = await apiFetch(`${API_BASE}/stresse/loop/stop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(loopId ? { loopId } : {})
@@ -152,21 +161,21 @@ export const apiClient = {
   },
 
   async getLoops() {
-    const res = await fetch(`${API_BASE}/stresse/loops`, {
+    const res = await apiFetch(`${API_BASE}/stresse/loops`, {
       headers: getHeaders()
     });
     return handleResponse(res);
   },
 
   async getLoopStatus(loopId) {
-    const res = await fetch(`${API_BASE}/stresse/loop/${loopId}`, {
+    const res = await apiFetch(`${API_BASE}/stresse/loop/${loopId}`, {
       headers: getHeaders()
     });
     return handleResponse(res);
   },
 
   async stopAttack(id) {
-    const res = await fetch(`${API_BASE}/stresse/stop`, {
+    const res = await apiFetch(`${API_BASE}/stresse/stop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ id })
@@ -175,7 +184,7 @@ export const apiClient = {
   },
 
   async stopAttacks(ids) {
-    const res = await fetch(`${API_BASE}/stresse/stop/bulk`, {
+    const res = await apiFetch(`${API_BASE}/stresse/stop/bulk`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ ids })
@@ -208,7 +217,7 @@ export const apiClient = {
 
   // Tools
   async checkHost(host, type = 'ping') {
-    const res = await fetch(`${API_BASE}/check-host?host=${encodeURIComponent(host)}&type=${type}`, {
+    const res = await apiFetch(`${API_BASE}/check-host?host=${encodeURIComponent(host)}&type=${type}`, {
       headers: getHeaders()
     });
     const data = await handleResponse(res);
@@ -216,19 +225,10 @@ export const apiClient = {
   },
 
   async getPingPe(host) {
-    const res = await fetch(`${API_BASE}/ping-pe?host=${encodeURIComponent(host)}`, {
+    const res = await apiFetch(`${API_BASE}/ping-pe?host=${encodeURIComponent(host)}`, {
       headers: getHeaders()
     });
     const data = await handleResponse(res);
     return { ...data, type: 'ping-pe' };
-  },
-
-  async searchFofa(query, email, key, size = 10) {
-    const res = await fetch(
-      `${API_BASE}/fofa?query=${encodeURIComponent(query)}&email=${encodeURIComponent(email)}&key=${encodeURIComponent(key)}&size=${size}`,
-      { headers: getHeaders() }
-    );
-    const data = await handleResponse(res);
-    return { ...data, type: 'fofa' };
   }
 };

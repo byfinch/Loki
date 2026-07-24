@@ -1,40 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const LoopManager = () => {
   const { state, setLoops, removeLoop, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState(new Set());
   const [copiedKey, setCopiedKey] = useState(null);
-
-  const fallbackCopyTextToClipboard = (text) => {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-9999px';
-    textArea.style.top = '0';
-    textArea.setAttribute('readonly', '');
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-      const successful = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      return successful;
-    } catch (err) {
-      document.body.removeChild(textArea);
-      return false;
-    }
-  };
-
-  const copyTextToClipboard = async (text) => {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    return fallbackCopyTextToClipboard(text);
-  };
 
   const refreshLoops = async () => {
     try {
@@ -44,15 +17,17 @@ const LoopManager = () => {
         map[loop.loopId] = loop;
       });
       setLoops(map);
+      return data;
     } catch (err) {
       addLog(`Loop listesi alınamadı: ${err.message}`);
+      return null;
     }
   };
 
   useEffect(() => {
     if (!state.isAuthenticated) return;
     refreshLoops();
-    const interval = setInterval(refreshLoops, 1000);
+    const interval = setInterval(refreshLoops, 3000);
     return () => clearInterval(interval);
   }, [state.isAuthenticated]);
 
@@ -115,6 +90,7 @@ const LoopManager = () => {
         removeLoop(loopId);
         addLog(`Loop durduruldu: ${loopId}`);
       });
+      setLoading(false);
     } catch (err) {
       addLog(`Loop durdurma hatası: ${err.message}`);
       setLoading(false);
@@ -125,20 +101,28 @@ const LoopManager = () => {
     setLoading('__ALL__');
     try {
       await apiClient.stopLoop();
-      await refreshLoops();
-      addLog('Tüm looplar durduruldu');
+      const data = await refreshLoops();
+      const remainingIds = new Set((data?.loops || []).map((loop) => loop.loopId));
+
+      if (remainingIds.size === 0) {
+        addLog('Tüm looplar durduruldu');
+      } else {
+        addLog(`Kısmi sonuç: ${remainingIds.size} loop hâlâ aktif`);
+        showToast(`${remainingIds.size} loop durdurulamadı, hâlâ aktif`, 'warning');
+      }
+
+      // Sadece backend'de artik bulunmayan loop'lari state'ten animasyonla kaldir
+      const stoppedIds = Object.keys(state.activeLoops).filter((loopId) => !remainingIds.has(loopId));
+      stoppedIds.forEach((loopId) => setRemoving((prev) => new Set(prev).add(loopId)));
+      setTimeout(() => {
+        setRemoving(new Set());
+      }, 400);
     } catch (err) {
+      // Hata durumunda local state'e dokunma; backend gercegi bir sonraki refresh'te gelir
       addLog(`Loop durdurma hatası: ${err.message}`);
-    }
-    // Backend cevabi ne olursa olsun frontend state'i temizle,
-    // cunku backend /loop/stop loopId verilmediginde tum loop'lari kapatir.
-    const allIds = Object.keys(state.activeLoops);
-    allIds.forEach((loopId) => setRemoving((prev) => new Set(prev).add(loopId)));
-    setTimeout(() => {
-      setLoops({});
-      setRemoving(new Set());
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
   const loops = Object.entries(state.activeLoops);

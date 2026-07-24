@@ -1,53 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
-
-const USE_MOCK_HISTORY = false; // Lokal test icin true, deploy oncesi false yap
-
-const MOCK_HISTORY = [
-  {
-    historyId: 'hist_mock_001',
-    username: 'testuser',
-    target: '1.1.1.1',
-    port: 53,
-    method: 'DNS',
-    time: 120,
-    concurrents: 5,
-    loop: false,
-    status: 'completed',
-    startedAt: new Date(Date.now() - 120000).toISOString(),
-    endedAt: new Date().toISOString(),
-    attackIds: ['atk_001']
-  },
-  {
-    historyId: 'hist_mock_002',
-    username: 'testuser',
-    target: 'example.com',
-    port: 443,
-    method: 'HTTP-TEMPESTA',
-    time: 300,
-    concurrents: 10,
-    loop: true,
-    status: 'active',
-    startedAt: new Date(Date.now() - 60000).toISOString(),
-    endedAt: null,
-    attackIds: ['atk_loop_001']
-  },
-  {
-    historyId: 'hist_mock_003',
-    username: 'testuser',
-    target: '8.8.8.8',
-    port: 80,
-    method: 'HOME',
-    time: 60,
-    concurrents: 1,
-    loop: false,
-    status: 'stopped',
-    startedAt: new Date(Date.now() - 180000).toISOString(),
-    endedAt: new Date(Date.now() - 150000).toISOString(),
-    attackIds: ['atk_002']
-  }
-];
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const AttackHistory = () => {
   const { state, setAttackHistory, addLog, showToast } = useStressTest();
@@ -60,11 +14,6 @@ const AttackHistory = () => {
 
   useEffect(() => {
     if (!state.isAuthenticated) return;
-
-    if (USE_MOCK_HISTORY) {
-      setAttackHistory(MOCK_HISTORY);
-      return;
-    }
 
     const username = apiClient.getUsername();
     if (!username) return;
@@ -114,33 +63,6 @@ const AttackHistory = () => {
     setCurrentPage(1);
   }, [filter, searchQuery]);
 
-  const fallbackCopy = (text) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    ta.setAttribute('readonly', '');
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return true;
-    } catch {
-      document.body.removeChild(ta);
-      return false;
-    }
-  };
-
-  const copyToClipboard = async (text) => {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    return fallbackCopy(text);
-  };
-
   const L7_METHODS = ['CLOUDFLARE', 'HTTP-TEMPESTA', 'BROWSER', 'BYPASS', 'PPS', 'HTTP-RAWPACKET', 'HTTP-SOCKETS'];
 
   const formatTargetForDisplay = (target, layer, method) => {
@@ -172,7 +94,7 @@ const AttackHistory = () => {
   const handleCopyTarget = async (target, key, layer, method) => {
     const copyTarget = formatTargetForDisplay(target, layer, method);
     try {
-      const ok = await copyToClipboard(copyTarget);
+      const ok = await copyTextToClipboard(copyTarget);
       if (ok) {
         setCopiedKey(key);
         addLog(`Hedef kopyalandı: ${copyTarget}`);
@@ -366,7 +288,7 @@ const AttackHistory = () => {
               ))}
               {Array.from({ length: Math.max(0, itemsPerPage - paginatedRecords.length) }).map((_, idx) => (
                 <tr key={`empty-${idx}`} className="border-b border-white/5 h-12">
-                  <td className="px-2 py-3" colSpan="9"></td>
+                  <td className="px-2 py-3" colSpan={9}></td>
                 </tr>
               ))}
             </tbody>

@@ -17,8 +17,9 @@ const PlanInfo = () => {
           apiClient.getPlan(username)
         ]);
 
-        setPlan({ ...planData, ...userData });
-        addLog(`Plan yüklendi: ${planData.name}`);
+        // Plan alanlari user alanlarini ezsin; user verisi sadece planda olmayan alanlari doldurur
+        setPlan({ ...userData, ...planData });
+        addLog(`Plan yüklendi: ${planData?.name || 'Bilinmiyor'}`);
       } catch (err) {
         addLog(`Plan yüklenemedi: ${err.message}`);
       } finally {
