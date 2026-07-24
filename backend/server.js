@@ -13,6 +13,9 @@ const net = require('net');
 const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
+const { sendTelegram, initTelegram } = require('./telegram');
+
+initTelegram();
 
 // Node 20'nin "Happy Eyeballs" (autoSelectFamily) ozelligi, IPv6'si bozuk/eksik
 // sunucularda IPv6 denemesi sirasinda "read ECONNRESET" hatasina yol aciyor.
@@ -465,6 +468,31 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   };
 }
 
+// Telegram: saldiri slot takibi. Sadece 1->0 gecisinde ve hic calisan loop
+// yokken bir kez bildirim gonderir (loop turlari arasinda slot gecici olarak
+// 0 gorunebilir, bu durumda bildirim atilmaz).
+let lastAttackCount = 0;
+
+function checkSlotsEmpty() {
+  const count = Object.keys(activeAttacks).length;
+  const hadAttacks = lastAttackCount > 0;
+  lastAttackCount = count;
+  if (count !== 0 || !hadAttacks) return;
+  const anyLoopRunning = Object.values(activeLoops).some((l) => l.running);
+  if (anyLoopRunning) return;
+  sendTelegram('[Loki] Aktif saldiri kalmadi. Tum slotlar bos.').catch(() => {});
+}
+
+// Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
+// action: 'durduruldu' (manuel stop) veya 'tamamlandi' (dogal bitis).
+function notifyLoopRemoved(loop, action) {
+  if (!loop) return;
+  const target = loop.displayTarget || `${loop.params?.host}:${loop.params?.port}`;
+  const method = (loop.params?.method || 'BILINMIYOR').toUpperCase();
+  const username = sessions[loop.sessionId]?.username || 'bilinmiyor';
+  sendTelegram(`[Loki] Loop ${action}: ${target} (${method}) - kullanici: ${username}`).catch(() => {});
+}
+
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1) {
   if (!attackId || !sessionId) return;
   activeAttacks[attackId] = {
@@ -481,6 +509,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + (parseInt(params.time) || 0) * 1000).toISOString()
   };
+  lastAttackCount = Object.keys(activeAttacks).length;
   saveState();
 }
 
@@ -488,6 +517,7 @@ function unregisterAttack(attackId) {
   if (!attackId) return;
   delete activeAttacks[attackId];
   saveState();
+  checkSlotsEmpty();
 }
 
 function cleanupExpiredAttacks() {
@@ -549,6 +579,7 @@ function cleanupExpiredAttacks() {
 
   if (removed > 0) {
     console.log(`[cleanup] Removed ${removed} expired attack(s)`);
+    checkSlotsEmpty();
   }
 }
 
@@ -1523,6 +1554,9 @@ function cleanupLoop(loopId) {
   delete activeLoops[loopId];
   saveState();
   console.log(`[loop ${loopId}] temizlendi (${removed} pending kayit silindi)`);
+  // Loop dogal olarak bitti (round'lar tamamlandi), Telegram bildirimi gonder.
+  notifyLoopRemoved(finishedLoop, 'tamamlandi');
+  checkSlotsEmpty();
 }
 
 /**
@@ -1776,11 +1810,13 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     const { loopId } = req.body;
     if (!loopId) {
       // loopId verilmezse tum loop'lari durdur ve kayittan sil
+      const stoppedLoops = Object.values(activeLoops);
       Object.keys(activeLoops).forEach((key) => {
         activeLoops[key].running = false;
         delete activeLoops[key];
       });
       saveState();
+      stoppedLoops.forEach((loop) => notifyLoopRemoved(loop, 'durduruldu'));
       return res.json({ status: 'success', message: 'Tum looplar durduruldu' });
     }
 
@@ -1796,6 +1832,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
     saveState();
+    notifyLoopRemoved(loop, 'durduruldu');
     res.json({ status: 'success', message: 'Loop modu sonlandirildi; mevcut saldirilar devam ediyor', loopId });
   } catch (error) {
     handleEndpointError(res, error, 'Loop stop error');
