@@ -5,6 +5,9 @@
 
 const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 30000;
+// Login ve saldiri baslatma backend uzerinden stresse.st'e ardisik cagri yaptigi
+// icin daha uzun surebilir; bu isteklere genis timeout verilir.
+const SLOW_REQUEST_TIMEOUT_MS = 90000;
 
 function getHeaders() {
   const sessionId = localStorage.getItem('lokiSessionId');
@@ -14,12 +17,19 @@ function getHeaders() {
   };
 }
 
-function getRequestOptions(extra = {}) {
-  return { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...extra };
+function getRequestOptions(extra = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  return { signal: AbortSignal.timeout(timeoutMs), ...extra };
 }
 
-async function apiFetch(url, options = {}) {
-  return fetch(url, getRequestOptions(options));
+async function apiFetch(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  try {
+    return await fetch(url, getRequestOptions(options, timeoutMs));
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error('Sunucu yanıt vermedi (zaman aşımı). Lütfen tekrar deneyin.');
+    }
+    throw err;
+  }
 }
 
 async function handleResponse(response) {
@@ -52,7 +62,7 @@ export const apiClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
-    });
+    }, SLOW_REQUEST_TIMEOUT_MS);
     const data = await handleResponse(res);
     if (data.sessionId) {
       localStorage.setItem('lokiSessionId', data.sessionId);
@@ -120,7 +130,7 @@ export const apiClient = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
-    });
+    }, SLOW_REQUEST_TIMEOUT_MS);
     return handleResponse(res);
   },
 
