@@ -21,15 +21,13 @@ const ToolsPanel = () => {
     }
   };
 
-  const handleTargetChange = (value) => {
-    setTarget(extractDomain(value));
-  };
-
   const renderToolContent = () => {
+    // Donusum sadece link olusturulurken (submit/analyze aninda) uygulanir; yazarken input'a dokunulmaz
+    const extractedTarget = extractDomain(target);
     switch (activeTool) {
       case 'check-host': {
-        const checkHostUrl = target
-          ? `https://check-host.net/check-${checkType}?host=${encodeURIComponent(target)}`
+        const checkHostUrl = extractedTarget
+          ? `https://check-host.net/check-${checkType}?host=${encodeURIComponent(extractedTarget)}`
           : '';
         return (
           <div className="space-y-4">
@@ -40,7 +38,7 @@ const ToolsPanel = () => {
               <input
                 type="text"
                 value={target}
-                onChange={(e) => handleTargetChange(e.target.value)}
+                onChange={(e) => setTarget(e.target.value)}
                 placeholder="IP veya domain"
                 className="flex-1 bg-black border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:border-white/30 focus:outline-none"
               />
@@ -71,7 +69,7 @@ const ToolsPanel = () => {
               target="_blank"
               rel="noopener noreferrer"
               className={`block w-full text-center py-3 rounded-lg font-semibold transition ${
-                target
+                extractedTarget
                   ? 'bg-white hover:bg-gray-100 text-black'
                   : 'bg-white/20 text-gray-500 cursor-not-allowed pointer-events-none'
               }`}
@@ -83,7 +81,7 @@ const ToolsPanel = () => {
       }
 
       case 'ping-pe': {
-        const pingPeUrl = target ? `https://ping.pe/${encodeURIComponent(target)}` : '';
+        const pingPeUrl = extractedTarget ? `https://ping.pe/${encodeURIComponent(extractedTarget)}` : '';
         return (
           <div className="space-y-4">
             <p className="text-gray-400 text-sm">
@@ -92,7 +90,7 @@ const ToolsPanel = () => {
             <input
               type="text"
               value={target}
-              onChange={(e) => handleTargetChange(e.target.value)}
+              onChange={(e) => setTarget(e.target.value)}
               placeholder="IP veya domain"
               className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:border-white/30 focus:outline-none"
             />
@@ -101,7 +99,7 @@ const ToolsPanel = () => {
               target="_blank"
               rel="noopener noreferrer"
               className={`block w-full text-center py-3 rounded-lg font-semibold transition ${
-                target
+                extractedTarget
                   ? 'bg-white hover:bg-gray-100 text-black'
                   : 'bg-white/20 text-gray-500 cursor-not-allowed pointer-events-none'
               }`}

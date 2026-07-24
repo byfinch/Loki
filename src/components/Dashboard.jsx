@@ -13,9 +13,9 @@ const Dashboard = () => {
   const { state, setActiveTab, logout, addLog } = useStressTest();
 
   const handleLogout = () => {
+    addLog('Çıkış yapıldı');
     apiClient.logout();
     logout();
-    addLog('Çıkış yapıldı');
   };
 
   const tabs = [

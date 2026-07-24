@@ -36,7 +36,7 @@ function getMinTime(method, layer) {
 }
 
 const AttackForm = () => {
-  const { state, setMethods, startTest, stopTest, addLog, addLoop, removeLoop, showToast } = useStressTest();
+  const { state, setMethods, startTest, addLog, addLoop, showToast } = useStressTest();
 
   const [host, setHost] = useState('');
   const [port, setPort] = useState(53);
@@ -69,13 +69,15 @@ const AttackForm = () => {
       try {
         const data = await apiClient.getMethods();
         setMethods(data);
-        // İlk uygun (ücretsiz olmayan, layera uygun) methodu otomatik seç
-        const defaultMethod = data.find((m) => {
+        // Method her zaman secili layer'a uygun gecerli bir degere resetlensin (fallback: ilk eleman)
+        const layerMethods = data.filter((m) => {
           const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
           const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
           return isLayerMatch && !isFreeMethod;
         });
-        if (defaultMethod) setMethod(defaultMethod.method);
+        setMethod((prev) =>
+          layerMethods.some((m) => m.method === prev) ? prev : (layerMethods[0]?.method || '')
+        );
       } catch (err) {
         addLog(`Yöntemler yüklenemedi: ${err.message}`);
       }
@@ -202,9 +204,9 @@ const AttackForm = () => {
     }
 
     const normalizedHost = layer === 'L7' ? normalizeUrl(host) : normalizeHost(host);
-    const effectivePort = layer === 'L7' ? 443 : parseInt(port);
+    const effectivePort = layer === 'L7' ? 443 : parseInt(port, 10);
     // Input'tan gercek degeri dogrudan oku; state gecikmesi olursa bile dogru deger gider
-    const inputConcurrents = concurrentsRef.current ? parseInt(concurrentsRef.current.value) : parseInt(concurrents);
+    const inputConcurrents = concurrentsRef.current ? parseInt(concurrentsRef.current.value, 10) : parseInt(concurrents, 10);
     const effectiveConcurrents = Math.max(1, inputConcurrents || 1);
 
     try {
@@ -212,12 +214,12 @@ const AttackForm = () => {
         host: normalizedHost,
         port: effectivePort,
         layer,
-        time: time.toString(),
+        time: parseInt(time, 10),
         method,
         subnet: '32',
         geo: 'worldwide',
         concurrents: effectiveConcurrents,
-        interval: parseInt(loopInterval),
+        interval: parseInt(loopInterval, 10),
         infinite: loopActive
       };
 
@@ -232,12 +234,12 @@ const AttackForm = () => {
             host: normalizedHost,
             port: effectivePort,
             layer,
-            time: parseInt(time),
+            time: parseInt(time, 10),
             method,
             subnet: '32',
             geo: 'worldwide',
             concurrents: effectiveConcurrents,
-            interval: parseInt(loopInterval),
+            interval: parseInt(loopInterval, 10),
             infinite: true
           },
           startedAt: new Date().toISOString(),
@@ -316,7 +318,7 @@ const AttackForm = () => {
               min={getMinTime(method, layer)}
               max={state.plan?.MaxTime || 86400}
               value={time}
-              onChange={(e) => setTime(parseInt(e.target.value) || 0)}
+              onChange={(e) => setTime(parseInt(e.target.value, 10) || 0)}
               className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
               required
             />
@@ -332,7 +334,7 @@ const AttackForm = () => {
                 min={1}
                 max={65535}
                 value={port}
-                onChange={(e) => setPort(parseInt(e.target.value) || 0)}
+                onChange={(e) => setPort(parseInt(e.target.value, 10) || 0)}
                 className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
                 required
               />
@@ -374,7 +376,7 @@ const AttackForm = () => {
             min={1}
             max={state.plan?.Concurrents || 80}
             value={concurrents}
-            onChange={(e) => setConcurrents(parseInt(e.target.value) || 1)}
+            onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
             className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
           />
         </div>
@@ -401,7 +403,7 @@ const AttackForm = () => {
               type="number"
               min={0}
               value={loopInterval}
-              onChange={(e) => setLoopInterval(parseInt(e.target.value) || 0)}
+              onChange={(e) => setLoopInterval(parseInt(e.target.value, 10) || 0)}
               className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
               required
             />

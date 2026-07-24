@@ -4,7 +4,9 @@
  * Loki Panel state yonetimi.
  */
 
-import React, { useReducer, createContext, useContext } from 'react';
+import React, { useReducer, createContext, useContext, useMemo, useCallback, useRef, useEffect } from 'react';
+
+const MAX_LOGS = 200;
 
 const initialState = {
   status: 'idle', // idle, running, stopped
@@ -44,7 +46,7 @@ function stressTestReducer(state, action) {
     case 'ADD_LOG':
       return {
         ...state,
-        logs: [...state.logs, { message: action.payload.message, time: new Date().toISOString() }]
+        logs: [...state.logs, { message: action.payload.message, time: new Date().toISOString() }].slice(-MAX_LOGS)
       };
     case 'UPDATE_VERIFICATION':
       return {
@@ -114,65 +116,105 @@ export const StressTestContext = createContext();
 
 export const StressTestProvider = ({ children }) => {
   const [state, dispatch] = useReducer(stressTestReducer, initialState);
+  const toastTimeoutsRef = useRef(new Set());
 
-  const startTest = (attackId) => dispatch({ type: 'START_TEST', payload: { attackId } });
-  const stopTest = () => dispatch({ type: 'STOP_TEST' });
-  const addLog = (message) => dispatch({ type: 'ADD_LOG', payload: { message } });
-  const updateVerification = (data) => dispatch({ type: 'UPDATE_VERIFICATION', payload: data });
-  const setUser = (user) => dispatch({ type: 'SET_USER', payload: user });
-  const setPlan = (plan) => dispatch({ type: 'SET_PLAN', payload: plan });
-  const setMethods = (methods) => dispatch({ type: 'SET_METHODS', payload: methods });
-  const setLiveAttacks = (attacks) => dispatch({ type: 'SET_LIVE_ATTACKS', payload: attacks });
-  const setActiveTab = (tab) => dispatch({ type: 'SET_ACTIVE_TAB', payload: tab });
-  const addLoop = (loopId, loop) => dispatch({ type: 'ADD_LOOP', payload: { loopId, loop } });
-  const updateLoop = (loopId, updates) => dispatch({ type: 'UPDATE_LOOP', payload: { loopId, updates } });
-  const removeLoop = (loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } });
-  const setLoops = (loops) => dispatch({ type: 'SET_LOOPS', payload: loops });
-  const setAttackHistory = (history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history });
-  const setStopProgress = (progress) => dispatch({ type: 'SET_STOP_PROGRESS', payload: progress });
-  const setActiveStopKey = (key) => dispatch({ type: 'SET_ACTIVE_STOP_KEY', payload: key });
-  const setStopCancelled = (cancelled) => dispatch({ type: 'SET_STOP_CANCELLED', payload: cancelled });
-  const resetStopProgress = () => dispatch({ type: 'RESET_STOP_PROGRESS' });
+  const clearToastTimeouts = useCallback(() => {
+    toastTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    toastTimeoutsRef.current.clear();
+  }, []);
 
-  const showToast = (message, type = 'info', duration = 3000) => {
-    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Unmount'ta bekleyen toast zamanlayicilarini temizle
+  useEffect(() => clearToastTimeouts, [clearToastTimeouts]);
+
+  const startTest = useCallback((attackId) => dispatch({ type: 'START_TEST', payload: { attackId } }), []);
+  const stopTest = useCallback(() => dispatch({ type: 'STOP_TEST' }), []);
+  const addLog = useCallback((message) => dispatch({ type: 'ADD_LOG', payload: { message } }), []);
+  const updateVerification = useCallback((data) => dispatch({ type: 'UPDATE_VERIFICATION', payload: data }), []);
+  const setUser = useCallback((user) => dispatch({ type: 'SET_USER', payload: user }), []);
+  const setPlan = useCallback((plan) => dispatch({ type: 'SET_PLAN', payload: plan }), []);
+  const setMethods = useCallback((methods) => dispatch({ type: 'SET_METHODS', payload: methods }), []);
+  const setLiveAttacks = useCallback((attacks) => dispatch({ type: 'SET_LIVE_ATTACKS', payload: attacks }), []);
+  const setActiveTab = useCallback((tab) => dispatch({ type: 'SET_ACTIVE_TAB', payload: tab }), []);
+  const addLoop = useCallback((loopId, loop) => dispatch({ type: 'ADD_LOOP', payload: { loopId, loop } }), []);
+  const updateLoop = useCallback((loopId, updates) => dispatch({ type: 'UPDATE_LOOP', payload: { loopId, updates } }), []);
+  const removeLoop = useCallback((loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } }), []);
+  const setLoops = useCallback((loops) => dispatch({ type: 'SET_LOOPS', payload: loops }), []);
+  const setAttackHistory = useCallback((history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history }), []);
+  const setStopProgress = useCallback((progress) => dispatch({ type: 'SET_STOP_PROGRESS', payload: progress }), []);
+  const setActiveStopKey = useCallback((key) => dispatch({ type: 'SET_ACTIVE_STOP_KEY', payload: key }), []);
+  const setStopCancelled = useCallback((cancelled) => dispatch({ type: 'SET_STOP_CANCELLED', payload: cancelled }), []);
+  const resetStopProgress = useCallback(() => dispatch({ type: 'RESET_STOP_PROGRESS' }), []);
+
+  const showToast = useCallback((message, type = 'info', duration = 3000) => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     dispatch({ type: 'ADD_TOAST', payload: { id, message, type, duration } });
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      toastTimeoutsRef.current.delete(timeoutId);
       dispatch({ type: 'REMOVE_TOAST', payload: { id } });
     }, duration);
-  };
+    toastTimeoutsRef.current.add(timeoutId);
+  }, []);
 
-  const removeToast = (id) => dispatch({ type: 'REMOVE_TOAST', payload: { id } });
+  const removeToast = useCallback((id) => dispatch({ type: 'REMOVE_TOAST', payload: { id } }), []);
 
-  const logout = () => dispatch({ type: 'LOGOUT' });
+  const logout = useCallback(() => {
+    clearToastTimeouts();
+    dispatch({ type: 'LOGOUT' });
+  }, [clearToastTimeouts]);
+
+  const value = useMemo(
+    () => ({
+      state,
+      startTest,
+      stopTest,
+      addLog,
+      updateVerification,
+      setUser,
+      setPlan,
+      setMethods,
+      setLiveAttacks,
+      setActiveTab,
+      addLoop,
+      updateLoop,
+      removeLoop,
+      setLoops,
+      setAttackHistory,
+      setStopProgress,
+      setActiveStopKey,
+      setStopCancelled,
+      resetStopProgress,
+      showToast,
+      removeToast,
+      logout
+    }),
+    [
+      state,
+      startTest,
+      stopTest,
+      addLog,
+      updateVerification,
+      setUser,
+      setPlan,
+      setMethods,
+      setLiveAttacks,
+      setActiveTab,
+      addLoop,
+      updateLoop,
+      removeLoop,
+      setLoops,
+      setAttackHistory,
+      setStopProgress,
+      setActiveStopKey,
+      setStopCancelled,
+      resetStopProgress,
+      showToast,
+      removeToast,
+      logout
+    ]
+  );
 
   return (
-    <StressTestContext.Provider
-      value={{
-        state,
-        startTest,
-        stopTest,
-        addLog,
-        updateVerification,
-        setUser,
-        setPlan,
-        setMethods,
-        setLiveAttacks,
-        setActiveTab,
-        addLoop,
-        updateLoop,
-        removeLoop,
-        setLoops,
-        setAttackHistory,
-        setStopProgress,
-        setActiveStopKey,
-        setStopCancelled,
-        resetStopProgress,
-        showToast,
-        removeToast,
-        logout
-      }}
-    >
+    <StressTestContext.Provider value={value}>
       {children}
     </StressTestContext.Provider>
   );

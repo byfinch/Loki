@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const LiveAttacks = () => {
   const { state, setLiveAttacks, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
@@ -14,35 +15,6 @@ const LiveAttacks = () => {
   useEffect(() => {
     stopCancelledRef.current = state.stopCancelled || false;
   }, [state.stopCancelled]);
-
-  const fallbackCopyTextToClipboard = (text) => {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-9999px';
-    textArea.style.top = '0';
-    textArea.setAttribute('readonly', '');
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-
-    try {
-      const successful = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      return successful;
-    } catch (err) {
-      document.body.removeChild(textArea);
-      return false;
-    }
-  };
-
-  const copyTextToClipboard = async (text) => {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    return fallbackCopyTextToClipboard(text);
-  };
 
   const L7_METHODS = ['CLOUDFLARE', 'HTTP-TEMPESTA', 'BROWSER', 'BYPASS', 'PPS', 'HTTP-RAWPACKET', 'HTTP-SOCKETS'];
 
@@ -326,14 +298,23 @@ const LiveAttacks = () => {
       setServerTimeLefts(next);
     };
 
+    // SSE baglantisi acikken poll yapma; poll sadece fallback olarak calisir
+    let sseConnected = false;
+    // Ardiciik hatalarda log/toast spam'ini onle; basari durumunda sifirlanir
+    let pollErrorLogged = false;
+
     const poll = async () => {
+      if (sseConnected) return;
       try {
         const data = await apiClient.getOngoing(username);
         const attacks = Array.isArray(data) ? data : [];
         setLiveAttacks(attacks);
         updateTimeLefts(attacks);
         setLastUpdate(new Date());
+        pollErrorLogged = false;
       } catch (err) {
+        if (pollErrorLogged) return;
+        pollErrorLogged = true;
         addLog(`Canlı veri alınamadı: ${err.message}`);
         // Oturum hatası varsa kullanıcıyı bilgilendir
         if (err.message?.includes('401') || err.message?.toLowerCase().includes('session')) {
@@ -350,14 +331,23 @@ const LiveAttacks = () => {
       eventSource = apiClient.connectLiveStream(
         username,
         (data) => {
+          sseConnected = true;
           if (data.ongoing) {
             setLiveAttacks(data.ongoing);
             updateTimeLefts(data.ongoing);
           }
           if (data.user) addLog(`Canlı güncelleme alındı`);
         },
-        () => {}
+        () => {
+          // Baglanti koptu; EventSource yeniden baglanana kadar poll devreye girer
+          sseConnected = false;
+        }
       );
+      if (eventSource) {
+        eventSource.onopen = () => {
+          sseConnected = true;
+        };
+      }
     } catch (err) {
       // SSE not supported or failed, polling continues
     }
@@ -455,7 +445,7 @@ const LiveAttacks = () => {
             <tbody>
               {groupedAttacks.map((attack) => {
                 const displayTarget = formatTargetForDisplay(attack.target, attack.layer, attack.method);
-                const rowKey = `${attack.target}::${attack.method}::${attack.timeLeft}`;
+                const rowKey = `${attack.target}::${attack.method}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
