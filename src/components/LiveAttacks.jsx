@@ -336,7 +336,6 @@ const LiveAttacks = () => {
             setLiveAttacks(data.ongoing);
             updateTimeLefts(data.ongoing);
           }
-          if (data.user) addLog(`Canlı güncelleme alındı`);
         },
         () => {
           // Baglanti koptu; EventSource yeniden baglanana kadar poll devreye girer

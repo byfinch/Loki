@@ -24,10 +24,16 @@ const AppContent = () => {
         setUser(user);
         addLog('Oturum geri yüklendi');
       } catch (err) {
-        apiClient.logout();
-        logout();
-        addLog('Oturum geçersiz, çıkış yapıldı');
-        showToast('Oturumunuz sonlanmış, lütfen tekrar giriş yapın', 'error');
+        if (err.status === 401 || err.status === 403) {
+          // Oturum gercekten gecersiz; temizleyip cikis yap
+          apiClient.logout();
+          logout();
+          addLog('Oturum geçersiz, çıkış yapıldı');
+          showToast('Oturumunuz sonlanmış, lütfen tekrar giriş yapın', 'error');
+        } else {
+          // Gecici ag/timeout hatasi: gecerli oturumu silme, bir sonraki acilista tekrar denenir
+          addLog('Oturum doğrulanamadı (ağ hatası), oturum korunuyor');
+        }
       }
     };
 

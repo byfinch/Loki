@@ -4,9 +4,8 @@ import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 
 const LoopManager = () => {
-  const { state, setLoops, removeLoop, addLog, showToast } = useStressTest();
+  const { state, setLoops, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
-  const [removing, setRemoving] = useState(new Set());
   const [copiedKey, setCopiedKey] = useState(null);
 
   const refreshLoops = async () => {
@@ -68,28 +67,14 @@ const LoopManager = () => {
     }
   };
 
-  const animateRemove = (loopId, onComplete) => {
-    setRemoving((prev) => new Set(prev).add(loopId));
-    setTimeout(() => {
-      onComplete();
-      setRemoving((prev) => {
-        const next = new Set(prev);
-        next.delete(loopId);
-        return next;
-      });
-    }, 400);
-  };
-
   const handleStop = async (loopId) => {
     setLoading(loopId);
     try {
       await apiClient.stopLoop(loopId);
-      // Hemen backendden yeni durumu cek ki loopun gittigi teyit edilsin
+      // Hemen backendden yeni durumu cek; refreshLoops state'i gunceller,
+      // durdurulan loop listeden duser (ayrica animateRemove/removeLoop'a gerek yok)
       await refreshLoops();
-      animateRemove(loopId, () => {
-        removeLoop(loopId);
-        addLog(`Loop durduruldu: ${loopId}`);
-      });
+      addLog(`Loop durduruldu: ${loopId}`);
       setLoading(false);
     } catch (err) {
       addLog(`Loop durdurma hatası: ${err.message}`);
@@ -110,13 +95,6 @@ const LoopManager = () => {
         addLog(`Kısmi sonuç: ${remainingIds.size} loop hâlâ aktif`);
         showToast(`${remainingIds.size} loop durdurulamadı, hâlâ aktif`, 'warning');
       }
-
-      // Sadece backend'de artik bulunmayan loop'lari state'ten animasyonla kaldir
-      const stoppedIds = Object.keys(state.activeLoops).filter((loopId) => !remainingIds.has(loopId));
-      stoppedIds.forEach((loopId) => setRemoving((prev) => new Set(prev).add(loopId)));
-      setTimeout(() => {
-        setRemoving(new Set());
-      }, 400);
     } catch (err) {
       // Hata durumunda local state'e dokunma; backend gercegi bir sonraki refresh'te gelir
       addLog(`Loop durdurma hatası: ${err.message}`);
@@ -173,7 +151,7 @@ const LoopManager = () => {
             </thead>
             <tbody>
               {loops.map(([loopId, loop]) => (
-                <tr key={loopId} className={`border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300 ${removing.has(loopId) ? 'animate-row-exit' : ''}`}>
+                <tr key={loopId} className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300">
                   <td className="px-4 py-3.5 pr-4">
                     <button
                       onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}

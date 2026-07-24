@@ -36,22 +36,10 @@ function stressTestReducer(state, action) {
         attackId: action.payload.attackId,
         logs: [...state.logs, { message: 'Test başlatılıyor...', time: new Date().toISOString() }]
       };
-    case 'STOP_TEST':
-      return {
-        ...state,
-        status: 'stopped',
-        attackId: null,
-        logs: [...state.logs, { message: 'Test durduruldu.', time: new Date().toISOString() }]
-      };
     case 'ADD_LOG':
       return {
         ...state,
         logs: [...state.logs, { message: action.payload.message, time: new Date().toISOString() }].slice(-MAX_LOGS)
-      };
-    case 'UPDATE_VERIFICATION':
-      return {
-        ...state,
-        verificationData: { ...state.verificationData, ...action.payload }
       };
     case 'SET_USER':
       return { ...state, user: action.payload, isAuthenticated: !!action.payload };
@@ -71,17 +59,6 @@ function stressTestReducer(state, action) {
           [action.payload.loopId]: {
             ...action.payload.loop,
             running: true
-          }
-        }
-      };
-    case 'UPDATE_LOOP':
-      return {
-        ...state,
-        activeLoops: {
-          ...state.activeLoops,
-          [action.payload.loopId]: {
-            ...(state.activeLoops[action.payload.loopId] || {}),
-            ...action.payload.updates
           }
         }
       };
@@ -127,16 +104,13 @@ export const StressTestProvider = ({ children }) => {
   useEffect(() => clearToastTimeouts, [clearToastTimeouts]);
 
   const startTest = useCallback((attackId) => dispatch({ type: 'START_TEST', payload: { attackId } }), []);
-  const stopTest = useCallback(() => dispatch({ type: 'STOP_TEST' }), []);
   const addLog = useCallback((message) => dispatch({ type: 'ADD_LOG', payload: { message } }), []);
-  const updateVerification = useCallback((data) => dispatch({ type: 'UPDATE_VERIFICATION', payload: data }), []);
   const setUser = useCallback((user) => dispatch({ type: 'SET_USER', payload: user }), []);
   const setPlan = useCallback((plan) => dispatch({ type: 'SET_PLAN', payload: plan }), []);
   const setMethods = useCallback((methods) => dispatch({ type: 'SET_METHODS', payload: methods }), []);
   const setLiveAttacks = useCallback((attacks) => dispatch({ type: 'SET_LIVE_ATTACKS', payload: attacks }), []);
   const setActiveTab = useCallback((tab) => dispatch({ type: 'SET_ACTIVE_TAB', payload: tab }), []);
   const addLoop = useCallback((loopId, loop) => dispatch({ type: 'ADD_LOOP', payload: { loopId, loop } }), []);
-  const updateLoop = useCallback((loopId, updates) => dispatch({ type: 'UPDATE_LOOP', payload: { loopId, updates } }), []);
   const removeLoop = useCallback((loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } }), []);
   const setLoops = useCallback((loops) => dispatch({ type: 'SET_LOOPS', payload: loops }), []);
   const setAttackHistory = useCallback((history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history }), []);
@@ -166,16 +140,13 @@ export const StressTestProvider = ({ children }) => {
     () => ({
       state,
       startTest,
-      stopTest,
       addLog,
-      updateVerification,
       setUser,
       setPlan,
       setMethods,
       setLiveAttacks,
       setActiveTab,
       addLoop,
-      updateLoop,
       removeLoop,
       setLoops,
       setAttackHistory,
@@ -190,16 +161,13 @@ export const StressTestProvider = ({ children }) => {
     [
       state,
       startTest,
-      stopTest,
       addLog,
-      updateVerification,
       setUser,
       setPlan,
       setMethods,
       setLiveAttacks,
       setActiveTab,
       addLoop,
-      updateLoop,
       removeLoop,
       setLoops,
       setAttackHistory,
