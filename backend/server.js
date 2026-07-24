@@ -13,7 +13,7 @@ const net = require('net');
 const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
-const { sendTelegram, initTelegram } = require('./telegram');
+const { sendTelegram, initTelegram, esc } = require('./telegram');
 
 initTelegram();
 
@@ -473,6 +473,11 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
 // 0 gorunebilir, bu durumda bildirim atilmaz).
 let lastAttackCount = 0;
 
+// Telegram mesajlari icin Istanbul saatiyle okunabilir zaman damgasi.
+function telegramTimestamp() {
+  return new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour12: false });
+}
+
 function checkSlotsEmpty() {
   const count = Object.keys(activeAttacks).length;
   const hadAttacks = lastAttackCount > 0;
@@ -480,7 +485,13 @@ function checkSlotsEmpty() {
   if (count !== 0 || !hadAttacks) return;
   const anyLoopRunning = Object.values(activeLoops).some((l) => l.running);
   if (anyLoopRunning) return;
-  sendTelegram('[Loki] Aktif saldiri kalmadi. Tum slotlar bos.').catch(() => {});
+  const message = [
+    '🟡 <b>LOKI — SLOT UYARISI</b>',
+    '─────────────────',
+    '⚠️ Aktif saldiri kalmadi, tum slotlar bos.',
+    `🕐 <i>${telegramTimestamp()}</i>`
+  ].join('\n');
+  sendTelegram(message).catch(() => {});
 }
 
 // Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
@@ -490,7 +501,17 @@ function notifyLoopRemoved(loop, action) {
   const target = loop.displayTarget || `${loop.params?.host}:${loop.params?.port}`;
   const method = (loop.params?.method || 'BILINMIYOR').toUpperCase();
   const username = sessions[loop.sessionId]?.username || 'bilinmiyor';
-  sendTelegram(`[Loki] Loop ${action}: ${target} (${method}) - kullanici: ${username}`).catch(() => {});
+  const isStopped = action === 'durduruldu';
+  const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
+  const message = [
+    title,
+    '─────────────────',
+    `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
+    `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
+    `👤 <b>Kullanici:</b> ${esc(username)}`,
+    `🕐 <i>${telegramTimestamp()}</i>`
+  ].join('\n');
+  sendTelegram(message).catch(() => {});
 }
 
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1) {
