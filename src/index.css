@@ -148,3 +148,52 @@ body {
     linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
   background-size: 40px 40px;
 }
+
+/* --- Login ekrani ozel efektler --- */
+
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.animate-caret-blink {
+  animation: caret-blink 1.1s step-end infinite;
+}
+
+@keyframes scanline-move {
+  0% { top: -10%; }
+  100% { top: 110%; }
+}
+
+/* Tum ekrani kaplayan ince CRT scanline dokusu */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.18) 3px,
+    rgba(0, 0, 0, 0.18) 4px
+  );
+}
+
+/* Kart uzerinde asagi dogru kayan neon tarama cizgisi */
+.scan-sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.35), transparent);
+  animation: scanline-move 6s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-caret-blink,
+  .scan-sweep {
+    animation: none;
+  }
+}
