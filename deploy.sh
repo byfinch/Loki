@@ -48,6 +48,8 @@ SERVER_IP=$(hostname -I | awk '{print $1}')
 ALLOWED="http://${SERVER_IP}:4173,http://localhost:4173,http://127.0.0.1:4173"
 # Ecosystem dosyasindaki LOKI_ALLOWED_ORIGINS degerini guncelle
 sed -i "s|LOKI_ALLOWED_ORIGINS: '.*'|LOKI_ALLOWED_ORIGINS: '${ALLOWED}'|" ecosystem.config.cjs
+# nginx root yolunu uygulama dizinine gore guncelle
+sed -i "s|root .*dist;|root ${APP_DIR}/dist;|" nginx/loki.conf
 
 echo "==> Nginx yapilandiriliyor..."
 rm -f /etc/nginx/sites-enabled/default

