@@ -134,11 +134,6 @@ const Login = () => {
             </button>
           </form>
         </div>
-
-        {/* Alt bilgi */}
-        <p className="mt-6 text-center text-[11px] font-mono text-gray-600 tracking-wider select-none">
-          yetkisiz erişim yasaktır // loki v1.0
-        </p>
       </div>
     </div>
   );

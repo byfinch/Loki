@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-const GLYPHS = '01アイウエオカキクケコサシスセソ<>/{}[]$#';
+const GLYPHS = '01ABCDEF0123456789<>/{}[]$#@';
 const FONT_SIZE = 14;
 const MAX_COLUMNS = 72;
 const FRAME_INTERVAL = 66; // ms — ~15fps yeterli, CPU dostu
@@ -25,6 +25,7 @@ const MatrixRain = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
     let drops = [];
+    let spacing = FONT_SIZE;
     let rafId = null;
     let lastFrame = 0;
 
@@ -37,6 +38,8 @@ const MatrixRain = () => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const columns = Math.min(Math.floor(w / FONT_SIZE), MAX_COLUMNS);
+      // Sütunları tüm genişliğe yay — sağ taraf boş kalmasın
+      spacing = columns > 0 ? w / columns : FONT_SIZE;
       drops = Array.from({ length: columns }, () => Math.random() * -50);
 
       // Arkaplanı sıfırla
@@ -56,7 +59,7 @@ const MatrixRain = () => {
 
       for (let i = 0; i < drops.length; i += 1) {
         const char = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-        const x = i * FONT_SIZE;
+        const x = i * spacing;
         const y = drops[i] * FONT_SIZE;
 
         // Baş karakter parlak, cyan arada
