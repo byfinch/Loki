@@ -488,7 +488,7 @@ function checkSlotsEmpty() {
   const message = [
     '🟡 <b>LOKI — SLOT UYARISI</b>',
     '─────────────────',
-    '⚠️ Aktif saldiri kalmadi, tum slotlar bos.',
+    '⚠️ Aktif saldırı kalmadı, tüm slotlar boş.',
     `🕐 <i>${telegramTimestamp()}</i>`
   ].join('\n');
   sendTelegram(message).catch(() => {});
@@ -499,7 +499,7 @@ function checkSlotsEmpty() {
 function notifyLoopRemoved(loop, action) {
   if (!loop) return;
   const target = loop.displayTarget || `${loop.params?.host}:${loop.params?.port}`;
-  const method = (loop.params?.method || 'BILINMIYOR').toUpperCase();
+  const method = (loop.params?.method || 'BİLİNMİYOR').toUpperCase();
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
   const message = [
