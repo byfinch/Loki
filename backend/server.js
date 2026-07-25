@@ -1687,11 +1687,12 @@ app.post('/api/stresse/stop', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
 
-    // Eger durdurulan saldiri bir loop'a aitse, sadece o saldiriyi loop'un
-    // round listesinden cikar; loop kendi intervaliyle devam etsin.
+    // Durdurulan saldiri hangi loop'a ait tespit et ve round listesinden cikar.
+    let affectedLoopKey = null;
     Object.keys(activeLoops).forEach((key) => {
       const loop = activeLoops[key];
       if (loop?.roundAttackIds?.includes(id)) {
+        affectedLoopKey = key;
         loop.roundAttackIds = loop.roundAttackIds.filter((attackId) => attackId !== id);
         console.log(`[stop] Loop roundundan attack ${id} cikarildi: ${key}`);
       }
@@ -1708,8 +1709,19 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     // Durdurulan saldiriyi kayittan sil
     const attackRecord = activeAttacks[id];
-    const loopIdOfAttack = attackRecord?.loopId;
+    const loopIdOfAttack = attackRecord?.loopId || affectedLoopKey;
     unregisterAttack(id);
+
+    // Loop'a ait saldiri manuel durdurulduysa loop'u da durdur; aksi halde
+    // loop sonraki turda ayni hedefi yeniden baslatir ve satir panele geri gelir.
+    if (loopIdOfAttack && activeLoops[loopIdOfAttack]?.running) {
+      const stoppedLoop = activeLoops[loopIdOfAttack];
+      stoppedLoop.running = false;
+      delete activeLoops[loopIdOfAttack];
+      saveState();
+      console.log(`[stop] Loop'a ait saldiri durduruldugu icin loop da durduruldu: ${loopIdOfAttack}`);
+      notifyLoopRemoved(stoppedLoop, 'durduruldu');
+    }
 
     // History durumunu guncelle
     const history = findActiveHistoryByAttackId(id);
@@ -1765,6 +1777,17 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
     const results = [];
     const totalBatches = Math.ceil(ids.length / size);
 
+    // Her ID'nin ait oldugu loop'u onceden tespit et (round listesi veya kayit).
+    // Batch dongusunde round listeleri temizlendigi icin once bakmak gerek.
+    const affectedLoopKeys = new Set();
+    ids.forEach((id) => {
+      Object.keys(activeLoops).forEach((key) => {
+        const loop = activeLoops[key];
+        if (loop?.roundAttackIds?.includes(id)) affectedLoopKeys.add(key);
+      });
+      if (activeAttacks[id]?.loopId) affectedLoopKeys.add(activeAttacks[id].loopId);
+    });
+
     const stopSingle = async (id) => {
       try {
         const response = await stopAttackApi(apiClient, session.apiToken, id);
@@ -1813,6 +1836,21 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       }
     }
 
+    // Loop'a ait saldirilar manuel durdurulduysa ilgili loop'lari da durdur;
+    // aksi halde loop sonraki turda ayni hedefleri yeniden baslatir ve
+    // satirlar panele geri gelir. Loop'lar, asagidaki unregister/history
+    // akisindan once durdurulur ki loop history'leri 'stopped' isaretlenebilsin.
+    affectedLoopKeys.forEach((key) => {
+      const loop = activeLoops[key];
+      if (loop?.running) {
+        loop.running = false;
+        delete activeLoops[key];
+        console.log(`[stop/bulk] Loop'a ait saldiri durduruldugu icin loop da durduruldu: ${key}`);
+        notifyLoopRemoved(loop, 'durduruldu');
+      }
+    });
+    saveState();
+
     // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle.
     const stoppedLoopIds = new Set();
     ids.forEach((id) => {
@@ -1830,7 +1868,8 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
 
     // Loop modu sonlandirilmis ve kullanici o loop'un saldirilarini tek tek
     // veya toplu durdurursa, loop history'sini durduruldu olarak isaretle.
-    stoppedLoopIds.forEach((loopId) => {
+    // affectedLoopKeys: kayitta olmayan ID'ler uzerinden etkilenen loop'lari da kapsar.
+    new Set([...stoppedLoopIds, ...affectedLoopKeys]).forEach((loopId) => {
       const loopHistoryId = `hist_loop_${loopId}`;
       if (attackHistory[loopHistoryId] && attackHistory[loopHistoryId].status === 'active') {
         updateAttackHistoryStatus(loopHistoryId, 'stopped');
