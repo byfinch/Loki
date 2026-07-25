@@ -38,6 +38,16 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* CyberSelect acilir liste animasyonu (sadece opacity/transform) */
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-dropdown-in {
+  animation: dropdown-in 0.15s ease-out;
+}
+
 .animate-toast-fade-in {
   animation: toast-fade-in 0.3s ease-out;
 }
@@ -262,6 +272,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-caret-blink,
+  .animate-dropdown-in,
   .scan-sweep {
     animation: none;
   }
