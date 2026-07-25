@@ -117,8 +117,8 @@ const ToolsPanel = () => {
   };
 
   return (
-    <CyberCard className="p-6">
-      <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+    <CyberCard className="p-6 sm:p-8">
+      <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
         Keşif ve Doğrulama Araçları
       </h2>
 

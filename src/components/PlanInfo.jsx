@@ -33,7 +33,7 @@ const PlanInfo = () => {
 
   if (loading) {
     return (
-      <CyberCard className="p-6 animate-pulse">
+      <CyberCard className="p-6 sm:p-8 animate-pulse">
         <div className="h-4 bg-white/10 rounded w-1/3 mb-4"></div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="h-16 bg-white/5 rounded-lg"></div>
@@ -61,15 +61,15 @@ const PlanInfo = () => {
   ];
 
   return (
-    <CyberCard className="p-6">
-      <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+    <CyberCard className="p-6 sm:p-8">
+      <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
         Abonelik Bilgileri
       </h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-black/40 border border-white/5 rounded-lg p-3 hover:border-green-500/30 transition-colors duration-300 group">
+          <div key={index} className="bg-black/40 border border-white/5 rounded-lg p-4 hover:border-green-500/30 transition-colors duration-300 group">
             <p className="text-[10px] text-gray-500 uppercase tracking-wider group-hover:text-green-400 transition-colors">{stat.label}</p>
-            <p className={`font-mono font-bold mt-1 ${stat.accent}`}>{stat.value}</p>
+            <p className={`font-mono font-bold mt-1.5 ${stat.accent}`}>{stat.value}</p>
           </div>
         ))}
       </div>

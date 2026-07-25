@@ -152,9 +152,9 @@ body {
 /* --- Panel kartlari: cyber tema (Dashboard ve alt bilesenler) --- */
 
 /*
- * .cyber-card: glass-panel uzerine cyber katmani.
- * 3D derinlik; backdrop-filter preserve-3d'yi duzledigi icin
- * tilt (useTilt) + mouse'u takip eden sheen + hover golgesi ile simule edilir.
+ * .cyber-card: glass-panel uzerine sade cyber katmani.
+ * Cok yavas akan ince gradient border + yumusak golge;
+ * hover'da sadece border/glow hafifce guclenir (tilt yok, bracket yok).
  */
 .cyber-card {
   position: relative;
@@ -163,14 +163,12 @@ body {
 }
 
 .cyber-card:hover {
-  will-change: transform;
   box-shadow:
-    0 18px 45px rgba(0, 0, 0, 0.55),
-    0 0 22px rgba(0, 255, 65, 0.12),
-    inset 0 0 14px rgba(0, 255, 65, 0.04);
+    0 14px 40px rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(0, 255, 65, 0.08);
 }
 
-/* Akan neon gradient border — login kartindaki .neon-border ile uyumlu, daha hafif */
+/* Cok yavas akan neon gradient border — login kartindaki .neon-border ile uyumlu, daha subtle */
 .cyber-card::before {
   content: '';
   position: absolute;
@@ -179,77 +177,31 @@ body {
   padding: 1px;
   background: linear-gradient(135deg, #00ff41, #00d4ff, #00ff41);
   background-size: 300% 300%;
-  animation: border-flow 6s ease infinite;
+  animation: border-flow 10s ease infinite;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  opacity: 0.22;
-  transition: opacity 0.35s ease;
+  opacity: 0.14;
+  transition: opacity 0.4s ease;
   z-index: 2;
 }
 
 .cyber-card:hover::before {
-  opacity: 0.65;
+  opacity: 0.35;
 }
 
-/* Kose bracket'lari (yesil/cyan ince centikler) — hover'da iceri kayar ve parlaklasir */
-.cyber-card::after {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  pointer-events: none;
-  opacity: 0.45;
-  transition: inset 0.35s ease, opacity 0.35s ease;
-  background:
-    linear-gradient(#00ff41, #00ff41) left top / 14px 1.5px,
-    linear-gradient(#00ff41, #00ff41) left top / 1.5px 14px,
-    linear-gradient(#00d4ff, #00d4ff) right top / 14px 1.5px,
-    linear-gradient(#00d4ff, #00d4ff) right top / 1.5px 14px,
-    linear-gradient(#00d4ff, #00d4ff) left bottom / 14px 1.5px,
-    linear-gradient(#00d4ff, #00d4ff) left bottom / 1.5px 14px,
-    linear-gradient(#00ff41, #00ff41) right bottom / 14px 1.5px,
-    linear-gradient(#00ff41, #00ff41) right bottom / 1.5px 14px;
-  background-repeat: no-repeat;
-  z-index: 2;
-}
-
-.cyber-card:hover::after {
-  inset: 8px;
-  opacity: 0.9;
-}
-
-/* Mouse'u takip eden isik yansimasi — --mx/--my degiskenlerini useTilt yazar */
-.cyber-card-sheen {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  background: radial-gradient(
-    420px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(0, 255, 65, 0.09),
-    rgba(0, 212, 255, 0.04) 45%,
-    transparent 70%
-  );
-  z-index: 1;
-}
-
-.cyber-card:hover .cyber-card-sheen {
-  opacity: 1;
-}
-
-/* Kart icindeki tarama cizgisi sadece hover'da gorunur ve calisir */
+/* Kart icindeki tarama cizgisi: cok silik, sadece hover'da gorunur ve calisir */
 .cyber-card .scan-sweep {
   opacity: 0;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.4s ease;
   animation-play-state: paused;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.18), transparent);
   z-index: 1;
 }
 
 .cyber-card:hover .scan-sweep {
-  opacity: 1;
+  opacity: 0.7;
   animation-play-state: running;
 }
 
@@ -263,7 +215,7 @@ body {
 }
 
 .cyber-table tbody tr:hover td:first-child {
-  box-shadow: inset 2px 0 0 0 rgba(0, 255, 65, 0.5);
+  box-shadow: inset 2px 0 0 0 rgba(0, 255, 65, 0.4);
 }
 
 /* --- Login ekrani ozel efektler --- */
@@ -314,20 +266,15 @@ body {
     animation: none;
   }
 
-  /* Panel kartlarinda tum hareket kapali (tilt zaten useTilt icinde devre disi) */
+  /* Panel kartlarinda tum hareket kapali */
   .cyber-card::before {
     animation: none;
   }
 
   .cyber-card,
   .cyber-card::before,
-  .cyber-card::after,
-  .cyber-card-sheen,
+  .cyber-card .scan-sweep,
   .cyber-table tbody td {
     transition: none;
-  }
-
-  .cyber-card:hover {
-    will-change: auto;
   }
 }
