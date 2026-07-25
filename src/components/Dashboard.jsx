@@ -14,25 +14,35 @@ const Dashboard = () => {
   // Plan verisi AttackForm'daki limit kontrolleri icin gerekli (eskiden PlanInfo yuklerdi)
   useEffect(() => {
     const loadPlan = async () => {
-      try {
-        const username = apiClient.getUsername();
-        if (!username) return;
+      const username = apiClient.getUsername();
+      if (!username) return;
 
-        const [userData, planData] = await Promise.all([
-          apiClient.getUser(username),
-          apiClient.getPlan(username)
-        ]);
-
-        // Plan alanlari user alanlarini ezsin; user verisi sadece planda olmayan alanlari doldurur
-        setPlan({ ...userData, ...planData });
-        addLog(`Plan yüklendi: ${planData?.name || 'Bilinmiyor'}`);
-      } catch (err) {
-        addLog(`Plan yüklenemedi: ${err.message}`);
+      // Upstream gecici yavaslayabilir; birkac kez dene, olmazsa formu kilitsiz birak
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const [userData, planData] = await Promise.all([
+            apiClient.getUser(username),
+            apiClient.getPlan(username)
+          ]);
+          // Plan alanlari user alanlarini ezsin; user verisi sadece planda olmayan alanlari doldurur
+          setPlan({ ...userData, ...planData });
+          addLog(`Plan yüklendi: ${planData?.name || 'Bilinmiyor'}`);
+          return;
+        } catch (err) {
+          addLog(`Plan yüklenemedi (deneme ${attempt}/${maxAttempts}): ${err.message}`);
+          if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 4000));
+        }
       }
+
+      // Backend checkPlanLimits ile gercek limitleri zaten uyguluyor;
+      // plan alinamadi diye form sonsuza kadar kilitli kalmasin.
+      setPlan({ name: 'Bilinmiyor', fallback: true });
+      addLog('Plan alınamadı; form açık bırakıldı, limitler sunucuda uygulanacak');
     };
 
     if (state.isAuthenticated) loadPlan();
-  }, [state.isAuthenticated]);
+  }, [state.isAuthenticated, setPlan, addLog]);
 
   const handleLogout = () => {
     addLog('Çıkış yapıldı');
