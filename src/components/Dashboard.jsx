@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
-import PlanInfo from './PlanInfo';
 import AttackForm from './AttackForm';
 import LiveAttacks from './LiveAttacks';
 import ToolsPanel from './ToolsPanel';
@@ -10,7 +9,30 @@ import AttackHistory from './AttackHistory';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
-  const { state, setActiveTab, logout, addLog } = useStressTest();
+  const { state, setActiveTab, logout, addLog, setPlan } = useStressTest();
+
+  // Plan verisi AttackForm'daki limit kontrolleri icin gerekli (eskiden PlanInfo yuklerdi)
+  useEffect(() => {
+    const loadPlan = async () => {
+      try {
+        const username = apiClient.getUsername();
+        if (!username) return;
+
+        const [userData, planData] = await Promise.all([
+          apiClient.getUser(username),
+          apiClient.getPlan(username)
+        ]);
+
+        // Plan alanlari user alanlarini ezsin; user verisi sadece planda olmayan alanlari doldurur
+        setPlan({ ...userData, ...planData });
+        addLog(`Plan yüklendi: ${planData?.name || 'Bilinmiyor'}`);
+      } catch (err) {
+        addLog(`Plan yüklenemedi: ${err.message}`);
+      }
+    };
+
+    if (state.isAuthenticated) loadPlan();
+  }, [state.isAuthenticated]);
 
   const handleLogout = () => {
     addLog('Çıkış yapıldı');
@@ -63,10 +85,8 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="pt-8 pb-12 px-6 md:pl-20 max-w-7xl mx-auto">
-        <PlanInfo />
-
         {/* Mobile Tabs */}
-        <div className="md:hidden flex gap-2 mt-6 mb-6 overflow-x-auto pb-2">
+        <div className="md:hidden flex gap-2 overflow-x-auto pb-2">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -82,10 +102,15 @@ const Dashboard = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.35fr] items-start gap-8 mt-8">
+        {/* Tablo kartlari (LiveAttacks, LoopManager, AttackHistory) tum sutunlari
+            yatay scroll olmadan gosterebilsin diye dikey stack + tam genislik;
+            form/arac kartlari kompakt kalir */}
+        <div className="flex flex-col gap-8 mt-8">
           {state.activeTab === 'attack' && (
             <>
-              <AttackForm />
+              <div className="w-full max-w-2xl">
+                <AttackForm />
+              </div>
               <LiveAttacks />
             </>
           )}
@@ -96,7 +121,9 @@ const Dashboard = () => {
 
           {state.activeTab === 'tools' && (
             <>
-              <ToolsPanel />
+              <div className="w-full max-w-2xl">
+                <ToolsPanel />
+              </div>
               <LiveAttacks />
             </>
           )}
