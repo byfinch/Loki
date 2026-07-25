@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import CyberCard from './CyberCard';
 
 const LiveAttacks = () => {
   const { state, setLiveAttacks, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
@@ -376,7 +377,7 @@ const LiveAttacks = () => {
   }, [state.isAuthenticated]);
 
   return (
-    <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
+    <CyberCard className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           Aktif Saldırılar
@@ -431,7 +432,7 @@ const LiveAttacks = () => {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="cyber-table w-full text-sm">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
                 <th className="pb-3 font-medium w-auto pl-3">Hedef</th>
@@ -526,7 +527,7 @@ const LiveAttacks = () => {
           </table>
         </div>
       )}
-    </div>
+    </CyberCard>
   );
 };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
+import CyberCard from './CyberCard';
 
 const PlanInfo = () => {
   const { state, setPlan, addLog } = useStressTest();
@@ -32,7 +33,7 @@ const PlanInfo = () => {
 
   if (loading) {
     return (
-      <div className="glass-panel rounded-xl p-6 animate-pulse">
+      <CyberCard className="p-6 animate-pulse">
         <div className="h-4 bg-white/10 rounded w-1/3 mb-4"></div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="h-16 bg-white/5 rounded-lg"></div>
@@ -40,7 +41,7 @@ const PlanInfo = () => {
           <div className="h-16 bg-white/5 rounded-lg"></div>
           <div className="h-16 bg-white/5 rounded-lg"></div>
         </div>
-      </div>
+      </CyberCard>
     );
   }
 
@@ -60,7 +61,7 @@ const PlanInfo = () => {
   ];
 
   return (
-    <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
+    <CyberCard className="p-6">
       <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
         Abonelik Bilgileri
       </h2>
@@ -72,7 +73,7 @@ const PlanInfo = () => {
           </div>
         ))}
       </div>
-    </div>
+    </CyberCard>
   );
 };
 

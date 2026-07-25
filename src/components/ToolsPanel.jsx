@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import CyberCard from './CyberCard';
 
 const ToolsPanel = () => {
   const [activeTool, setActiveTool] = useState('check-host');
@@ -116,7 +117,7 @@ const ToolsPanel = () => {
   };
 
   return (
-    <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
+    <CyberCard className="p-6">
       <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
         Keşif ve Doğrulama Araçları
       </h2>
@@ -141,7 +142,7 @@ const ToolsPanel = () => {
       </div>
 
       {renderToolContent()}
-    </div>
+    </CyberCard>
   );
 };
 

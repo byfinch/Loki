@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import CyberCard from './CyberCard';
 
 const LoopManager = () => {
   const { state, setLoops, addLog, showToast } = useStressTest();
@@ -106,7 +107,7 @@ const LoopManager = () => {
   const loops = Object.entries(state.activeLoops);
 
   return (
-    <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300">
+    <CyberCard className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           Aktif Looplar
@@ -137,7 +138,7 @@ const LoopManager = () => {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-2 px-2">
-          <table className="w-full min-w-[800px] text-sm border-separate border-spacing-y-1">
+          <table className="cyber-table w-full min-w-[800px] text-sm border-separate border-spacing-y-1">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
                 <th className="px-4 py-3 font-medium min-w-[260px]">Hedef</th>
@@ -203,7 +204,7 @@ const LoopManager = () => {
           </table>
         </div>
       )}
-    </div>
+    </CyberCard>
   );
 };
 
