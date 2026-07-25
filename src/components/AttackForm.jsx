@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import CyberCard from './CyberCard';
+import CyberSelect from './CyberSelect';
 
 function normalizeHost(host) {
   if (!host || typeof host !== 'string') return host;
@@ -366,28 +367,17 @@ const AttackForm = () => {
 
         <div>
           <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Yöntem</label>
-          <div className="relative">
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 pr-8 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition appearance-none"
-              required
-            >
-              {filteredMethods.map((m) => (
-                <option key={m.method} value={m.method}>
-                  {m.method} - {m.description}
-                </option>
-              ))}
-            </select>
-            <svg
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+          <CyberSelect
+            value={method}
+            onChange={setMethod}
+            options={filteredMethods.map((m) => ({
+              value: m.method,
+              label: m.method,
+              description: m.description
+            }))}
+            placeholder="Yöntem seç"
+            emptyPlaceholder="Yöntemler yükleniyor..."
+          />
         </div>
 
         <div>
