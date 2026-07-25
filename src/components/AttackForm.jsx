@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
+import CyberCard from './CyberCard';
 
 function normalizeHost(host) {
   if (!host || typeof host !== 'string') return host;
@@ -292,7 +293,7 @@ const AttackForm = () => {
   };
 
   return (
-    <div className="glass-panel rounded-xl p-4 hover-glow transition-all duration-300">
+    <CyberCard className="p-4">
       <div className="inline-flex gap-1 p-1 bg-black/40 border border-white/10 rounded-lg mb-4">
         {['L4', 'L7'].map((tab) => (
           <button
@@ -439,7 +440,7 @@ const AttackForm = () => {
                 : 'Saldırı Başlat'}
         </button>
       </form>
-    </div>
+    </CyberCard>
   );
 };
 

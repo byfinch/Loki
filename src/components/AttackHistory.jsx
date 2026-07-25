@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import CyberCard from './CyberCard';
 
 const AttackHistory = () => {
   const { state, setAttackHistory, addLog, showToast } = useStressTest();
@@ -156,7 +157,7 @@ const AttackHistory = () => {
   };
 
   return (
-    <div className="glass-panel rounded-xl p-6 hover-glow transition-all duration-300 w-full">
+    <CyberCard className="p-6 w-full">
       <div className="flex items-center gap-4 mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 whitespace-nowrap">
           Saldırı Geçmişi
@@ -212,7 +213,7 @@ const AttackHistory = () => {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-2 px-2">
-          <table className="w-full text-sm border-separate border-spacing-y-1">
+          <table className="cyber-table w-full text-sm border-separate border-spacing-y-1">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
                 <th className="px-2 py-3 font-medium">Hedef</th>
@@ -326,7 +327,7 @@ const AttackHistory = () => {
           )}
         </div>
       )}
-    </div>
+    </CyberCard>
   );
 };
 
