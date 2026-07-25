@@ -101,6 +101,25 @@ const activeLoopRounds = new Set();
 // Active normal attacks registry: { attackId: { username, host, port, method, time, startedAt, expiresAt } }
 const activeAttacks = {};
 
+// Basit upstream cache'leri: upstream yavas/hata verdiginde bayat veriyle idare et.
+// methods herkes icin ayni (global, TTL 1 saat); plan kullanici bazli (TTL 5 dk).
+const METHODS_CACHE_TTL_MS = 60 * 60 * 1000;
+const PLAN_CACHE_TTL_MS = 5 * 60 * 1000;
+const methodsCache = { data: null, fetchedAt: 0 };
+const planCache = new Map(); // username -> { data, fetchedAt }
+
+// Upstream istegini 1 kez retry'la dener: ilk deneme hata/timeout verirse
+// 2sn bekleyip ikinci denemeyi yapar. Ikinci deneme de patlarsa hata firlatir.
+async function fetchWithRetry(fn, label) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[retry] ${label} ilk deneme basarisiz (${err.message}), 2sn sonra tekrar deneniyor`);
+    await new Promise((r) => setTimeout(r, 2000));
+    return fn();
+  }
+}
+
 // Attack history registry: { historyId: { username, target, port, method, time, concurrents, loop, status, startedAt, endedAt } }
 const attackHistory = {};
 
@@ -430,18 +449,27 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   // Ongoing listesinin guncellenmesi icin kisa bekle.
   await new Promise((r) => setTimeout(r, 4000));
 
-  const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
+  // Sadece bu istekten SONRA baslamis saldirilari aday goster; aksi halde ayni
+  // host+method'a tur atan loop'larin ID'leri bu launch'a yanlislikla yazilir.
+  const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
 
-  // Onceki /ongoing'de olmayan yeni ID'leri tespit et.
-  let newIds = responseIds.filter((id) => !beforeIds.has(id));
+  // Onceki /ongoing'de olmayan ve baska bir launch/loop'a zaten kayitli olmayan
+  // yeni ID'leri tespit et.
+  let newIds = responseIds.filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
 
   // Eger response'taki ID'lerin hepsi eskiyse (tum aktifler listesi ise),
   // after - before diff'inden yeni ID'leri cikar.
   if (newIds.length === 0 && afterIds.size > beforeIds.size) {
-    newIds = [...afterIds].filter((id) => !beforeIds.has(id));
+    newIds = [...afterIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
   }
 
   console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents}`);
+
+  if (newIds.length === 0) {
+    // Mevcut akis aynen kalir (tekil /attack status:'error' doner, loop turu hata
+    // sayar); burada sadece sebebi net bir log satiriyla belirtiyoruz.
+    console.warn(`[launchAttacksGet] yeni ID dogrulanamadi (muhtemel upstream ret veya baska launch'a ait ID'ler elendi): host=${params.host} method=${params.method}`);
+  }
 
   return {
     data,
@@ -500,6 +528,9 @@ function notifyLoopRemoved(loop, action) {
 
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1, elapsedSec = 0) {
   if (!attackId || !sessionId) return;
+  // Idempotency: ayni ID baska bir launch/loop tarafindan zaten kayitliysa
+  // uzerine yazma (ortak panelde diff'ler cakisabilir).
+  if (activeAttacks[attackId]) return;
   // Kurtarma (salvage) yolunda saldiri istegi gonderileli elapsedSec gecti;
   // expiresAt'i bu kadar kisalt ki saldiri erken silinmesin/gec silinmesin.
   const remainingSec = Math.max(1, (parseInt(params.time) || 0) - (parseInt(elapsedSec) || 0));
@@ -970,9 +1001,22 @@ app.get('/api/stresse/plan/:username', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    const { username } = req.params;
     const client = getClient(sessionId);
-    const response = await client.get(`/plan/${req.params.username}`);
-    res.json(response.data);
+    try {
+      const response = await fetchWithRetry(() => client.get(`/plan/${username}`), `plan/${username}`);
+      planCache.set(username, { data: response.data, fetchedAt: Date.now() });
+      return res.json(response.data);
+    } catch (err) {
+      // Upstream iki denemede de basarisiz: cache varsa (taze veya bayat) onu dondur.
+      const cached = planCache.get(username);
+      if (cached) {
+        const stale = Date.now() - cached.fetchedAt > PLAN_CACHE_TTL_MS;
+        console.warn(`[cache] plan bayat veri servis edildi (username=${username}, yas=${Math.round((Date.now() - cached.fetchedAt) / 1000)}sn, ttlAsimi=${stale})`);
+        return res.json(cached.data);
+      }
+      throw err;
+    }
   } catch (error) {
     handleEndpointError(res, error, 'Plan fetch error');
   }
@@ -987,8 +1031,20 @@ app.get('/api/stresse/methods', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const client = getClient(sessionId);
-    const response = await client.get('/methods.json');
-    res.json(response.data);
+    try {
+      const response = await fetchWithRetry(() => client.get('/methods.json'), 'methods');
+      methodsCache.data = response.data;
+      methodsCache.fetchedAt = Date.now();
+      return res.json(response.data);
+    } catch (err) {
+      // Upstream iki denemede de basarisiz: cache varsa (taze veya bayat) onu dondur.
+      if (methodsCache.data) {
+        const stale = Date.now() - methodsCache.fetchedAt > METHODS_CACHE_TTL_MS;
+        console.warn(`[cache] methods bayat veri servis edildi (yas=${Math.round((Date.now() - methodsCache.fetchedAt) / 1000)}sn, ttlAsimi=${stale})`);
+        return res.json(methodsCache.data);
+      }
+      throw err;
+    }
   } catch (error) {
     handleEndpointError(res, error, 'Methods fetch error');
   }
@@ -2053,11 +2109,58 @@ app.get('/api/fofa', async (req, res) => {
 // LIVE ATTACK STREAM (SSE)
 // =====================
 
+// SSE hub'lari: username basina TEK upstream poller calisir, tum bagli
+// client'lara broadcast edilir. Boylece N sekme = N x 2 upstream istegi yerine
+// 3sn'de toplam 1-2 istek atilir.
+// username -> { clients: Set<res>, sessionId, timer, lastOngoing, lastUser, consecutiveErrors, tickCount }
+const liveHubs = new Map();
+
+// Tum client'lara yazar; kapali client'a yazma hatasinda o client'i set'ten dusurur.
+function liveHubBroadcast(hub, chunk) {
+  hub.clients.forEach((clientRes) => {
+    try {
+      clientRes.write(chunk);
+    } catch (err) {
+      hub.clients.delete(clientRes);
+    }
+  });
+}
+
+// Paylasimli poller tick'i: /ongoing her tick, /user sadece ilk tick ve her
+// 10. tickte cekilir. 3 ardisik hatadan sonra aralik 10sn'ye duser (backoff),
+// ilk basarida 3sn'ye doner.
+async function liveHubTick(hub, username) {
+  if (hub.clients.size === 0) return;
+  hub.tickCount += 1;
+  const fetchUser = hub.tickCount === 1 || hub.tickCount % 10 === 0;
+  try {
+    const client = getClient(hub.sessionId);
+    const requests = [client.get(`/ongoing/${username}`)];
+    if (fetchUser) requests.push(client.get(`/user/${username}`));
+    const [ongoing, user] = await Promise.all(requests);
+    hub.lastOngoing = ongoing.data;
+    if (user) hub.lastUser = user.data;
+    hub.consecutiveErrors = 0;
+    // user yoksa payload'a koyma; client'lar son user'i kullanmaya devam eder.
+    const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
+    if (user) payload.user = hub.lastUser;
+    liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
+  } catch (err) {
+    hub.consecutiveErrors += 1;
+    liveHubBroadcast(hub, `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+  }
+  if (hub.clients.size === 0) return; // close handler hub'i zaten temizledi
+  const delay = hub.consecutiveErrors >= 3 ? 10000 : 3000;
+  hub.timer = setTimeout(() => {
+    liveHubTick(hub, username).catch((err) => console.error('[liveHub] beklenmeyen tick hatasi:', err));
+  }, delay);
+}
+
 /**
  * GET /api/stresse/live/:username
- * Server-Sent Events stream of ongoing attacks
+ * Server-Sent Events stream of ongoing attacks (hub uzerinden paylasimli poller)
  */
-app.get('/api/stresse/live/:username', async (req, res) => {
+app.get('/api/stresse/live/:username', (req, res) => {
   const sessionId = req.headers['sessionid'] || req.headers['sessionId'] || req.query.sid || req.query.SID;
   const { username } = req.params;
 
@@ -2073,35 +2176,48 @@ app.get('/api/stresse/live/:username', async (req, res) => {
   // toplu/gecikmeli gelir.
   res.setHeader('X-Accel-Buffering', 'no');
 
-  let client;
   try {
-    client = getClient(sessionId);
+    getClient(sessionId);
   } catch (err) {
     res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
     return res.end();
   }
 
-  const interval = setInterval(async () => {
-    try {
-      const [ongoing, user] = await Promise.all([
-        client.get(`/ongoing/${username}`),
-        client.get(`/user/${username}`)
-      ]);
+  let hub = liveHubs.get(username);
+  if (!hub) {
+    hub = {
+      clients: new Set(),
+      sessionId,
+      timer: null,
+      lastOngoing: null,
+      lastUser: null,
+      consecutiveErrors: 0,
+      tickCount: 0
+    };
+    liveHubs.set(username, hub);
+  }
+  // Son gelen session gecerli (ortak panel: herkes herkesi izleyebilir).
+  hub.sessionId = sessionId;
+  hub.clients.add(res);
 
-      const payload = {
-        timestamp: new Date().toISOString(),
-        ongoing: ongoing.data,
-        user: user.data
-      };
-
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    } catch (err) {
-      res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
-    }
-  }, 3000);
+  if (!hub.timer) {
+    // Paylasimli poller yoksa baslat (ilk tick hemen calisir).
+    liveHubTick(hub, username).catch((err) => console.error('[liveHub] beklenmeyen tick hatasi:', err));
+  } else if (hub.lastOngoing !== null) {
+    // Yeni client'a son bilinen payload'u hemen gonder.
+    const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
+    if (hub.lastUser) payload.user = hub.lastUser;
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  }
 
   req.on('close', () => {
-    clearInterval(interval);
+    hub.clients.delete(res);
+    // Hub bosaldiysa poller'i durdur ve hub'i sil.
+    if (hub.clients.size === 0) {
+      if (hub.timer) clearTimeout(hub.timer);
+      hub.timer = null;
+      liveHubs.delete(username);
+    }
   });
 });
 
