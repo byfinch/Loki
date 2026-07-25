@@ -87,13 +87,20 @@ const AttackForm = () => {
         applyLayerMethods(state.methods);
         return;
       }
-      try {
-        const data = await apiClient.getMethods();
-        if (cancelled) return;
-        setMethods(data);
-        applyLayerMethods(data);
-      } catch (err) {
-        if (!cancelled) addLog(`Yöntemler yüklenemedi: ${err.message}`);
+      // Upstream gecici yavaslayabilir; birkac kez dene
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const data = await apiClient.getMethods();
+          if (cancelled) return;
+          setMethods(data);
+          applyLayerMethods(data);
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          addLog(`Yöntemler yüklenemedi (deneme ${attempt}/${maxAttempts}): ${err.message}`);
+          if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 4000));
+        }
       }
     };
 
