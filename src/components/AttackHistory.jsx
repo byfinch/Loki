@@ -157,8 +157,8 @@ const AttackHistory = () => {
   };
 
   return (
-    <CyberCard className="p-6 w-full">
-      <div className="flex items-center gap-4 mb-4">
+    <CyberCard className="p-6 sm:p-8 w-full">
+      <div className="flex items-center gap-4 mb-6">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 whitespace-nowrap">
           Saldırı Geçmişi
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-purple-400 font-mono">
@@ -213,27 +213,27 @@ const AttackHistory = () => {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-2 px-2">
-          <table className="cyber-table w-full text-sm border-separate border-spacing-y-1">
+          <table className="cyber-table w-full text-sm border-separate border-spacing-y-2">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="px-2 py-3 font-medium">Hedef</th>
-                <th className="px-2 py-3 font-medium text-center">Port</th>
-                <th className="px-2 py-3 font-medium">Yöntem</th>
-                <th className="px-2 py-3 font-medium text-center">Süre</th>
-                <th className="px-2 py-3 font-medium text-center">Conc.</th>
-                <th className="px-2 py-3 font-medium text-center">Tür</th>
-                <th className="px-2 py-3 font-medium text-center">Durum</th>
-                <th className="px-2 py-3 font-medium">Başlangıç</th>
-                <th className="px-2 py-3 font-medium">Bitiş</th>
+                <th className="px-3 py-3.5 font-medium">Hedef</th>
+                <th className="px-3 py-3.5 font-medium text-center">Port</th>
+                <th className="px-3 py-3.5 font-medium">Yöntem</th>
+                <th className="px-3 py-3.5 font-medium text-center">Süre</th>
+                <th className="px-3 py-3.5 font-medium text-center">Conc.</th>
+                <th className="px-3 py-3.5 font-medium text-center">Tür</th>
+                <th className="px-3 py-3.5 font-medium text-center">Durum</th>
+                <th className="px-3 py-3.5 font-medium">Başlangıç</th>
+                <th className="px-3 py-3.5 font-medium">Bitiş</th>
               </tr>
             </thead>
             <tbody>
               {paginatedRecords.map((record) => (
                 <tr
                   key={record.historyId}
-                  className="border-b border-white/5 hover:bg-white/[0.03] transition-colors h-12"
+                  className="border-b border-white/5 hover:bg-white/[0.03] transition-colors h-14"
                 >
-                  <td className="px-2 h-12 align-middle">
+                  <td className="px-3 h-14 align-middle">
                     <div className="flex items-center gap-2 h-full">
                       <span
                         title="URL'yi kopyala"
@@ -264,39 +264,39 @@ const AttackHistory = () => {
                       </button>
                     </div>
                   </td>
-                  <td className="px-2 py-3 text-gray-300 font-mono text-center text-xs">
+                  <td className="px-3 py-3.5 text-gray-300 font-mono text-center text-xs">
                     {record.port || '-'}
                   </td>
-                  <td className="px-2 py-3">
+                  <td className="px-3 py-3.5">
                     <span className="px-2 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
                       {record.method}
                     </span>
                   </td>
-                  <td className="px-2 py-3 text-gray-300 font-mono text-center text-xs">
+                  <td className="px-3 py-3.5 text-gray-300 font-mono text-center text-xs">
                     {record.time}s
                   </td>
-                  <td className="px-2 py-3 text-gray-300 font-mono text-center text-xs">
+                  <td className="px-3 py-3.5 text-gray-300 font-mono text-center text-xs">
                     x{record.concurrents}
                   </td>
-                  <td className="px-2 py-3 text-center">
+                  <td className="px-3 py-3.5 text-center">
                     <span className={`inline-flex items-center justify-center w-12 px-1 py-0.5 rounded text-xs border ${record.loop ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}`}>
                       {record.loop ? 'Loop' : 'Tek'}
                     </span>
                   </td>
-                  <td className="px-2 py-3 text-center">
+                  <td className="px-3 py-3.5 text-center">
                     {statusBadge(record.status)}
                   </td>
-                  <td className="px-2 py-3 text-gray-400 text-[11px] whitespace-nowrap">
+                  <td className="px-3 py-3.5 text-gray-400 text-[11px] whitespace-nowrap">
                     {formatDate(record.startedAt)}
                   </td>
-                  <td className="px-2 py-3 text-gray-400 text-[11px] whitespace-nowrap">
+                  <td className="px-3 py-3.5 text-gray-400 text-[11px] whitespace-nowrap">
                     {record.status === 'active' ? '-' : formatDate(record.endedAt)}
                   </td>
                 </tr>
               ))}
               {Array.from({ length: Math.max(0, itemsPerPage - paginatedRecords.length) }).map((_, idx) => (
-                <tr key={`empty-${idx}`} className="border-b border-white/5 h-12">
-                  <td className="px-2 py-3" colSpan={9}></td>
+                <tr key={`empty-${idx}`} className="border-b border-white/5 h-14">
+                  <td className="px-3 py-3.5" colSpan={9}></td>
                 </tr>
               ))}
             </tbody>

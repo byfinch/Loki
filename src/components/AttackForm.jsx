@@ -293,8 +293,8 @@ const AttackForm = () => {
   };
 
   return (
-    <CyberCard className="p-4">
-      <div className="inline-flex gap-1 p-1 bg-black/40 border border-white/10 rounded-lg mb-4">
+    <CyberCard className="p-6 sm:p-7">
+      <div className="inline-flex gap-1 p-1 bg-black/40 border border-white/10 rounded-lg mb-6">
         {['L4', 'L7'].map((tab) => (
           <button
             key={tab}
@@ -310,9 +310,9 @@ const AttackForm = () => {
         ))}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">
+          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
             {layer === 'L4' ? 'Hedef IP' : 'Hedef URL'}
           </label>
           <input
@@ -320,21 +320,21 @@ const AttackForm = () => {
             value={host}
             onChange={(e) => setHost(e.target.value)}
             placeholder={layer === 'L4' ? '1.1.1.1' : 'https://example.com'}
-            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
             required
           />
         </div>
 
-        <div className={`grid gap-3 ${layer === 'L7' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <div className={`grid gap-4 ${layer === 'L7' ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Süre (sn)</label>
+            <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Süre (sn)</label>
             <input
               type="number"
               min={getMinTime(method, layer)}
               max={state.plan?.MaxTime || 86400}
               value={time}
               onChange={(e) => setTime(parseInt(e.target.value, 10) || 0)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
               required
             />
             <p className="text-[10px] text-gray-500 mt-0.5">
@@ -343,14 +343,14 @@ const AttackForm = () => {
           </div>
           {layer === 'L4' && (
             <div>
-              <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Port</label>
+              <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Port</label>
               <input
                 type="number"
                 min={1}
                 max={65535}
                 value={port}
                 onChange={(e) => setPort(parseInt(e.target.value, 10) || 0)}
-                className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+                className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
                 required
               />
             </div>
@@ -358,12 +358,12 @@ const AttackForm = () => {
         </div>
 
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Yöntem</label>
+          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Yöntem</label>
           <div className="relative">
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition appearance-none"
+              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 pr-8 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition appearance-none"
               required
             >
               {filteredMethods.map((m) => (
@@ -384,7 +384,7 @@ const AttackForm = () => {
         </div>
 
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Concurrents</label>
+          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Concurrents</label>
           <input
             ref={concurrentsRef}
             type="number"
@@ -392,12 +392,12 @@ const AttackForm = () => {
             max={state.plan?.Concurrents || 80}
             value={concurrents}
             onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
-            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
           />
         </div>
 
         {/* Loop toggle */}
-        <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-lg p-3 hover:border-green-500/20 transition-colors">
+        <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-lg p-4 hover:border-green-500/20 transition-colors">
           <div>
             <p className="text-xs font-bold text-white">Loop Aktif</p>
             <p className="text-[10px] text-gray-500">Açıkken saldırılar bittikçe otomatik tekrar başlar</p>
@@ -413,13 +413,13 @@ const AttackForm = () => {
 
         {loopActive && (
           <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1 uppercase tracking-wider">Bekleme (sn)</label>
+            <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Bekleme (sn)</label>
             <input
               type="number"
               min={0}
               value={loopInterval}
               onChange={(e) => setLoopInterval(parseInt(e.target.value, 10) || 0)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
               required
             />
             <p className="text-[10px] text-gray-500 mt-0.5">Bir set bittikten sonraki bekleme süresi</p>
@@ -429,7 +429,7 @@ const AttackForm = () => {
         <button
           type="submit"
           disabled={loading || !state.plan}
-          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black text-sm font-bold py-2 rounded-lg transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
+          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black text-sm font-bold py-2.5 rounded-lg transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
         >
           {!state.plan
             ? 'Plan yükleniyor...'

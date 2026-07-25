@@ -107,8 +107,8 @@ const LoopManager = () => {
   const loops = Object.entries(state.activeLoops);
 
   return (
-    <CyberCard className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <CyberCard className="p-6 sm:p-8">
+      <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           Aktif Looplar
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-cyan-400 font-mono">
@@ -138,22 +138,22 @@ const LoopManager = () => {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-2 px-2">
-          <table className="cyber-table w-full min-w-[800px] text-sm border-separate border-spacing-y-1">
+          <table className="cyber-table w-full min-w-[800px] text-sm border-separate border-spacing-y-2">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="px-4 py-3 font-medium min-w-[260px]">Hedef</th>
-                <th className="px-4 py-3 font-medium">Yöntem</th>
-                <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Süre (sn)</th>
-                <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Bekleme (sn)</th>
-                <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Set</th>
-                <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Hata</th>
-                <th className="px-4 py-3 font-medium text-right">İşlem</th>
+                <th className="px-5 py-4 font-medium min-w-[260px]">Hedef</th>
+                <th className="px-5 py-4 font-medium">Yöntem</th>
+                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Süre (sn)</th>
+                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Bekleme (sn)</th>
+                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Set</th>
+                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Hata</th>
+                <th className="px-5 py-4 font-medium text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
               {loops.map(([loopId, loop]) => (
                 <tr key={loopId} className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300">
-                  <td className="px-4 py-3.5 pr-4">
+                  <td className="px-5 py-4 pr-4">
                     <button
                       onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
                       title="URL'yi kopyala"
@@ -175,16 +175,16 @@ const LoopManager = () => {
                       </span>
                     </button>
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-5 py-4">
                     <span className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
                       {loop.params?.method?.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.time}s</td>
-                  <td className="px-4 py-3.5 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.interval}s</td>
-                  <td className="px-4 py-3.5 text-cyan-400 font-mono font-bold text-center whitespace-nowrap">{loop.roundCount || 0}</td>
-                  <td className="px-4 py-3.5 text-red-400 font-mono text-center whitespace-nowrap">{loop.errors || 0}</td>
-                  <td className="px-4 py-3.5 text-right">
+                  <td className="px-5 py-4 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.time}s</td>
+                  <td className="px-5 py-4 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.interval}s</td>
+                  <td className="px-5 py-4 text-cyan-400 font-mono font-bold text-center whitespace-nowrap">{loop.roundCount || 0}</td>
+                  <td className="px-5 py-4 text-red-400 font-mono text-center whitespace-nowrap">{loop.errors || 0}</td>
+                  <td className="px-5 py-4 text-right">
                     <button
                       onClick={() => handleStop(loopId)}
                       disabled={loading === loopId}

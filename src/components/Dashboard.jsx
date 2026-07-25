@@ -62,7 +62,7 @@ const Dashboard = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="pt-6 pb-12 px-6 md:pl-20 max-w-7xl mx-auto">
+      <main className="pt-8 pb-12 px-6 md:pl-20 max-w-7xl mx-auto">
         <PlanInfo />
 
         {/* Mobile Tabs */}
@@ -82,7 +82,7 @@ const Dashboard = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.35fr] items-start gap-6 mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.35fr] items-start gap-8 mt-8">
           {state.activeTab === 'attack' && (
             <>
               <AttackForm />
