@@ -108,10 +108,10 @@ const Dashboard = () => {
         <div className="flex flex-col gap-8 mt-8">
           {state.activeTab === 'attack' && (
             <>
-              <LiveAttacks />
               <div className="w-full max-w-2xl">
                 <AttackForm />
               </div>
+              <LiveAttacks />
             </>
           )}
 
