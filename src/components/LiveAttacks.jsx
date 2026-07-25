@@ -377,8 +377,8 @@ const LiveAttacks = () => {
   }, [state.isAuthenticated]);
 
   return (
-    <CyberCard className="p-6 sm:p-8">
-      <div className="flex items-center justify-between mb-6">
+    <CyberCard className="p-5 sm:p-6">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           Aktif Saldırılar
           <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-green-400 font-mono">
@@ -435,11 +435,11 @@ const LiveAttacks = () => {
           <table className="cyber-table w-full text-sm">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="pb-4 font-medium whitespace-nowrap w-auto pl-3">Hedef</th>
-                <th className="pb-4 font-medium whitespace-nowrap w-32">Yöntem</th>
-                <th className="pb-4 font-medium whitespace-nowrap min-w-[120px]">Kalan Süre</th>
-                <th className="pb-4 font-medium whitespace-nowrap w-16 text-right">Adet</th>
-                <th className="pb-4 font-medium whitespace-nowrap w-44 text-right pr-6">İşlem</th>
+                <th className="pb-3 font-medium whitespace-nowrap w-auto pl-3">Hedef</th>
+                <th className="pb-3 font-medium whitespace-nowrap w-32">Yöntem</th>
+                <th className="pb-3 font-medium whitespace-nowrap min-w-[120px]">Kalan Süre</th>
+                <th className="pb-3 font-medium whitespace-nowrap w-16 text-right">Adet</th>
+                <th className="pb-3 font-medium whitespace-nowrap w-44 text-right pr-6">İşlem</th>
               </tr>
             </thead>
             <tbody>
@@ -453,7 +453,7 @@ const LiveAttacks = () => {
 
                 return (
                   <tr key={rowKey} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
-                    <td className="h-14 pr-3 pl-4 align-middle">
+                    <td className="h-12 pr-3 pl-4 align-middle">
                       <div className="flex items-center gap-2 h-full">
                         <span
                           title="URL'yi kopyala"
@@ -484,18 +484,18 @@ const LiveAttacks = () => {
                         </button>
                       </div>
                     </td>
-                    <td className="py-4 whitespace-nowrap">
+                    <td className="py-3 whitespace-nowrap">
                       <span className="px-2.5 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
                         {attack.method}
                       </span>
                     </td>
-                    <td className="py-4 text-green-400 font-mono whitespace-nowrap font-bold">{attack.timeLeft}s</td>
-                    <td className="py-4 text-right">
+                    <td className="py-3 text-green-400 font-mono whitespace-nowrap font-bold">{attack.timeLeft}s</td>
+                    <td className="py-3 text-right">
                       <span className="px-2.5 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-gray-300 font-mono">
                         x{attack.count}
                       </span>
                     </td>
-                    <td className="py-4 text-right w-44">
+                    <td className="py-3 text-right w-44">
                       <div className="flex items-center justify-end gap-3">
                         <button
                           onClick={() => handleStopSingle(firstId)}
