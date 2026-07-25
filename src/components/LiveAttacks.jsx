@@ -435,11 +435,11 @@ const LiveAttacks = () => {
           <table className="cyber-table w-full text-sm">
             <thead>
               <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="pb-4 font-medium w-auto pl-3">Hedef</th>
-                <th className="pb-4 font-medium w-32">Yöntem</th>
-                <th className="pb-4 font-medium w-24">Kalan Süre</th>
-                <th className="pb-4 font-medium w-16 text-right">Adet</th>
-                <th className="pb-4 font-medium w-44 text-right pr-6">İşlem</th>
+                <th className="pb-4 font-medium whitespace-nowrap w-auto pl-3">Hedef</th>
+                <th className="pb-4 font-medium whitespace-nowrap w-32">Yöntem</th>
+                <th className="pb-4 font-medium whitespace-nowrap min-w-[120px]">Kalan Süre</th>
+                <th className="pb-4 font-medium whitespace-nowrap w-16 text-right">Adet</th>
+                <th className="pb-4 font-medium whitespace-nowrap w-44 text-right pr-6">İşlem</th>
               </tr>
             </thead>
             <tbody>
