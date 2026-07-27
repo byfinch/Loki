@@ -736,14 +736,20 @@ function checkPlanLimits(sessionId, time, concurrents) {
   return { ok: true };
 }
 
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat (son aktiviteden itibaren)
 
 function cleanupOldSessions() {
   const now = Date.now();
   let removed = 0;
   Object.entries(sessions).forEach(([sessionId, session]) => {
-    const created = new Date(session.createdAt || 0).getTime();
-    if (now - created > SESSION_MAX_AGE_MS) {
+    // Calisan loop'u olan session asla silinmez; aksi halde loop token'suz olur.
+    const hasRunningLoop = Object.values(activeLoops).some(
+      (l) => l.running && l.sessionId === sessionId
+    );
+    if (hasRunningLoop) return;
+    // Kayar sures: son aktiviteye gore degerlendir (aktif oturum silinmez).
+    const lastActivity = new Date(session.lastActivity || session.createdAt || 0).getTime();
+    if (now - lastActivity > SESSION_MAX_AGE_MS) {
       delete sessions[sessionId];
       removed++;
     }
@@ -807,6 +813,8 @@ function getClient(sessionId) {
     err.statusCode = 401;
     throw err;
   }
+  // Kayar session suresi: aktif kullanim TTL'i yeniler.
+  sessions[sessionId].lastActivity = new Date().toISOString();
   return wrapper(axios.create({
     baseURL: 'https://stresse.st',
     jar,
