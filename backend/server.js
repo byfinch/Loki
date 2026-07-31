@@ -130,17 +130,37 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
 const ATTACKS_FILE = path.join(DATA_DIR, 'active-attacks.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'attack-history.json');
-const API_TOKEN_FILE = path.join(DATA_DIR, 'api-token.txt');
+const API_TOKENS_FILE = path.join(DATA_DIR, 'api-tokens.json');
 
-function getFallbackApiToken() {
+// Hesap bazli token deposu: { username: apiToken }
+function readApiTokens() {
   try {
-    if (fs.existsSync(API_TOKEN_FILE)) {
-      return fs.readFileSync(API_TOKEN_FILE, 'utf8').trim();
+    if (fs.existsSync(API_TOKENS_FILE)) {
+      return JSON.parse(fs.readFileSync(API_TOKENS_FILE, 'utf8'));
     }
   } catch (err) {
-    console.error('[apiToken] Fallback token okunamadi:', err.message);
+    console.error('[apiToken] Token dosyasi okunamadi:', err.message);
   }
-  return '';
+  return {};
+}
+
+function writeApiToken(username, apiToken) {
+  if (!username || !apiToken) return;
+  try {
+    const tokens = readApiTokens();
+    tokens[username] = apiToken;
+    ensureDataDir();
+    fs.writeFileSync(API_TOKENS_FILE, JSON.stringify(tokens, null, 2));
+  } catch (err) {
+    console.warn('[apiToken] Token dosyasi yazilamadi:', err.message);
+  }
+}
+
+// Hesap bazli fallback: sadece ISTENEN hesabin key'i doner.
+// Cok hesapli kurulumda baska hesabin key'i capraz kullanilmaz.
+function getFallbackApiToken(username) {
+  if (!username) return '';
+  return readApiTokens()[username] || '';
 }
 
 // stresse.st'te API key yenilenirse (Generate Token) eski key 401 dondurur.
@@ -153,11 +173,7 @@ async function refreshApiToken(sessionId) {
     const apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
     if (!apiToken) return null;
     sessions[sessionId].apiToken = apiToken;
-    try {
-      fs.writeFileSync(API_TOKEN_FILE, apiToken);
-    } catch (writeErr) {
-      console.warn('[apiToken] Fallback dosyasi yazilamadi:', writeErr.message);
-    }
+    writeApiToken(sessions[sessionId]?.username, apiToken);
     saveState();
     console.log(`[apiToken] Guncel API token yenilendi: ${apiToken.slice(0, 8)}...`);
     return apiToken;
@@ -532,10 +548,26 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   };
 }
 
-// Telegram: saldiri slot takibi. Sadece 1->0 gecisinde ve hic calisan loop
-// yokken bir kez bildirim gonderir (loop turlari arasinda slot gecici olarak
-// 0 gorunebilir, bu durumda bildirim atilmaz).
-let lastAttackCount = 0;
+// Telegram: saldiri slot takibi (hesap bazli). Sadece bir hesabin saldiri
+// sayisi 1->0 dustugunde ve o hesabin calisan loop'u yokken bir kez bildirim
+// gonderir (loop turlari arasinda slot gecici olarak 0 gorunebilir, bu
+// durumda bildirim atilmaz).
+const lastAttackCountByUser = new Map(); // username -> son bilinen aktif saldiri sayisi
+
+// Loop'un sahibini cozer: once kayitli owner alani, yoksa (eski kayitlar)
+// loop'un session'indan. Session da silinmisse null (yetim loop).
+function getLoopOwner(loop) {
+  if (!loop) return null;
+  return loop.owner || sessions[loop.sessionId]?.username || null;
+}
+
+// Bir hesabin aktif saldiri sayisi (activeAttacks uzerinden).
+function countAttacksForUser(username) {
+  if (!username) return 0;
+  return Object.values(activeAttacks).filter(
+    (a) => (a.username || sessions[a.sessionId]?.username) === username
+  ).length;
+}
 
 // Telegram mesajlari icin Istanbul saatiyle okunabilir zaman damgasi.
 function telegramTimestamp() {
@@ -543,19 +575,34 @@ function telegramTimestamp() {
 }
 
 function checkSlotsEmpty() {
-  const count = Object.keys(activeAttacks).length;
-  const hadAttacks = lastAttackCount > 0;
-  lastAttackCount = count;
-  if (count !== 0 || !hadAttacks) return;
-  const anyLoopRunning = Object.values(activeLoops).some((l) => l.running);
-  if (anyLoopRunning) return;
-  const message = [
-    '🟡 <b>LOKI — SLOT UYARISI</b>',
-    '─────────────────',
-    '⚠️ Aktif saldırı kalmadı, tüm slotlar boş.',
-    `🕐 <i>${telegramTimestamp()}</i>`
-  ].join('\n');
-  sendTelegram(message).catch(() => {});
+  // Hesap bazinda anlik aktif saldiri sayilari
+  const counts = new Map();
+  Object.values(activeAttacks).forEach((a) => {
+    const u = a.username || sessions[a.sessionId]?.username;
+    if (!u) return;
+    counts.set(u, (counts.get(u) || 0) + 1);
+  });
+  // Onceki sayimi bilinen veya su an saldirisi olan tum hesaplari kontrol et
+  const users = new Set([...lastAttackCountByUser.keys(), ...counts.keys()]);
+  users.forEach((u) => {
+    const prev = lastAttackCountByUser.get(u) || 0;
+    const now = counts.get(u) || 0;
+    if (prev <= 0 || now !== 0) return;
+    const hasRunningLoop = Object.values(activeLoops).some(
+      (l) => l.running && getLoopOwner(l) === u
+    );
+    if (hasRunningLoop) return;
+    const message = [
+      '🟡 <b>LOKI — SLOT UYARISI</b>',
+      '─────────────────',
+      `🏦 <b>Hesap:</b> ${esc(u)}`,
+      '⚠️ Aktif saldırı kalmadı, tüm slotlar boş.',
+      `🕐 <i>${telegramTimestamp()}</i>`
+    ].join('\n');
+    sendTelegram(message).catch(() => {});
+  });
+  lastAttackCountByUser.clear();
+  counts.forEach((v, k) => lastAttackCountByUser.set(k, v));
 }
 
 // Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
@@ -600,6 +647,7 @@ function notifyLoopRemoved(loop, action, details = {}) {
   const concurrents = loop.params?.concurrents ?? '?';
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
+  const owner = getLoopOwner(loop) || 'bilinmiyor';
   // Durduran kisi: IP + konum (geo lookup). Geo basarisizsa sadece IP,
   // IP yoksa kullanici adina dus.
   const buildAndSend = async () => {
@@ -616,6 +664,7 @@ function notifyLoopRemoved(loop, action, details = {}) {
       `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
       `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
       `🔁 <b>Concurrents:</b> <code>${esc(concurrents)}</code>`,
+      `🏦 <b>Hesap:</b> ${esc(owner)}`,
       ...(details.stopDetail ? [`📋 <b>Sebep:</b> ${esc(details.stopDetail)}`] : []),
       ...(stopper ? [stopper] : []),
       `🕐 <i>${telegramTimestamp()}</i>`
@@ -647,7 +696,8 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
   };
-  lastAttackCount = Object.keys(activeAttacks).length;
+  const attackOwner = sessions[sessionId]?.username;
+  if (attackOwner) lastAttackCountByUser.set(attackOwner, countAttacksForUser(attackOwner));
   saveState();
 }
 
@@ -1042,7 +1092,7 @@ app.post('/api/stresse/login', async (req, res) => {
         console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
       }
       if (!apiToken) {
-        apiToken = getFallbackApiToken();
+        apiToken = getFallbackApiToken(vcookieRes.data.username || username);
         if (apiToken) {
           console.log(`[login] Fallback API token kullaniliyor: ${apiToken.slice(0, 8)}...`);
         }
@@ -1052,14 +1102,10 @@ app.post('/api/stresse/login', async (req, res) => {
       sessions[sessionId].user = vcookieRes.data;
       sessions[sessionId].plan = planData;
       sessions[sessionId].apiToken = apiToken;
-      // Basarili loginde guncel key'i fallback dosyasina da yaz; ileride
-      // token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
+      // Basarili loginde guncel key'i hesap bazli token dosyasina yaz;
+      // ileride token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
       if (apiToken) {
-        try {
-          fs.writeFileSync(API_TOKEN_FILE, apiToken);
-        } catch (writeErr) {
-          console.warn('[login] Fallback token dosyasi yazilamadi:', writeErr.message);
-        }
+        writeApiToken(sessions[sessionId].username, apiToken);
       }
       saveState();
 
@@ -1855,6 +1901,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     activeLoops[loopId] = {
       running: true,
       sessionId,
+      owner: sessions[sessionId]?.username || null,
       historyId,
       schemaVersion: 1,
       params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
@@ -2116,24 +2163,29 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    const sessionUser = sessions[sessionId]?.username;
+
     const { loopId } = req.body;
     if (!loopId) {
-      // loopId verilmezse tum loop'lari durdur ve kayittan sil
-      const stoppedLoops = Object.values(activeLoops);
+      // loopId verilmezse sadece bu hesaba ait loop'lari durdur ve kayittan sil
+      const stoppedLoops = [];
       Object.keys(activeLoops).forEach((key) => {
+        if (getLoopOwner(activeLoops[key]) !== sessionUser) return;
+        stoppedLoops.push(activeLoops[key]);
         activeLoops[key].running = false;
         delete activeLoops[key];
       });
       saveState();
       stoppedLoops.forEach((loop) => notifyLoopRemoved(loop, 'durduruldu', {
-        username: sessions[sessionId]?.username,
+        username: sessionUser,
         ip: getClientIp(req),
         stopDetail: 'Kullanıcı tüm loopları kapattı'
       }));
       return res.json({ status: 'success', message: 'Tum looplar durduruldu' });
     }
 
-    if (!activeLoops[loopId]) {
+    // Baska hesabin loopId'si verilirse varligini ifsa etme: 404 don.
+    if (!activeLoops[loopId] || getLoopOwner(activeLoops[loopId]) !== sessionUser) {
       return res.status(404).json({ status: 'error', message: 'Loop bulunamadi', loopId });
     }
 
@@ -2158,19 +2210,33 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
 
 /**
  * GET /api/stresse/loops
- * Tum aktif loop listesini doner (global, herkes gorebilir).
+ * Istegi yapan hesaba ait aktif loop listesini doner (hesap izolasyonu).
+ * Owner'i cozulemeyen yetim loop'lar kimseye gosterilmez.
  */
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
-    const loops = Object.entries(activeLoops)
-      .filter(([_, value]) => value.running)
-      .map(([key, value]) => ({
-        loopId: key,
-        ...value
-      }));
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
+    const loops = [];
+    Object.entries(activeLoops).forEach(([key, value]) => {
+      if (!value.running) return;
+      const owner = getLoopOwner(value);
+      if (!owner) {
+        // Yetim loop: owner alani yok ve session'i silinmis. Ifsa etme, logla.
+        console.warn(`[loops] Yetim loop gizlendi (owner cozulemedi): ${key}`);
+        return;
+      }
+      if (owner !== sessionUser) return;
+      // Ham sessionId'yi disari sizdirma; yerine owner koy.
+      const { sessionId: _sid, resolveFirstRound: _r, ...publicLoop } = value;
+      loops.push({ loopId: key, ...publicLoop, owner });
+    });
 
     res.json({ status: 'success', count: loops.length, loops });
   } catch (error) {
@@ -2544,8 +2610,13 @@ app.get('/api/phish/stats', (req, res) => {
 
 // Load persisted sessions/loops before starting server
 loadState();
-// Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldiri sayisini baz al.
-lastAttackCount = Object.keys(activeAttacks).length;
+// Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
+// bazinda baz al.
+Object.values(activeAttacks).forEach((a) => {
+  const u = a.username || sessions[a.sessionId]?.username;
+  if (!u) return;
+  lastAttackCountByUser.set(u, (lastAttackCountByUser.get(u) || 0) + 1);
+});
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`Loki backend running on http://localhost:${PORT}`);

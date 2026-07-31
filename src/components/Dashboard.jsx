@@ -62,6 +62,12 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-black text-white cyber-grid">
       <ToastContainer />
+      {/* Aktif hesap rozeti */}
+      <div className="fixed top-4 right-4 z-50 glass-panel rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-mono">
+        <i className="ph ph-user-circle text-green-400 text-sm"></i>
+        <span className="text-gray-400">Hesap:</span>
+        <span className="text-green-400 font-semibold">{apiClient.getUsername() || '—'}</span>
+      </div>
       {/* Floating Sidebar */}
       <aside className="fixed top-4 left-4 h-auto glass-panel rounded-xl hidden md:flex flex-col items-center py-3 px-2 gap-2 z-50">
         {[

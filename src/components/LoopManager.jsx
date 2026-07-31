@@ -133,7 +133,7 @@ const LoopManager = () => {
 
       {loops.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          <p>Aktif loop bulunmuyor.</p>
+          <p>Bu hesapta aktif loop yok.</p>
           <p className="text-xs mt-2">Saldırı formundan loop başlatabilirsiniz.</p>
         </div>
       ) : (
