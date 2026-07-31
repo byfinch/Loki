@@ -14,6 +14,7 @@ const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
+const phish = require('./phish');
 
 initTelegram();
 
@@ -2495,6 +2496,50 @@ app.get('/api/stresse/live/:username', (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// =====================
+// PHISHGUARD INTEGRATION (read-only SQLite)
+// =====================
+
+// Entegrasyon devre disiysa (DB yok / modul kurulu degil) 503 dondur.
+function phishUnavailable(res) {
+  return res.status(503).json({ status: 'error', message: 'PhishGuard entegrasyonu kullanılamıyor' });
+}
+
+/**
+ * GET /api/phish/alerts?limit=&offset=&brand=&band=
+ */
+app.get('/api/phish/alerts', (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+    if (!phish.isEnabled()) return phishUnavailable(res);
+
+    const { limit, offset, brand, band } = req.query;
+    const result = phish.getAlerts({ limit, offset, brand, band });
+    res.json({ status: 'success', ...result });
+  } catch (error) {
+    console.error('Phish alerts error:', error.message);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/phish/stats
+ */
+app.get('/api/phish/stats', (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+    if (!phish.isEnabled()) return phishUnavailable(res);
+
+    const stats = phish.getStats();
+    res.json({ status: 'success', stats });
+  } catch (error) {
+    console.error('Phish stats error:', error.message);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });
 
 // Load persisted sessions/loops before starting server

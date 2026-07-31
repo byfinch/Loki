@@ -38,7 +38,7 @@ function getMinTime(method, layer) {
 }
 
 const AttackForm = () => {
-  const { state, setMethods, startTest, addLog, addLoop, showToast } = useStressTest();
+  const { state, setMethods, startTest, addLog, addLoop, showToast, setAttackPrefill } = useStressTest();
 
   const [host, setHost] = useState('');
   const [port, setPort] = useState(53);
@@ -117,6 +117,16 @@ const AttackForm = () => {
       setPort(53);
     }
   }, [layer]);
+
+  // PhishPanel "Hedef Al" prefill'ini tek seferlik tuket: formu doldur ve state'i temizle
+  useEffect(() => {
+    if (!state.attackPrefill) return;
+    const { host: prefillHost, layer: prefillLayer, port: prefillPort } = state.attackPrefill;
+    if (prefillHost) setHost(prefillHost);
+    if (prefillLayer === 'L4' || prefillLayer === 'L7') setLayer(prefillLayer);
+    if (prefillPort) setPort(prefillPort);
+    setAttackPrefill(null);
+  }, [state.attackPrefill, setAttackPrefill]);
 
   // Method degisince sureyi minimuma cek
   useEffect(() => {
