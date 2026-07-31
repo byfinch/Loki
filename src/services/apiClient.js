@@ -218,5 +218,26 @@ export const apiClient = {
     });
     const data = await handleResponse(res);
     return { ...data, type: 'ping-pe' };
+  },
+
+  // PhishGuard
+  async getPhishAlerts(params = {}) {
+    const query = new URLSearchParams();
+    if (params.limit) query.set('limit', params.limit);
+    if (params.offset) query.set('offset', params.offset);
+    if (params.brand) query.set('brand', params.brand);
+    if (params.band) query.set('band', params.band);
+    const qs = query.toString();
+    const res = await apiFetch(`${API_BASE}/phish/alerts${qs ? `?${qs}` : ''}`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async getPhishStats() {
+    const res = await apiFetch(`${API_BASE}/phish/stats`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
   }
 };

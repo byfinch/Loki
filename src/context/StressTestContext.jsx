@@ -18,7 +18,8 @@ const initialState = {
   methods: [],
   liveAttacks: [],
   isAuthenticated: false,
-  activeTab: 'attack', // attack, tools, loops
+  activeTab: 'attack', // attack, tools, loops, history, phish
+  attackPrefill: null, // { host, layer, port } - PhishPanel'dan AttackForm'a tek seferlik tasinir
   activeLoops: {}, // { [loopId]: { running, params, startedAt, lastRoundAt, roundCount, errors } }
   attackHistory: [], // Saldiri gecmis kayitlari
   stopProgress: null, // { current, total, successCount, failCount, percentage, label }
@@ -51,6 +52,8 @@ function stressTestReducer(state, action) {
       return { ...state, liveAttacks: action.payload };
     case 'SET_ACTIVE_TAB':
       return { ...state, activeTab: action.payload };
+    case 'SET_ATTACK_PREFILL':
+      return { ...state, attackPrefill: action.payload };
     case 'ADD_LOOP':
       return {
         ...state,
@@ -110,6 +113,7 @@ export const StressTestProvider = ({ children }) => {
   const setMethods = useCallback((methods) => dispatch({ type: 'SET_METHODS', payload: methods }), []);
   const setLiveAttacks = useCallback((attacks) => dispatch({ type: 'SET_LIVE_ATTACKS', payload: attacks }), []);
   const setActiveTab = useCallback((tab) => dispatch({ type: 'SET_ACTIVE_TAB', payload: tab }), []);
+  const setAttackPrefill = useCallback((prefill) => dispatch({ type: 'SET_ATTACK_PREFILL', payload: prefill }), []);
   const addLoop = useCallback((loopId, loop) => dispatch({ type: 'ADD_LOOP', payload: { loopId, loop } }), []);
   const removeLoop = useCallback((loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } }), []);
   const setLoops = useCallback((loops) => dispatch({ type: 'SET_LOOPS', payload: loops }), []);
@@ -146,6 +150,7 @@ export const StressTestProvider = ({ children }) => {
       setMethods,
       setLiveAttacks,
       setActiveTab,
+      setAttackPrefill,
       addLoop,
       removeLoop,
       setLoops,
@@ -167,6 +172,7 @@ export const StressTestProvider = ({ children }) => {
       setMethods,
       setLiveAttacks,
       setActiveTab,
+      setAttackPrefill,
       addLoop,
       removeLoop,
       setLoops,
