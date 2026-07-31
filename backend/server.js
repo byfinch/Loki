@@ -1626,6 +1626,8 @@ async function runLoopRound(loopId) {
     loop.stopDetail = 'API token bulunamadı (oturum kapanmış veya süresi dolmuş)';
     loop.running = false;
     saveState();
+    loop.resolveFirstRound?.({ ok: false, permanent: true, message: loop.stopDetail });
+    loop.resolveFirstRound = null;
     return;
   }
 
@@ -1755,6 +1757,18 @@ async function runLoopRound(loopId) {
     }
   }
 
+  // /loop endpoint'i ilk turun launch sonucunu bekliyor olabilir; kalici
+  // hatalarda loop olusumu bastan reddedilsin diye sonucu bildir.
+  if (loop.resolveFirstRound) {
+    const permanent = !loop.running || /under maintenance/i.test(loop.lastError || '');
+    loop.resolveFirstRound({
+      ok: roundSuccesses > 0,
+      permanent: roundSuccesses === 0 && permanent,
+      message: roundSuccesses > 0 ? null : (loop.lastError || 'Tur başarısız')
+    });
+    loop.resolveFirstRound = null;
+  }
+
   // Saldiri stresse.st uzerinde time saniye surer; loop'un siradaki turu
   // icin saldiri bitene kadar bekle. Kullanici durdurursa erken cik.
   const waitUntil = Date.now() + (loop.params.time * 1000);
@@ -1851,8 +1865,24 @@ app.post('/api/stresse/loop', async (req, res) => {
       roundAttackIds: []
     };
 
-    // Loop'u arka planda calistir, response hemen donsun
+    // Ilk turun launch sonucunu bekle: method bakimda gibi kalici hatalarda
+    // loop hic olusmasin, panel "Loop baslatildi" yerine gercek hatayi gostersin.
+    const firstRoundResult = new Promise((resolve) => {
+      activeLoops[loopId].resolveFirstRound = resolve;
+    });
     runLoop(loopId).catch((err) => console.error(`[loop ${loopId}] runLoop beklenmeyen hata:`, err));
+
+    // Aski ihtimaline karsi guvenlik suresi; asarsa eski davranis (aninda basarili)
+    const outcome = await Promise.race([
+      firstRoundResult,
+      new Promise((r) => setTimeout(() => r({ ok: true, timeout: true }), 75000))
+    ]);
+
+    if (!outcome.ok && outcome.permanent) {
+      delete activeLoops[loopId];
+      saveState();
+      return res.status(502).json({ status: 'error', message: outcome.message });
+    }
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
     saveState();
