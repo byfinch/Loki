@@ -414,6 +414,52 @@ function buildApiUrl(apiToken, params) {
   return url;
 }
 
+// Method congestion tracking: stresse.st returns HTTP 429
+// "All slots for method X are busy." or launches fewer IDs than requested
+// when a method's slot pool is full. Track per-method state so the panel can
+// show a "Yogun" badge. Entries expire CONGESTION_TTL_MS after the last
+// busy/ok signal; expiry is evaluated at read time, no timer needed.
+const methodCongestion = new Map(); // method(lower) -> { busy, lastBusyAt, lastOkAt }
+const CONGESTION_TTL_MS = 15 * 60 * 1000;
+
+function markMethodBusy(method) {
+  const key = String(method || '').toLowerCase();
+  if (!key) return;
+  const prev = methodCongestion.get(key) || {};
+  methodCongestion.set(key, { busy: true, lastBusyAt: Date.now(), lastOkAt: prev.lastOkAt || null });
+}
+
+function markMethodOk(method) {
+  const key = String(method || '').toLowerCase();
+  if (!key) return;
+  const prev = methodCongestion.get(key) || {};
+  methodCongestion.set(key, { busy: false, lastBusyAt: prev.lastBusyAt || null, lastOkAt: Date.now() });
+}
+
+// Drop entries whose last signal is older than the TTL, then return a
+// JSON-ready snapshot: { "http-tempesta": { busy, since }, ... }
+function getMethodCongestionSnapshot() {
+  const now = Date.now();
+  const out = {};
+  for (const [key, entry] of methodCongestion) {
+    const lastSignal = Math.max(entry.lastBusyAt || 0, entry.lastOkAt || 0);
+    if (now - lastSignal > CONGESTION_TTL_MS) {
+      methodCongestion.delete(key);
+      continue;
+    }
+    out[key] = { busy: !!entry.busy, since: entry.busy ? entry.lastBusyAt : entry.lastOkAt };
+  }
+  return out;
+}
+
+// HTTP 429 or any error whose message mentions slots + busy means the
+// method's slot pool is full upstream.
+function isSlotsBusyError(err, fallbackMessage = '') {
+  const status = err?.response?.status;
+  const msg = String(err?.response?.data?.message || fallbackMessage || err?.message || '').toLowerCase();
+  return status === 429 || (msg.includes('slots') && msg.includes('busy'));
+}
+
 async function startAttackApi(apiClient, params) {
   const url = buildApiUrl(params.apiToken, params);
   // stresse.st'in /api ucu yuk altinda (ozellikle L7 methodlarda da) 15sn'yi
@@ -423,10 +469,12 @@ async function startAttackApi(apiClient, params) {
     const res = await apiClient.get(url, { timeout });
     console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
     if (res.data?.status === 'error') {
+      if (isSlotsBusyError(null, res.data.message)) markMethodBusy(params.method);
       throw new Error(res.data.message || 'API attack failed');
     }
     return res.data;
   } catch (err) {
+    if (isSlotsBusyError(err)) markMethodBusy(params.method);
     if (err.response) {
       console.error(`[startAttackApi] HTTP ${err.response.status} error:`, JSON.stringify(err.response.data).slice(0, 400));
     } else {
@@ -536,6 +584,15 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     // Mevcut akis aynen kalir (tekil /attack status:'error' doner, loop turu hata
     // sayar); burada sadece sebebi net bir log satiriyla belirtiyoruz.
     console.warn(`[launchAttacksGet] yeni ID dogrulanamadi (muhtemel upstream ret veya baska launch'a ait ID'ler elendi): host=${params.host} method=${params.method}`);
+  }
+
+  // Congestion signal: full launch clears the flag, a partial launch (fewer
+  // IDs than requested) marks the method as busy.
+  if (newIds.length >= concurrents) {
+    markMethodOk(params.method);
+  } else if (newIds.length > 0) {
+    console.warn(`[launchAttacksGet] kismi launch: method=${params.method} requested=${concurrents} got=${newIds.length} -> congested`);
+    markMethodBusy(params.method);
   }
 
   return {
@@ -2213,6 +2270,19 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
  * Istegi yapan hesaba ait aktif loop listesini doner (hesap izolasyonu).
  * Owner'i cozulemeyen yetim loop'lar kimseye gosterilmez.
  */
+/**
+ * GET /api/method-congestion
+ * Per-method slot congestion state observed from stresse.st launches.
+ * Response: { "http-tempesta": { busy: true, since: 1720000000000 }, ... }
+ */
+app.get('/api/method-congestion', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId || !sessions[sessionId]) {
+    return res.status(401).json({ status: 'error', message: 'Session required' });
+  }
+  res.json(getMethodCongestionSnapshot());
+});
+
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];

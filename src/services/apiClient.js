@@ -180,6 +180,14 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // Method congestion
+  async getMethodCongestion() {
+    const res = await apiFetch(`${API_BASE}/method-congestion`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // Live SSE
   // EventSource constructor header desteklemez, sessionId'yi kisa query anahtari ile gonderiyoruz.
   connectLiveStream(username, onData, onError) {

@@ -48,6 +48,7 @@ const AttackForm = () => {
   const [method, setMethod] = useState('');
   const [layer, setLayer] = useState('L4');
   const [loading, setLoading] = useState(false);
+  const [congestion, setCongestion] = useState({});
 
   // Loop controls (integrated into the same form)
   const [loopActive, setLoopActive] = useState(false);
@@ -117,6 +118,23 @@ const AttackForm = () => {
       setPort(53);
     }
   }, [layer]);
+
+  // Method yogunluk durumu: 45sn'de bir yenile, unmount'ta interval'i temizle
+  useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
+    let cancelled = false;
+    const loadCongestion = async () => {
+      try {
+        const data = await apiClient.getMethodCongestion();
+        if (!cancelled) setCongestion(data || {});
+      } catch {
+        // Rozet opsiyonel bilgi; hata durumunda sessizce gec
+      }
+    };
+    loadCongestion();
+    const interval = setInterval(loadCongestion, 45000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [state.isAuthenticated]);
 
   // PhishPanel "Hedef Al" prefill'ini tek seferlik tuket: formu doldur ve state'i temizle
   useEffect(() => {
@@ -376,15 +394,25 @@ const AttackForm = () => {
         </div>
 
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Yöntem</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider">Yöntem</label>
+            {congestion[method?.toLowerCase()]?.busy && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                Yoğun
+              </span>
+            )}
+          </div>
           <CyberSelect
             value={method}
             onChange={setMethod}
-            options={filteredMethods.map((m) => ({
-              value: m.method,
-              label: m.method,
-              description: m.description
-            }))}
+            options={filteredMethods.map((m) => {
+              const busy = congestion[m.method?.toLowerCase()]?.busy;
+              return {
+                value: m.method,
+                label: busy ? `${m.method} · Yoğun` : m.method,
+                description: m.description
+              };
+            })}
             placeholder="Yöntem seç"
             emptyPlaceholder="Yöntemler yükleniyor..."
           />
