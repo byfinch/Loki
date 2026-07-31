@@ -1247,6 +1247,8 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     res.json({
       status: attackIds.length > 0 ? 'success' : 'error',
+      // Upstream'in sebebini (orn. method bakimda) kullanici gorebilsin
+      message: attackIds.length > 0 ? undefined : (data?.message || 'Saldiri upstream tarafindan baslatilamadi'),
       data,
       attackIds,
       id: attackIds[0] || null,
@@ -1315,7 +1317,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
     });
 
-    const successCount = attackIds.length > 0 ? attackIds.length : (data?.status === 'success' || data?.message === 'Attack started' ? count : 0);
+    const successCount = attackIds.length;
 
     if (attackIds.length > 0) {
       addAttackHistory(sessionId, { host, port, method, time, layer }, {
@@ -1329,7 +1331,13 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       total: count,
       successCount,
       failCount: count - successCount,
-      message: data?.message || '',
+      // ID dogrulanamadiysa kullanici gercek durumu gorsun; "basarili" denip
+      // baslatilmamis saldiri gosterilmesin.
+      message: successCount > 0
+        ? (data?.message || '')
+        : (data?.status === 'success'
+            ? 'stresse.st basarili dondu ancak saldiri dogrulanamadi (method bakimda veya upstream reddi olabilir)'
+            : (data?.message || 'Saldiri baslatilamadi')),
       data,
       id: attackIds[0] || null,
       attack_id: attackIds[0] || null,
@@ -1612,14 +1620,23 @@ async function runLoopRound(loopId) {
   if (roundSuccesses === 0) {
     loop.errors += 1;
     loop.consecutiveErrors = (loop.consecutiveErrors || 0) + 1;
-    console.error(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS}): ${roundError?.message}`);
-    if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
+    // Upstream'in gercek mesajini yakala (axios hatasinda response.data'da durur)
+    const upstreamMsg = roundError?.response?.data?.message || roundError?.message || 'Bilinmeyen hata';
+    loop.lastError = upstreamMsg;
+    console.error(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS}): ${upstreamMsg}`);
+    // Method bakimda gibi kalici hatalarda 10 tur beklemek anlamsiz; hemen durdur.
+    if (/under maintenance/i.test(upstreamMsg)) {
+      console.error(`[loop ${loopId}] Kalici upstream hatasi (method bakimda), loop durduruluyor`);
+      loop.stopReason = 'error';
+      loop.running = false;
+    } else if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
       console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
       loop.stopReason = 'error';
       loop.running = false;
     }
   } else {
     loop.consecutiveErrors = 0;
+    loop.lastError = null;
     // Basarili tur sonrasi loop history'sinin expiresAt'ini uzat; yoksa cleanup
     // uzun suren loop'larda kaydi erken "completed" isaretleyebilir.
     if (loop.historyId && attackHistory[loop.historyId]) {

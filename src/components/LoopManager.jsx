@@ -152,7 +152,8 @@ const LoopManager = () => {
             </thead>
             <tbody>
               {loops.map(([loopId, loop]) => (
-                <tr key={loopId} className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300">
+                <React.Fragment key={loopId}>
+                <tr className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300">
                   <td className="px-5 py-4 pr-4">
                     <button
                       onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
@@ -199,6 +200,14 @@ const LoopManager = () => {
                     </button>
                   </td>
                 </tr>
+                {loop.lastError && (
+                  <tr className="border-b border-white/5">
+                    <td colSpan={7} className="px-5 pb-3 pt-0 text-[11px] text-red-400/90 font-mono truncate" title={loop.lastError}>
+                      Son hata: {loop.lastError}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
