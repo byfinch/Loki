@@ -1502,6 +1502,22 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
       ? ongoingRes.data
       : (ongoingRes.data?.attacks || []);
     const now = Date.now();
+    // Upstream tarih formati guvenilmez olabilir (epoch saniye string, saat
+    // dilimi kaymasi vb.). Parse edilemeyen veya bariz kaymis tarihler eleme
+    // sebebi olmasin; aksi halde calisan saldirilar "0 ID" gorunur.
+    const parseStarted = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      if (typeof v === 'number') return v < 1e12 ? v * 1000 : v;
+      const s = String(v).trim();
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        return n < 1e12 ? n * 1000 : n;
+      }
+      const t = new Date(s).getTime();
+      return Number.isNaN(t) ? null : t;
+    };
+    const isSaneDelta = (delta) => delta >= 0 && delta <= 24 * 60 * 60 * 1000;
+
     const matching = ongoingList.filter((a) => {
       const method = String(a.method || '').toLowerCase();
       const expectedMethod = String(params.method || '').toLowerCase();
@@ -1512,16 +1528,30 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
       if (target.endsWith('/')) target = target.slice(0, -1);
       const hostPart = target.split(':')[0];
       if (hostPart !== params.host) return false;
-      const startedAt = new Date(a.startedAt || a.start_time || a.started_at || now).getTime();
-      if (sinceMs && startedAt < sinceMs) return false;
-      return now - startedAt < 2 * 60 * 1000;
+
+      const started = parseStarted(a.startedAt || a.start_time || a.started_at);
+      if (started !== null) {
+        const delta = now - started;
+        // Zaman pencereleri sadece tarih makul (kaymamis) ise uygulanir;
+        // kaymis/bozuk tarihte ID-diff ve kayit kontrolu zaten sahiplenmeyi korur.
+        if (isSaneDelta(delta)) {
+          if (sinceMs && started < sinceMs) return false;
+          if (delta > 2 * 60 * 1000) return false;
+        }
+      }
+      return true;
     });
     matching.sort((a, b) =>
-      new Date(b.startedAt || b.start_time || b.started_at || 0).getTime() -
-      new Date(a.startedAt || a.start_time || a.started_at || 0).getTime()
+      (parseStarted(b.startedAt || b.start_time || b.started_at) || 0) -
+      (parseStarted(a.startedAt || a.start_time || a.started_at) || 0)
     );
     const ids = matching.slice(0, limit).map((a) => a.attack_id || a.id).filter(Boolean);
     console.log(`[fetchOngoingAttackIds] ${params.method}@${params.host} => ${ids.length} ID (toplam ${ongoingList.length})`);
+    // Eslesme yoksa ilk kaydin alan adlarini bir kez logla (tarih/format teshisi)
+    if (ids.length === 0 && ongoingList.length > 0 && !fetchOngoingAttackIds._debugLogged) {
+      fetchOngoingAttackIds._debugLogged = true;
+      console.log('[fetchOngoingAttackIds] DEBUG ilk ongoing kaydi:', JSON.stringify(ongoingList[0]).slice(0, 400));
+    }
     return ids;
   } catch (err) {
     console.warn('[fetchOngoingAttackIds] hata:', err.message);
