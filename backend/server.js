@@ -631,6 +631,17 @@ function telegramTimestamp() {
   return new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour12: false });
 }
 
+// stresse.st kapasite doluyken "Invalid parameters. Fill all fields!" gibi
+// yaniltici mesajlar donduruyor (kanitlandi: ayni parametreler hesap bosken
+// basarili, hesap 80'de doluyken bu mesaj). Gercek anlamina cevir.
+function normalizeUpstreamError(msg) {
+  const text = String(msg || '');
+  if (/invalid parameters\. fill all fields/i.test(text)) {
+    return 'stresse.st slot kapasitesi dolu (hesap concurrent limiti; bosalan slotlari bekliyor)';
+  }
+  return text;
+}
+
 function checkSlotsEmpty() {
   // Hesap bazinda anlik aktif saldiri sayilari
   const counts = new Map();
@@ -1390,7 +1401,7 @@ app.post('/api/stresse/attack', async (req, res) => {
       data = result.data;
       attackIds = result.attackIds;
     } catch (err) {
-      return res.status(502).json({ status: 'error', message: err.message });
+      return res.status(502).json({ status: 'error', message: normalizeUpstreamError(err.message) });
     }
 
     if (attackIds.length > 0) {
@@ -1471,7 +1482,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       data = result.data;
       attackIds = result.attackIds;
     } catch (err) {
-      return res.status(502).json({ status: 'error', message: err.message });
+      return res.status(502).json({ status: 'error', message: normalizeUpstreamError(err.message) });
     }
 
     attackIds.forEach((attackId) => {
@@ -1836,7 +1847,7 @@ async function runLoopRound(loopId) {
     loop.errors += 1;
     loop.consecutiveErrors = (loop.consecutiveErrors || 0) + 1;
     // Upstream'in gercek mesajini yakala (axios hatasinda response.data'da durur)
-    const upstreamMsg = roundError?.response?.data?.message || roundError?.message || 'Bilinmeyen hata';
+    const upstreamMsg = normalizeUpstreamError(roundError?.response?.data?.message || roundError?.message || 'Bilinmeyen hata');
     loop.lastError = upstreamMsg;
     console.error(`[loop ${loopId}] round ${round} tamamen basarisiz (${loop.consecutiveErrors}/${MAX_LOOP_CONSECUTIVE_ERRORS}): ${upstreamMsg}`);
     // Method bakimda gibi kalici hatalarda 10 tur beklemek anlamsiz; hemen durdur.
