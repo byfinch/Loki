@@ -559,7 +559,17 @@ function checkSlotsEmpty() {
 
 // Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
 // action: 'durduruldu' (manuel stop) veya 'tamamlandi' (dogal bitis).
-function notifyLoopRemoved(loop, action) {
+// Istemci gercek IP'si (nginx X-Forwarded-For iletiyor)
+function getClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket?.remoteAddress || '';
+}
+
+// Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
+// action: 'durduruldu' (manuel stop/hata) veya 'tamamlandi' (dogal bitis).
+// details: { stopDetail, username, ip } — sebep ve durduran kisi bilgisi.
+function notifyLoopRemoved(loop, action, details = {}) {
   if (!loop) return;
   // Hedef portsuz gosterilir; L7 ise history formatiyla ayni sekilde https://host/
   const host = loop.params?.host || loop.displayTarget || 'bilinmiyor';
@@ -568,12 +578,17 @@ function notifyLoopRemoved(loop, action) {
   const concurrents = loop.params?.concurrents ?? '?';
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
+  const stopper = details.username
+    ? `👤 <b>Durduran:</b> ${esc(details.username)}${details.ip ? ` (${esc(details.ip)})` : ''}`
+    : null;
   const message = [
     title,
     '─────────────────',
     `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
     `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
     `🔁 <b>Concurrents:</b> <code>${esc(concurrents)}</code>`,
+    ...(details.stopDetail ? [`📋 <b>Sebep:</b> ${esc(details.stopDetail)}`] : []),
+    ...(stopper ? [stopper] : []),
     `🕐 <i>${telegramTimestamp()}</i>`
   ].join('\n');
   sendTelegram(message).catch(() => {});
@@ -1578,6 +1593,7 @@ async function runLoopRound(loopId) {
   if (!session || !session.apiToken) {
     console.error(`[loop ${loopId}] API token bulunamadi, loop durduruluyor`);
     loop.stopReason = 'error';
+    loop.stopDetail = 'API token bulunamadı (oturum kapanmış veya süresi dolmuş)';
     loop.running = false;
     saveState();
     return;
@@ -1691,10 +1707,12 @@ async function runLoopRound(loopId) {
     if (/under maintenance/i.test(upstreamMsg)) {
       console.error(`[loop ${loopId}] Kalici upstream hatasi (method bakimda), loop durduruluyor`);
       loop.stopReason = 'error';
+      loop.stopDetail = `stresse.st method'u bakıma aldı (${upstreamMsg})`;
       loop.running = false;
     } else if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
       console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
       loop.stopReason = 'error';
+      loop.stopDetail = `${MAX_LOOP_CONSECUTIVE_ERRORS} ardışık başarısız tur (son: ${upstreamMsg})`;
       loop.running = false;
     }
   } else {
@@ -1742,7 +1760,7 @@ function cleanupLoop(loopId) {
   console.log(`[loop ${loopId}] temizlendi (${removed} pending kayit silindi)`);
   // Loop dogal olarak bitti (round'lar tamamlandi) veya hata nedeniyle durdu;
   // Telegram bildirimini buna gore gonder.
-  notifyLoopRemoved(finishedLoop, finishedLoop?.stopReason === 'error' ? 'durduruldu' : 'tamamlandi');
+  notifyLoopRemoved(finishedLoop, finishedLoop?.stopReason === 'error' ? 'durduruldu' : 'tamamlandi', { stopDetail: finishedLoop?.stopDetail });
   checkSlotsEmpty();
 }
 
@@ -1858,7 +1876,11 @@ app.post('/api/stresse/stop', async (req, res) => {
       delete activeLoops[loopIdOfAttack];
       saveState();
       console.log(`[stop] Loop'a ait saldiri durduruldugu icin loop da durduruldu: ${loopIdOfAttack}`);
-      notifyLoopRemoved(stoppedLoop, 'durduruldu');
+      notifyLoopRemoved(stoppedLoop, 'durduruldu', {
+        username: sessions[sessionId]?.username,
+        ip: getClientIp(req),
+        stopDetail: 'Loop saldırısı panelden durduruldu'
+      });
     }
 
     // History durumunu guncelle
@@ -1984,7 +2006,11 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
         loop.running = false;
         delete activeLoops[key];
         console.log(`[stop/bulk] Loop'a ait saldiri durduruldugu icin loop da durduruldu: ${key}`);
-        notifyLoopRemoved(loop, 'durduruldu');
+        notifyLoopRemoved(loop, 'durduruldu', {
+          username: sessions[sessionId]?.username,
+          ip: getClientIp(req),
+          stopDetail: 'Loop saldırıları panelden toplu durduruldu'
+        });
       }
     });
     saveState();
@@ -2038,7 +2064,11 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
         delete activeLoops[key];
       });
       saveState();
-      stoppedLoops.forEach((loop) => notifyLoopRemoved(loop, 'durduruldu'));
+      stoppedLoops.forEach((loop) => notifyLoopRemoved(loop, 'durduruldu', {
+        username: sessions[sessionId]?.username,
+        ip: getClientIp(req),
+        stopDetail: 'Kullanıcı tüm loopları kapattı'
+      }));
       return res.json({ status: 'success', message: 'Tum looplar durduruldu' });
     }
 
@@ -2054,7 +2084,11 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
     saveState();
-    notifyLoopRemoved(loop, 'durduruldu');
+    notifyLoopRemoved(loop, 'durduruldu', {
+      username: sessions[sessionId]?.username,
+      ip: getClientIp(req),
+      stopDetail: 'Kullanıcı loopu panelden çıkardı'
+    });
     res.json({ status: 'success', message: 'Loop modu sonlandirildi; mevcut saldirilar devam ediyor', loopId });
   } catch (error) {
     handleEndpointError(res, error, 'Loop stop error');
