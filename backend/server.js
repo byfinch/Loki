@@ -566,6 +566,27 @@ function getClientIp(req) {
   return req.socket?.remoteAddress || '';
 }
 
+// IP -> konum cozumu (ipwho.is, ucretsiz/key'siz). Sonuclar cache'lenir;
+// hata durumunda bos string doner, bildirim akisini asla bozmaz.
+const ipGeoCache = new Map();
+async function lookupIpLocation(ip) {
+  if (!ip) return '';
+  if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|localhost)/.test(ip)) return 'yerel ağ';
+  if (ipGeoCache.has(ip)) return ipGeoCache.get(ip);
+  let label = '';
+  try {
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, { signal: AbortSignal.timeout(5000) });
+    const data = await res.json();
+    if (data?.success) {
+      label = [data.city, data.country].filter(Boolean).join(', ');
+    }
+  } catch (err) {
+    console.warn('[geo] IP konum sorgusu basarisiz:', err.message);
+  }
+  ipGeoCache.set(ip, label);
+  return label;
+}
+
 // Loop kaldirildiginda Telegram bildirimi gonderir (fire-and-forget).
 // action: 'durduruldu' (manuel stop/hata) veya 'tamamlandi' (dogal bitis).
 // details: { stopDetail, username, ip } — sebep ve durduran kisi bilgisi.
@@ -578,20 +599,29 @@ function notifyLoopRemoved(loop, action, details = {}) {
   const concurrents = loop.params?.concurrents ?? '?';
   const isStopped = action === 'durduruldu';
   const title = isStopped ? '🔴 <b>LOKI — LOOP DURDURULDU</b>' : '🟢 <b>LOKI — LOOP TAMAMLANDI</b>';
-  const stopper = details.username
-    ? `👤 <b>Durduran:</b> ${esc(details.username)}${details.ip ? ` (${esc(details.ip)})` : ''}`
-    : null;
-  const message = [
-    title,
-    '─────────────────',
-    `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
-    `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
-    `🔁 <b>Concurrents:</b> <code>${esc(concurrents)}</code>`,
-    ...(details.stopDetail ? [`📋 <b>Sebep:</b> ${esc(details.stopDetail)}`] : []),
-    ...(stopper ? [stopper] : []),
-    `🕐 <i>${telegramTimestamp()}</i>`
-  ].join('\n');
-  sendTelegram(message).catch(() => {});
+  // Durduran kisi: IP + konum (geo lookup). Geo basarisizsa sadece IP,
+  // IP yoksa kullanici adina dus.
+  const buildAndSend = async () => {
+    let stopper = null;
+    if (details.ip) {
+      const location = await lookupIpLocation(details.ip);
+      stopper = `👤 <b>Durduran:</b> ${esc(details.ip)}${location ? ` (${esc(location)})` : ''}`;
+    } else if (details.username) {
+      stopper = `👤 <b>Durduran:</b> ${esc(details.username)}`;
+    }
+    const message = [
+      title,
+      '─────────────────',
+      `🎯 <b>Hedef:</b> <code>${esc(target)}</code>`,
+      `⚡ <b>Method:</b> <code>${esc(method)}</code>`,
+      `🔁 <b>Concurrents:</b> <code>${esc(concurrents)}</code>`,
+      ...(details.stopDetail ? [`📋 <b>Sebep:</b> ${esc(details.stopDetail)}`] : []),
+      ...(stopper ? [stopper] : []),
+      `🕐 <i>${telegramTimestamp()}</i>`
+    ].join('\n');
+    await sendTelegram(message);
+  };
+  buildAndSend().catch(() => {});
 }
 
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1, elapsedSec = 0) {
