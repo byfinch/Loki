@@ -151,7 +151,7 @@ export const apiClient = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
-    });
+    }, SLOW_REQUEST_TIMEOUT_MS);
     return handleResponse(res);
   },
 
