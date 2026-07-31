@@ -1568,11 +1568,11 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
       const method = String(a.method || '').toLowerCase();
       const expectedMethod = String(params.method || '').toLowerCase();
       if (method !== expectedMethod) return false;
-      // L4 hedef target icinde IP:port olarak gelir; portu ayirarak host karsilastir.
+      // L4 hedef IP:port, L7 hedef host/:443 veya https://host/ formatinda gelir;
+      // hepsini sade host'a indir (split sirasi onemli).
       let target = String(a.target || a.host || '');
       target = target.replace(/^https?:\/\//i, '');
-      if (target.endsWith('/')) target = target.slice(0, -1);
-      const hostPart = target.split(':')[0];
+      const hostPart = target.split('/')[0].split(':')[0];
       if (hostPart !== params.host) return false;
 
       const started = parseStarted(a.startedAt || a.start_time || a.started_at);
