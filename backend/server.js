@@ -1547,10 +1547,21 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
     );
     const ids = matching.slice(0, limit).map((a) => a.attack_id || a.id).filter(Boolean);
     console.log(`[fetchOngoingAttackIds] ${params.method}@${params.host} => ${ids.length} ID (toplam ${ongoingList.length})`);
-    // Eslesme yoksa ilk kaydin alan adlarini bir kez logla (tarih/format teshisi)
-    if (ids.length === 0 && ongoingList.length > 0 && !fetchOngoingAttackIds._debugLogged) {
-      fetchOngoingAttackIds._debugLogged = true;
-      console.log('[fetchOngoingAttackIds] DEBUG ilk ongoing kaydi:', JSON.stringify(ongoingList[0]).slice(0, 400));
+    // Eslesme yoksa ornek kayitlari logla (alan adi/format teshisi); method+host
+    // bazinda bir kez.
+    if (ids.length === 0 && ongoingList.length > 0) {
+      fetchOngoingAttackIds._debugLogged = fetchOngoingAttackIds._debugLogged || new Set();
+      const debugKey = `${params.method}@${params.host}`;
+      if (!fetchOngoingAttackIds._debugLogged.has(debugKey)) {
+        fetchOngoingAttackIds._debugLogged.add(debugKey);
+        const sample = ongoingList.slice(0, 3).map((a) => ({
+          method: a.method,
+          target: a.target || a.host,
+          startedAt: a.startedAt ?? a.start_time ?? a.started_at,
+          id: a.attack_id || a.id
+        }));
+        console.log(`[fetchOngoingAttackIds] DEBUG ${debugKey} ornekleri:`, JSON.stringify(sample).slice(0, 500));
+      }
     }
     return ids;
   } catch (err) {
@@ -1649,12 +1660,17 @@ async function runLoopRound(loopId) {
     } else if (verified && (data?.status === 'success' || data?.message === 'Attack started')) {
       roundSuccesses = loop.params.concurrents;
       loop.roundAttackIds = [];
+      loop.lastError = null;
       console.log(`[loop ${loopId}] round ${round} basarili: ${roundSuccesses} saldiri baslatildi (ID bulunamadi, /ongoing'den gorunecek)`);
     } else if (data?.status === 'success' || data?.message === 'Attack started') {
-      // Sahte basari: stresse.st "Attack started" dedi ama saldiri /ongoing'de yok.
-      // Turu basarisiz say ki panelde gercek gorunsu (method sessizce reddediliyor).
-      roundError = new Error('stresse.st "Attack started" dondu ancak saldiri dogrulanamadi (method sessizce reddediliyor olabilir)');
-      console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);
+      // Dogrulanamayan basari: stresse.st success diyor ama /ongoing JSON'u bu
+      // method icin guvenilir degil (saldiri web panelinde var, listede yok).
+      // Loop'u oldurmek yerine turu basarili say; uyari panelde gorunsun.
+      roundSuccesses = loop.params.concurrents;
+      loop.roundAttackIds = [];
+      loop.unverifiedRounds = (loop.unverifiedRounds || 0) + 1;
+      loop.lastError = 'Uyari: stresse.st "Attack started" dondu ancak saldiri /ongoing\'de dogrulanamadi';
+      console.warn(`[loop ${loopId}] round ${round} dogrulanamadi (success ama ID yok); loop calismaya devam ediyor (${loop.unverifiedRounds}. dogrulanamayan tur)`);
     } else {
       roundError = new Error(`GET /api basarisiz: ${data?.message || 'attackId bulunamadi'}`);
       console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);
