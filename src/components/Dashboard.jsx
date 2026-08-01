@@ -94,14 +94,11 @@ const Dashboard = () => {
     }
   }, [logout, setUser, addLog, showToast, refreshAccounts]);
 
-  // Cikis: sadece aktif hesap defterden silinir; baska kayitli hesap varsa
-  // login ekrani yerine otomatik ona gecilir.
+  // Cikis: aktif oturum kapanir, login ekranina dusulur. Hesaplar defterde
+  // kalir; baska hesapla giris yapildiginda ikisi de listede gorunur.
   const handleLogout = async () => {
     addLog('Çıkış yapıldı');
     apiClient.logout();
-    refreshAccounts();
-    const next = apiClient.getAccounts()[0];
-    if (next && (await activateAccount(next.username))) return;
     logout();
   };
 
