@@ -94,13 +94,6 @@ const Dashboard = () => {
     }
   }, [logout, setUser, addLog, showToast, refreshAccounts]);
 
-  // "Hesap Ekle": kayitli hesaplari silmeden login ekranina doner
-  const handleAddAccount = useCallback(() => {
-    addLog('Yeni hesap ekleniyor');
-    apiClient.clearActiveSession();
-    logout();
-  }, [addLog, logout]);
-
   // Cikis: sadece aktif hesap defterden silinir; baska kayitli hesap varsa
   // login ekrani yerine otomatik ona gecilir.
   const handleLogout = async () => {
@@ -128,7 +121,6 @@ const Dashboard = () => {
         accounts={accounts}
         activeUsername={state.user?.username || apiClient.getUsername()}
         onSwitch={activateAccount}
-        onAddAccount={handleAddAccount}
       />
       {/* Floating Sidebar */}
       <aside className="fixed top-4 left-4 h-auto glass-panel rounded-xl hidden md:flex flex-col items-center py-3 px-2 gap-2 z-50">
