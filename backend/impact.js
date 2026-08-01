@@ -21,7 +21,7 @@ const TICK_MS = 5000;
 const MAX_CONCURRENT_CHECKS = 2;
 const POLL_FIRST_DELAY_MS = 6000;
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 5;
+const POLL_MAX_ATTEMPTS = 9;
 const REQUEST_TIMEOUT_MS = 15000;
 const CHECKS_KEEP = 10;
 // Biten saldirinin final olcumu panelde bu kadar gorunur kalir, sonra silinir.
@@ -153,9 +153,12 @@ function parsePerNode(data, layer) {
       if (layer === 'L7') {
         const first = value[0];
         if (Array.isArray(first)) {
-          ok = first[0] === 1;
-          if (typeof first[1] === 'number') ms = Math.round(first[1] * 1000);
+          const codeNum = first[3] != null ? parseInt(first[3], 10) : null;
           if (first[3] != null) code = String(first[3]);
+          // Baglanti kurulsa da HTTP 4xx/5xx donuyorsa site kullanici icin dusuk.
+          // (check-host 403/503'te de "OK/1" dondurur; sadece 2xx/3xx saglikli sayilir)
+          ok = first[0] === 1 && codeNum !== null && codeNum < 400;
+          if (typeof first[1] === 'number') ms = Math.round(first[1] * 1000);
         }
       } else {
         const first = value[0];
