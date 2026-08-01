@@ -180,6 +180,14 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // Etki Monitoru
+  async getImpact() {
+    const res = await apiFetch(`${API_BASE}/impact`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // Method congestion
   async getMethodCongestion() {
     const res = await apiFetch(`${API_BASE}/method-congestion`, {
