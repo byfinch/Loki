@@ -352,3 +352,49 @@ body {
     animation: none;
   }
 }
+
+/* =====================
+   Hesap Gecis Overlay (V3 Glitch)
+   ===================== */
+.switch-glitch-1 {
+  animation: switch-g1 2.4s steps(2) infinite;
+  filter: hue-rotate(90deg);
+  opacity: 0.55;
+}
+
+.switch-glitch-2 {
+  animation: switch-g2 3.1s steps(3) infinite;
+  filter: hue-rotate(180deg);
+  opacity: 0.45;
+}
+
+@keyframes switch-g1 {
+  0%, 88% { transform: translate(0); clip-path: inset(0 0 0 0); }
+  90% { transform: translate(-4px, 2px); clip-path: inset(20% 0 40% 0); }
+  94% { transform: translate(3px, -2px); clip-path: inset(60% 0 10% 0); }
+  98%, 100% { transform: translate(0); clip-path: inset(0 0 0 0); }
+}
+
+@keyframes switch-g2 {
+  0%, 80% { transform: translate(0); clip-path: inset(0 0 0 0); }
+  84% { transform: translate(4px, 1px); clip-path: inset(30% 0 30% 0); }
+  92% { transform: translate(-3px, -1px); clip-path: inset(10% 0 60% 0); }
+  96%, 100% { transform: translate(0); clip-path: inset(0 0 0 0); }
+}
+
+.switch-done {
+  animation: switch-done-in 0.5s forwards;
+}
+
+@keyframes switch-done-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-glitch-1,
+  .switch-glitch-2,
+  .switch-done {
+    animation: none;
+  }
+}
