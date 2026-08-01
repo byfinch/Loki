@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import AccountSwitcher from './AccountSwitcher';
@@ -12,11 +12,7 @@ import ImpactMonitor from './ImpactMonitor';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
-  const { state, setActiveTab, setUser, logout, addLog, setPlan, showToast } = useStressTest();
-  // localStorage'daki hesap defteri reaktif degil; islem sonrasi tik ile tazelenir
-  const [accountsVersion, setAccountsVersion] = useState(0);
-  const accounts = useMemo(() => apiClient.getAccounts(), [accountsVersion]);
-  const refreshAccounts = useCallback(() => setAccountsVersion((v) => v + 1), []);
+  const { state, setActiveTab, logout, addLog, setPlan } = useStressTest();
 
   // Plan verisi AttackForm'daki limit kontrolleri icin gerekli (eskiden PlanInfo yuklerdi)
   useEffect(() => {
@@ -51,48 +47,15 @@ const Dashboard = () => {
     if (state.isAuthenticated) loadPlan();
   }, [state.isAuthenticated, setPlan, addLog]);
 
-  // Hedef hesabin session'ini aktif anahtarlara cevirip backend'de dogrular.
-  // Basariliysa context'i tek batch'te sifirlayip yeni kullaniciya gecer
-  // (isAuthenticated false->true oldugundan veri yukleyen effect'ler yeniden kosar).
-  // Basarisizlikta false doner: 401/403'te hesap defterden silinip login ekranina
-  // dusulur; gecici ag hatasinda mumkunse onceki hesaba geri donulur.
-  const activateAccount = useCallback(async (username) => {
-    const previous = apiClient.getUsername();
-    if (!apiClient.switchAccount(username)) {
-      showToast('Hesap kaydı bulunamadı', 'error');
-      return false;
-    }
-    try {
-      const user = await apiClient.getUser(username);
-      logout();
-      setUser(user);
-      refreshAccounts();
-      addLog(`Hesaba geçildi: ${username}`);
-      showToast(`Hesaba geçildi: ${username}`, 'success');
-      return true;
-    } catch (err) {
-      if (err.status === 401 || err.status === 403) {
-        // Secilen session olmus: defterden sil, giris ekranina yonlendir
-        apiClient.removeAccount(username);
-        apiClient.clearActiveSession();
-        refreshAccounts();
-        addLog(`Oturum süresi dolmuş: ${username}`);
-        showToast('Oturum süresi doldu, yeniden giriş gerekli', 'error');
-        logout();
-        return false;
-      }
-      // Gecici ag/timeout hatasi: onceki hesap hala defterdeyse geri don
-      if (
-        previous &&
-        previous !== username &&
-        apiClient.getAccounts().some((a) => a.username === previous)
-      ) {
-        apiClient.switchAccount(previous);
-      }
-      showToast(`Hesap doğrulanamadı (ağ hatası): ${err.message}`, 'error');
-      return false;
-    }
-  }, [logout, setUser, addLog, showToast, refreshAccounts]);
+  // Backend'deki hesap listesinden secim: aktif oturumu degistirip sayfayi
+  // yeniden yukler. Tum veri akislari (SSE, loop, plan, gecmis) yeni
+  // session ile temiz baslar; sahte gecis (sadece rozetin degismesi) imkansiz.
+  const handleSwitchAccount = useCallback((account) => {
+    if (!account?.sessionId || !account?.username) return;
+    addLog(`Hesaba geçiliyor: ${account.username}`);
+    apiClient.setActiveSession(account.username, account.sessionId);
+    window.location.reload();
+  }, [addLog]);
 
   // Cikis: aktif oturum kapanir, login ekranina dusulur. Hesaplar defterde
   // kalir; baska hesapla giris yapildiginda ikisi de listede gorunur.
@@ -115,9 +78,8 @@ const Dashboard = () => {
       <ToastContainer />
       {/* Aktif hesap rozeti + coklu hesap dropdown'i */}
       <AccountSwitcher
-        accounts={accounts}
         activeUsername={state.user?.username || apiClient.getUsername()}
-        onSwitch={activateAccount}
+        onSwitch={handleSwitchAccount}
       />
       {/* Floating Sidebar */}
       <aside className="fixed top-4 left-4 h-auto glass-panel rounded-xl hidden md:flex flex-col items-center py-3 px-2 gap-2 z-50">

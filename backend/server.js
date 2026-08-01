@@ -2295,6 +2295,40 @@ app.get('/api/method-congestion', (req, res) => {
   res.json(getMethodCongestionSnapshot());
 });
 
+/**
+ * GET /api/accounts
+ * Backend'de yasayan tum oturumlari (hesaplari) dondurur.
+ * Ortak panel: herhangi bir gecerli oturum, listedeki diger hesaplara
+ * sifresiz gecebilir (sessionId'ler paylasilir).
+ */
+app.get('/api/accounts', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId || !sessions[sessionId]) {
+      return res.status(401).json({ status: 'error', message: 'Session required' });
+    }
+
+    // Ayni username'e ait birden fazla session varsa en yenisini tut
+    const byUser = new Map();
+    Object.entries(sessions).forEach(([sid, session]) => {
+      if (!session?.username || !session.apiToken) return;
+      const prev = byUser.get(session.username);
+      const created = new Date(session.createdAt || 0).getTime();
+      if (!prev || created > prev.created) {
+        byUser.set(session.username, { username: session.username, sessionId: sid, created });
+      }
+    });
+
+    const accounts = [...byUser.values()]
+      .map(({ username, sessionId: sid }) => ({ username, sessionId: sid }))
+      .sort((a, b) => a.username.localeCompare(b.username));
+
+    res.json({ status: 'success', accounts });
+  } catch (error) {
+    handleEndpointError(res, error, 'Accounts error');
+  }
+});
+
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
