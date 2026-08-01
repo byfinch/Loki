@@ -8,15 +8,13 @@ import React, { useEffect, useRef, useState } from 'react';
  * - Kayitli hesaplar listelenir; aktif olan yesil nokta + check ile isaretli.
  * - Baska hesaba tiklayinca onSwitch(username) cagrilir (sifresiz gecis);
  *   gecis sirasinda satirlar kilitlenir.
- * - "Hesap Ekle" satiri onAddAccount() cagirir; kayitli hesaplari silmez.
  *
  * Props:
  *   accounts: [{ username, sessionId, addedAt }]
  *   activeUsername: aktif hesap kullanici adi
  *   onSwitch(username): hesap secilince cagrilir (async olabilir)
- *   onAddAccount(): "Hesap Ekle" secilince cagrilir
  */
-const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch, onAddAccount }) => {
+const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch }) => {
   const [open, setOpen] = useState(false);
   const [switchingTo, setSwitchingTo] = useState(null);
   const containerRef = useRef(null);
@@ -52,11 +50,6 @@ const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch, onAddAccount
       setSwitchingTo(null);
       close();
     }
-  };
-
-  const handleAdd = () => {
-    close();
-    onAddAccount();
   };
 
   return (
@@ -139,19 +132,6 @@ const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch, onAddAccount
               </button>
             );
           })}
-
-          <div className="mx-3 my-1 h-px bg-white/10"></div>
-
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!!switchingTo}
-            onClick={handleAdd}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm font-mono text-gray-400 hover:bg-green-500/[0.07] hover:text-green-400 transition-colors disabled:cursor-wait"
-          >
-            <i className="ph ph-user-plus text-base flex-shrink-0"></i>
-            <span>Hesap Ekle</span>
-          </button>
         </div>
       )}
     </div>
