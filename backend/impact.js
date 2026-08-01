@@ -142,22 +142,25 @@ function checkpointOffset(target, index) {
 // check-host sonucunu normalize eder: perNode listesi.
 // http: node -> [[ok, saniye, "OK", "200", ip]] | null
 // tcp:  node -> [{ address, time }] | null
-function parsePerNode(data, layer) {
+function parsePerNode(data, layer, checkType = 'http') {
   const perNode = [];
   for (const node of NODES) {
     const value = data ? data[node] : undefined;
     let ok = false;
+    let redirect = false;
     let ms = null;
     let code = null;
     if (Array.isArray(value) && value.length > 0) {
-      if (layer === 'L7') {
+      if (checkType === 'http') {
         const first = value[0];
         if (Array.isArray(first)) {
           const codeNum = first[3] != null ? parseInt(first[3], 10) : null;
           if (first[3] != null) code = String(first[3]);
-          // Baglanti kurulsa da HTTP 4xx/5xx donuyorsa site kullanici icin dusuk.
-          // (check-host 403/503'te de "OK/1" dondurur; sadece 2xx/3xx saglikli sayilir)
-          ok = first[0] === 1 && codeNum !== null && codeNum < 400;
+          if (first[0] === 1 && codeNum !== null) {
+            // Baglanti kurulsa da 4xx/5xx dusuk sayilir; 3xx yonlendirme.
+            ok = codeNum < 300;
+            redirect = codeNum >= 300 && codeNum < 400;
+          }
           if (typeof first[1] === 'number') ms = Math.round(first[1] * 1000);
         }
       } else {
@@ -168,7 +171,7 @@ function parsePerNode(data, layer) {
         }
       }
     }
-    perNode.push({ node, ok, ms, code });
+    perNode.push({ node, ok, redirect, ms, code });
   }
   return perNode;
 }
@@ -178,12 +181,16 @@ function computeState(perNode, baselineMs) {
   const total = perNode.length;
   const okNodes = perNode.filter((n) => n.ok);
   const okCount = okNodes.length;
+  const redirectCount = perNode.filter((n) => n.redirect).length;
   if (total === 0) return { state: 'down', avgMs: null };
   const avgMs = okCount > 0
     ? Math.round(okNodes.reduce((s, n) => s + (n.ms || 0), 0) / okCount)
     : null;
-  // Cogu node timeout/hata -> down
-  if (okCount * 2 <= total) return { state: 'down', avgMs };
+  // Cogu node 2xx donmuyorsa: cogunluk 3xx ise yonlendirme, degilse dusuk.
+  if (okCount * 2 <= total) {
+    if (redirectCount * 2 > total) return { state: 'redirect', avgMs };
+    return { state: 'down', avgMs };
+  }
   // Bazi node'lar timeout veya baseline'in 1.5 kati ustu -> degraded
   const slowed = baselineMs != null && avgMs != null && avgMs > baselineMs * 1.5;
   if (okCount < total || slowed) return { state: 'degraded', avgMs };
@@ -206,7 +213,10 @@ async function runCheck(target, { final = false } = {}) {
   activeChecks++;
   target.checking = true;
   try {
-    const checkType = target.layer === 'L7' ? 'check-http' : 'check-tcp';
+    // L4'te TCP "baglanti acik ama HTTP 403" yanilgisi olmasin:
+    // web portlarinda (80/443) check-http, digerlerinde check-tcp kullanilir.
+    const webPort = target.layer === 'L7' || [80, 443].includes(parseInt(target.port, 10));
+    const checkType = webPort ? 'check-http' : 'check-tcp';
     const hostParam = target.layer === 'L7'
       ? target.host
       : `${target.host}:${target.port || 80}`;
@@ -226,7 +236,7 @@ async function runCheck(target, { final = false } = {}) {
       if (resolved >= NODES.length) break;
     }
 
-    const perNode = parsePerNode(data, target.layer);
+    const perNode = parsePerNode(data, target.layer, webPort ? 'http' : 'tcp');
     const { state, avgMs } = computeState(perNode, target.baselineMs);
     const at = new Date().toISOString();
 

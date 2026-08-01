@@ -13,6 +13,7 @@ const POLL_MS = 30000;
 const STATE_BADGES = {
   up: { icon: '🟢', label: 'Ayakta', cls: 'text-green-400 border-green-500/30 bg-green-500/10' },
   degraded: { icon: '🟠', label: 'Yavaşlıyor', cls: 'text-orange-400 border-orange-500/30 bg-orange-500/10' },
+  redirect: { icon: '🟠', label: 'Yönlendirme', cls: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' },
   down: { icon: '🔴', label: 'Düştü', cls: 'text-red-400 border-red-500/30 bg-red-500/10' },
   measuring: { icon: '⚪', label: 'Ölçülüyor', cls: 'text-gray-400 border-gray-500/30 bg-gray-500/10' }
 };
