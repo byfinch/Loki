@@ -398,3 +398,21 @@ body {
     animation: none;
   }
 }
+
+/* Validating splash: belirsiz ilerleme cubugu */
+.splash-indeterminate {
+  animation: splash-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes splash-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-indeterminate {
+    animation: none;
+    transform: none;
+    width: 100%;
+  }
+}

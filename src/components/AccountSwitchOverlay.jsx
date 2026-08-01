@@ -42,7 +42,7 @@ const AccountSwitchOverlay = ({ targetUsername, onComplete }) => {
     return undefined;
   }, [pct, onComplete]);
 
-  const stage = done ? '' : STAGES[Math.min(STAGES.length - 1, Math.floor(pct / 26))];
+  const stage = STAGES[Math.min(STAGES.length - 1, Math.floor(pct / 26))];
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center gap-6 font-mono" role="alert" aria-label="Hesap değiştiriliyor">
@@ -68,18 +68,21 @@ const AccountSwitchOverlay = ({ targetUsername, onComplete }) => {
         />
       </div>
 
-      <div className="text-xs text-cyan-400 tracking-[3px] min-h-4">
-        {stage}
-        {!done && pct > 0 && (
-          <span className="text-gray-500 normal-case tracking-normal"> · hedef: {targetUsername}</span>
+      {/* Sabit yukseklikli asama/done alani: layout kaymasi olmaz */}
+      <div className="h-6 flex items-center justify-center text-xs tracking-[3px]">
+        {done ? (
+          <span className="switch-done text-green-400 text-[15px] [text-shadow:0_0_20px_rgba(0,255,65,0.7)]">
+            ERİŞİM ONAYLANDI
+          </span>
+        ) : (
+          <span className="text-cyan-400">
+            {stage}
+            {pct > 0 && (
+              <span className="text-gray-500 normal-case tracking-normal"> · hedef: {targetUsername}</span>
+            )}
+          </span>
         )}
       </div>
-
-      {done && (
-        <div className="switch-done text-green-400 text-[15px] tracking-[3px] [text-shadow:0_0_20px_rgba(0,255,65,0.7)]">
-          ERİŞİM ONAYLANDI
-        </div>
-      )}
     </div>
   );
 };
