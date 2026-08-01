@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
+import AccountSwitcher from './AccountSwitcher';
 import AttackForm from './AttackForm';
 import LiveAttacks from './LiveAttacks';
 import ToolsPanel from './ToolsPanel';
@@ -11,7 +12,11 @@ import ImpactMonitor from './ImpactMonitor';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
-  const { state, setActiveTab, logout, addLog, setPlan } = useStressTest();
+  const { state, setActiveTab, setUser, logout, addLog, setPlan, showToast } = useStressTest();
+  // localStorage'daki hesap defteri reaktif degil; islem sonrasi tik ile tazelenir
+  const [accountsVersion, setAccountsVersion] = useState(0);
+  const accounts = useMemo(() => apiClient.getAccounts(), [accountsVersion]);
+  const refreshAccounts = useCallback(() => setAccountsVersion((v) => v + 1), []);
 
   // Plan verisi AttackForm'daki limit kontrolleri icin gerekli (eskiden PlanInfo yuklerdi)
   useEffect(() => {
@@ -46,9 +51,64 @@ const Dashboard = () => {
     if (state.isAuthenticated) loadPlan();
   }, [state.isAuthenticated, setPlan, addLog]);
 
-  const handleLogout = () => {
+  // Hedef hesabin session'ini aktif anahtarlara cevirip backend'de dogrular.
+  // Basariliysa context'i tek batch'te sifirlayip yeni kullaniciya gecer
+  // (isAuthenticated false->true oldugundan veri yukleyen effect'ler yeniden kosar).
+  // Basarisizlikta false doner: 401/403'te hesap defterden silinip login ekranina
+  // dusulur; gecici ag hatasinda mumkunse onceki hesaba geri donulur.
+  const activateAccount = useCallback(async (username) => {
+    const previous = apiClient.getUsername();
+    if (!apiClient.switchAccount(username)) {
+      showToast('Hesap kaydı bulunamadı', 'error');
+      return false;
+    }
+    try {
+      const user = await apiClient.getUser(username);
+      logout();
+      setUser(user);
+      refreshAccounts();
+      addLog(`Hesaba geçildi: ${username}`);
+      showToast(`Hesaba geçildi: ${username}`, 'success');
+      return true;
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        // Secilen session olmus: defterden sil, giris ekranina yonlendir
+        apiClient.removeAccount(username);
+        apiClient.clearActiveSession();
+        refreshAccounts();
+        addLog(`Oturum süresi dolmuş: ${username}`);
+        showToast('Oturum süresi doldu, yeniden giriş gerekli', 'error');
+        logout();
+        return false;
+      }
+      // Gecici ag/timeout hatasi: onceki hesap hala defterdeyse geri don
+      if (
+        previous &&
+        previous !== username &&
+        apiClient.getAccounts().some((a) => a.username === previous)
+      ) {
+        apiClient.switchAccount(previous);
+      }
+      showToast(`Hesap doğrulanamadı (ağ hatası): ${err.message}`, 'error');
+      return false;
+    }
+  }, [logout, setUser, addLog, showToast, refreshAccounts]);
+
+  // "Hesap Ekle": kayitli hesaplari silmeden login ekranina doner
+  const handleAddAccount = useCallback(() => {
+    addLog('Yeni hesap ekleniyor');
+    apiClient.clearActiveSession();
+    logout();
+  }, [addLog, logout]);
+
+  // Cikis: sadece aktif hesap defterden silinir; baska kayitli hesap varsa
+  // login ekrani yerine otomatik ona gecilir.
+  const handleLogout = async () => {
     addLog('Çıkış yapıldı');
     apiClient.logout();
+    refreshAccounts();
+    const next = apiClient.getAccounts()[0];
+    if (next && (await activateAccount(next.username))) return;
     logout();
   };
 
@@ -63,12 +123,13 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-black text-white cyber-grid">
       <ToastContainer />
-      {/* Aktif hesap rozeti */}
-      <div className="fixed top-4 right-4 z-50 glass-panel rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-mono">
-        <i className="ph ph-user-circle text-green-400 text-sm"></i>
-        <span className="text-gray-400">Hesap:</span>
-        <span className="text-green-400 font-semibold">{apiClient.getUsername() || '—'}</span>
-      </div>
+      {/* Aktif hesap rozeti + coklu hesap dropdown'i */}
+      <AccountSwitcher
+        accounts={accounts}
+        activeUsername={state.user?.username || apiClient.getUsername()}
+        onSwitch={activateAccount}
+        onAddAccount={handleAddAccount}
+      />
       {/* Floating Sidebar */}
       <aside className="fixed top-4 left-4 h-auto glass-panel rounded-xl hidden md:flex flex-col items-center py-3 px-2 gap-2 z-50">
         {[
