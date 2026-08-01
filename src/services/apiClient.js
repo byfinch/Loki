@@ -135,10 +135,10 @@ export const apiClient = {
     return data;
   },
 
-  // Aktif hesabi defterden de siler; kayitli diger hesaplara dokunmaz.
+  // Cikis: sadece aktif oturumu kapatir; hesap defterde KALIR ki kullanici
+  // daha sonra sifre girmeden geri donebilsin. Defterden silme yalnizca
+  // oturum gercekten olmusse (401) yapilir.
   logout() {
-    const username = localStorage.getItem('lokiUsername');
-    if (username) this.removeAccount(username);
     this.clearActiveSession();
   },
 
