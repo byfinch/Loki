@@ -7,6 +7,7 @@ import ToolsPanel from './ToolsPanel';
 import LoopManager from './LoopManager';
 import AttackHistory from './AttackHistory';
 import PhishPanel from './PhishPanel';
+import ImpactMonitor from './ImpactMonitor';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
@@ -127,8 +128,13 @@ const Dashboard = () => {
         <div className="flex flex-col gap-8 mt-8">
           {state.activeTab === 'attack' && (
             <>
-              <div className="w-full max-w-2xl">
-                <AttackForm />
+              <div className="flex flex-col lg:flex-row gap-8 w-full items-start">
+                <div className="w-full lg:max-w-2xl lg:shrink-0">
+                  <AttackForm />
+                </div>
+                <div className="hidden lg:block flex-1 min-w-0">
+                  <ImpactMonitor />
+                </div>
               </div>
               <LiveAttacks />
             </>
