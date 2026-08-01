@@ -8,6 +8,8 @@ const REQUEST_TIMEOUT_MS = 30000;
 // Login ve saldiri baslatma backend uzerinden stresse.st'e ardisik cagri yaptigi
 // icin daha uzun surebilir; bu isteklere genis timeout verilir.
 const SLOW_REQUEST_TIMEOUT_MS = 90000;
+// Coklu hesap kayit defterinin localStorage anahtari
+const ACCOUNTS_KEY = 'lokiAccounts';
 
 function getHeaders() {
   const sessionId = localStorage.getItem('lokiSessionId');
@@ -59,6 +61,55 @@ async function handleResponse(response) {
 }
 
 export const apiClient = {
+  // --- Hesap kayit defteri (coklu hesap gecisi) ---
+  // localStorage'da ACCOUNTS_KEY altinda [{ username, sessionId, addedAt }] tutulur.
+  // Aktif oturum anahtarlari (lokiSessionId/lokiUsername) tek gercek kaynaktir;
+  // defter sadece onceki oturumlarin sifresiz geri acilabilmesi icin sessionId saklar.
+  _readAccounts() {
+    try {
+      const raw = localStorage.getItem(ACCOUNTS_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.filter((a) => a && a.username && a.sessionId) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  _writeAccounts(list) {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+  },
+
+  getAccounts() {
+    return this._readAccounts();
+  },
+
+  getActiveAccount() {
+    const username = this.getUsername();
+    const sessionId = this.getSessionId();
+    if (!username || !sessionId) return null;
+    return { username, sessionId };
+  },
+
+  // Aktif session anahtarlarini hedef hesaba cevirir; hesap yoksa false doner.
+  switchAccount(username) {
+    const account = this._readAccounts().find((a) => a.username === username);
+    if (!account) return false;
+    localStorage.setItem('lokiSessionId', account.sessionId);
+    localStorage.setItem('lokiUsername', account.username);
+    return true;
+  },
+
+  removeAccount(username) {
+    this._writeAccounts(this._readAccounts().filter((a) => a.username !== username));
+  },
+
+  // Defteri guncellemeden sadece aktif oturum anahtarlarini temizler
+  // ("Hesap Ekle" akisinda kayitli hesaplar korunur).
+  clearActiveSession() {
+    localStorage.removeItem('lokiSessionId');
+    localStorage.removeItem('lokiUsername');
+  },
+
   // Auth
   async login(username, password) {
     const res = await apiFetch(`${API_BASE}/stresse/login`, {
@@ -68,15 +119,27 @@ export const apiClient = {
     }, SLOW_REQUEST_TIMEOUT_MS);
     const data = await handleResponse(res);
     if (data.sessionId) {
+      const resolvedUsername = data.user?.username || username;
       localStorage.setItem('lokiSessionId', data.sessionId);
-      localStorage.setItem('lokiUsername', data.user?.username || username);
+      localStorage.setItem('lokiUsername', resolvedUsername);
+      // Hesabi kayit defterine ekle/guncelle (sessionId yenilenir, addedAt korunur)
+      const list = this._readAccounts();
+      const existing = list.find((a) => a.username === resolvedUsername);
+      if (existing) {
+        existing.sessionId = data.sessionId;
+      } else {
+        list.push({ username: resolvedUsername, sessionId: data.sessionId, addedAt: Date.now() });
+      }
+      this._writeAccounts(list);
     }
     return data;
   },
 
+  // Aktif hesabi defterden de siler; kayitli diger hesaplara dokunmaz.
   logout() {
-    localStorage.removeItem('lokiSessionId');
-    localStorage.removeItem('lokiUsername');
+    const username = localStorage.getItem('lokiUsername');
+    if (username) this.removeAccount(username);
+    this.clearActiveSession();
   },
 
   getSessionId() {
