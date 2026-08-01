@@ -1,25 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { apiClient } from '../services/apiClient';
 
 /**
  * AccountSwitcher.jsx
  *
  * Sag ustteki "Hesap: X" rozeti + coklu hesap dropdown'i.
- * - Rozet tiklanabilir; acikken disari tiklama / Escape ile kapanir.
- * - Kayitli hesaplar listelenir; aktif olan yesil nokta + check ile isaretli.
- * - Baska hesaba tiklayinca onSwitch(username) cagrilir (sifresiz gecis);
- *   gecis sirasinda satirlar kilitlenir.
+ * Liste backend'deki (/api/accounts) yasayan oturumlardan gelir: onceden o
+ * hesaba giris yapilmis olmasi GEREKMEZ; sistemdeki tum hesaplar gorunur ve
+ * secilen hesabin session'i ile dogrudan gecis yapilir (sifresiz).
  *
  * Props:
- *   accounts: [{ username, sessionId, addedAt }]
  *   activeUsername: aktif hesap kullanici adi
- *   onSwitch(username): hesap secilince cagrilir (async olabilir)
+ *   onSwitch(account): hesap secilince cagrilir; account = { username, sessionId }
  */
-const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch }) => {
+const AccountSwitcher = ({ activeUsername, onSwitch }) => {
   const [open, setOpen] = useState(false);
   const [switchingTo, setSwitchingTo] = useState(null);
+  const [accounts, setAccounts] = useState([]);
   const containerRef = useRef(null);
 
   const close = () => setOpen(false);
+
+  // Backend'deki hesap listesini cek (mount + her acilista taze)
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.getServerAccounts()
+      .then((list) => { if (!cancelled) setAccounts(list); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open]);
 
   // Disari tiklayinca kapat
   useEffect(() => {
@@ -38,14 +47,14 @@ const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch }) => {
     };
   }, [open]);
 
-  const handleSelect = async (username) => {
-    if (switchingTo || username === activeUsername) {
-      if (username === activeUsername) close();
+  const handleSelect = async (account) => {
+    if (switchingTo || account.username === activeUsername) {
+      if (account.username === activeUsername) close();
       return;
     }
-    setSwitchingTo(username);
+    setSwitchingTo(account.username);
     try {
-      await onSwitch(username);
+      await onSwitch(account);
     } finally {
       setSwitchingTo(null);
       close();
@@ -85,9 +94,12 @@ const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch }) => {
           className="animate-dropdown-in absolute right-0 mt-2 w-60 rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-[0_16px_40px_rgba(0,0,0,0.65),0_0_18px_rgba(0,255,65,0.06)]"
         >
           <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-gray-600">
-            Kayıtlı Hesaplar
+            Sistemdeki Hesaplar
           </div>
 
+          {accounts.length === 0 && (
+            <div className="px-3 py-2.5 text-sm font-mono text-gray-500">Yükleniyor...</div>
+          )}
           {accounts.map((account) => {
             const isActive = account.username === activeUsername;
             const isSwitching = switchingTo === account.username;
@@ -97,7 +109,7 @@ const AccountSwitcher = ({ accounts = [], activeUsername, onSwitch }) => {
                 type="button"
                 role="menuitem"
                 disabled={!!switchingTo}
-                onClick={() => handleSelect(account.username)}
+                onClick={() => handleSelect(account)}
                 className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm font-mono transition-colors disabled:cursor-wait ${
                   isActive
                     ? 'bg-green-500/15 text-green-400 shadow-[inset_2px_0_0_0_#00ff41]'

@@ -99,6 +99,20 @@ export const apiClient = {
     return true;
   },
 
+  // Backend'de yasayan tum hesaplari getirir (onceden giris sarti olmadan
+  // listede gorunurler; ortak panelde herkes her hesaba gecebilir).
+  async getServerAccounts() {
+    const res = await apiFetch(`${API_BASE}/accounts`, { headers: getHeaders() });
+    const data = await handleResponse(res);
+    return Array.isArray(data.accounts) ? data.accounts : [];
+  },
+
+  // Aktif oturumu dogrudan verilen hesap/session ile ayarlar (backend listesinden secim).
+  setActiveSession(username, sessionId) {
+    localStorage.setItem('lokiSessionId', sessionId);
+    localStorage.setItem('lokiUsername', username);
+  },
+
   removeAccount(username) {
     this._writeAccounts(this._readAccounts().filter((a) => a.username !== username));
   },
