@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loki — Hesap Geçişi Varyasyonları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #000; color: #e5e5e5; font-family: 'Courier New', monospace; overflow: hidden; }
+
+  /* ---- Secim butonlari ---- */
+  .picker { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 100; }
+  .picker button { background: rgba(0,255,65,.06); color: #00ff41; border: 1px solid rgba(0,255,65,.25); border-radius: 999px; padding: 6px 14px; font-family: inherit; font-size: 12px; cursor: pointer; transition: all .2s; }
+  .picker button:hover { background: rgba(0,255,65,.15); }
+  .picker button.active { background: #00ff41; color: #000; font-weight: bold; }
+  .picker button.replay { border-color: rgba(0,212,255,.35); color: #00d4ff; }
+
+  .variant { position: fixed; inset: 0; display: none; }
+  .variant.active { display: block; }
+
+  /* ================= VARYASYON 1: TERMINAL BOOT ================= */
+  #v1 .rain { position: absolute; inset: 0; opacity: .25; }
+  #v1 .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+  #v1 .logo-ring { position: relative; width: 150px; height: 150px; display: grid; place-items: center; }
+  #v1 .logo-ring img { width: 96px; height: 96px; filter: drop-shadow(0 0 18px rgba(0,255,65,.55)); animation: v1-breathe 2.2s ease-in-out infinite; }
+  #v1 .logo-ring::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(0,255,65,.35); animation: v1-ring 2.2s ease-in-out infinite; }
+  #v1 .logo-ring::after { content: ''; position: absolute; inset: -12px; border-radius: 50%; border: 1px dashed rgba(0,212,255,.25); animation: v1-spin 9s linear infinite; }
+  @keyframes v1-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  @keyframes v1-ring { 0%,100% { box-shadow: 0 0 12px rgba(0,255,65,.15); } 50% { box-shadow: 0 0 34px rgba(0,255,65,.5); } }
+  @keyframes v1-spin { to { transform: rotate(360deg); } }
+  #v1 .term { width: min(520px, 86vw); background: rgba(0,10,3,.85); border: 1px solid rgba(0,255,65,.25); border-radius: 10px; padding: 18px 20px; box-shadow: 0 0 40px rgba(0,255,65,.08), inset 0 0 30px rgba(0,255,65,.04); font-size: 13px; line-height: 2; }
+  #v1 .term .head { color: #555; font-size: 11px; border-bottom: 1px solid rgba(255,255,255,.07); padding-bottom: 8px; margin-bottom: 10px; letter-spacing: 2px; }
+  #v1 .line { color: #00ff41; opacity: 0; animation: v1-line .3s forwards; }
+  #v1 .line .ok { color: #00d4ff; }
+  #v1 .caret { display: inline-block; width: 8px; height: 15px; background: #00ff41; vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes v1-line { to { opacity: 1; } }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ================= VARYASYON 2: RADAR SCAN ================= */
+  #v2 { background: radial-gradient(circle at 50% 42%, rgba(0,255,65,.06), transparent 55%), #000; }
+  #v2 .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
+  #v2 .radar { position: relative; width: 240px; height: 240px; }
+  #v2 .radar .ring { position: absolute; border-radius: 50%; border: 1px solid rgba(0,255,65,.18); }
+  #v2 .r1 { inset: 0; } #v2 .r2 { inset: 30px; } #v2 .r3 { inset: 60px; } #v2 .r4 { inset: 90px; border-color: rgba(0,212,255,.3); }
+  #v2 .sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(0,255,65,.45), transparent 70deg, transparent); animation: v2-rot 1.6s linear infinite; -webkit-mask: radial-gradient(circle, transparent 30%, #000 31%); mask: radial-gradient(circle, transparent 30%, #000 31%); }
+  @keyframes v2-rot { to { transform: rotate(360deg); } }
+  #v2 .radar img { position: absolute; top: 50%; left: 50%; width: 84px; height: 84px; transform: translate(-50%,-50%); filter: drop-shadow(0 0 16px rgba(0,255,65,.5)); }
+  #v2 .blip { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #00d4ff; box-shadow: 0 0 10px #00d4ff; animation: v2-blip 1.6s ease-out infinite; }
+  @keyframes v2-blip { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+  #v2 .scan-text { color: #00ff41; font-size: 14px; letter-spacing: 4px; }
+  #v2 .scan-text .dots::after { content: ''; animation: v2-dots 1.2s steps(1) infinite; }
+  @keyframes v2-dots { 0% { content: ''; } 33% { content: '.'; } 66% { content: '..'; } 100% { content: '...'; } }
+  #v2 .target { color: #00d4ff; font-size: 12px; letter-spacing: 2px; }
+  #v2 .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,255,65,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,.05) 1px, transparent 1px); background-size: 42px 42px; }
+
+  /* ================= VARYASYON 3: GLITCH + PROGRESS ================= */
+  #v3 .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+  #v3 .logo-wrap { position: relative; }
+  #v3 .logo-wrap img { width: 110px; height: 110px; }
+  #v3 .glitch { position: absolute; inset: 0; }
+  #v3 .glitch img { width: 110px; height: 110px; position: absolute; top: 0; }
+  #v3 .g1 { animation: v3-g1 2.4s steps(2) infinite; filter: hue-rotate(90deg); opacity: .55; }
+  #v3 .g2 { animation: v3-g2 3.1s steps(3) infinite; filter: hue-rotate(180deg); opacity: .45; }
+  @keyframes v3-g1 { 0%,88% { transform: translate(0); clip-path: inset(0 0 0 0); } 90% { transform: translate(-4px,2px); clip-path: inset(20% 0 40% 0); } 94% { transform: translate(3px,-2px); clip-path: inset(60% 0 10% 0); } 98%,100% { transform: translate(0); clip-path: inset(0 0 0 0); } }
+  @keyframes v3-g2 { 0%,80% { transform: translate(0); clip-path: inset(0 0 0 0); } 84% { transform: translate(4px,1px); clip-path: inset(30% 0 30% 0); } 92% { transform: translate(-3px,-1px); clip-path: inset(10% 0 60% 0); } 96%,100% { transform: translate(0); clip-path: inset(0 0 0 0); } }
+  #v3 .pct { font-size: 30px; color: #00ff41; text-shadow: 0 0 18px rgba(0,255,65,.5); }
+  #v3 .bar { width: min(380px, 80vw); height: 6px; border: 1px solid rgba(0,255,65,.3); border-radius: 999px; overflow: hidden; background: rgba(0,255,65,.05); }
+  #v3 .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #00ff41, #00d4ff); box-shadow: 0 0 14px rgba(0,255,65,.6); border-radius: 999px; transition: width .12s linear; }
+  #v3 .stage { font-size: 12px; color: #00d4ff; letter-spacing: 3px; min-height: 16px; }
+  #v3 .done { color: #00ff41; font-size: 15px; letter-spacing: 3px; opacity: 0; text-shadow: 0 0 20px rgba(0,255,65,.7); }
+  #v3 .done.show { animation: v3-done .5s forwards; }
+  @keyframes v3-done { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+</style>
+</head>
+<body>
+<div class="picker">
+  <button data-v="v1" class="active">V1 · Terminal Boot</button>
+  <button data-v="v2">V2 · Radar Scan</button>
+  <button data-v="v3">V3 · Glitch Progress</button>
+  <button class="replay" onclick="restart()">↻ Tekrar Oynat</button>
+</div>
+
+<!-- V1 -->
+<div class="variant active" id="v1">
+  <canvas class="rain"></canvas>
+  <div class="center">
+    <div class="logo-ring"><img src="../public/logo.png" alt="Loki"></div>
+    <div class="term">
+      <div class="head">LOKI // SESSION-SWITCH v1.0</div>
+      <div class="line" style="animation-delay:.2s">$ hesap degisimi baslatildi</div>
+      <div class="line" style="animation-delay:.8s">$ hedef oturum: <span class="ok">Yavrukurt1</span></div>
+      <div class="line" style="animation-delay:1.4s">$ session dogrulaniyor <span class="ok">[OK]</span></div>
+      <div class="line" style="animation-delay:2s">$ yetki esleniyor <span class="ok">[OK]</span></div>
+      <div class="line" style="animation-delay:2.6s">$ panel yukleniyor <span class="caret"></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- V2 -->
+<div class="variant" id="v2">
+  <div class="grid-bg"></div>
+  <div class="center">
+    <div class="radar">
+      <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div>
+      <div class="sweep"></div>
+      <img src="../public/logo.png" alt="Loki">
+      <div class="blip" style="top:26%;left:64%"></div>
+      <div class="blip" style="top:62%;left:30%;animation-delay:.5s"></div>
+      <div class="blip" style="top:70%;left:68%;animation-delay:1s"></div>
+    </div>
+    <div class="scan-text">HESAP TARANIYOR<span class="dots"></span></div>
+    <div class="target">HEDEF: Yavrukurt1 // 104.207.73.171:4173</div>
+  </div>
+</div>
+
+<!-- V3 -->
+<div class="variant" id="v3">
+  <div class="center">
+    <div class="logo-wrap">
+      <img src="../public/logo.png" alt="Loki">
+      <div class="glitch"><img class="g1" src="../public/logo.png" alt=""></div>
+      <div class="glitch"><img class="g2" src="../public/logo.png" alt=""></div>
+    </div>
+    <div class="pct" id="pct">0%</div>
+    <div class="bar"><i id="barfill"></i></div>
+    <div class="stage" id="stage">BAGLANTI KURULUYOR</div>
+    <div class="done" id="done">ERISIM ONAYLANDI</div>
+  </div>
+</div>
+
+<script>
+const buttons = document.querySelectorAll('.picker button[data-v]');
+buttons.forEach(b => b.addEventListener('click', () => {
+  buttons.forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.getElementById(b.dataset.v).classList.add('active');
+  restart();
+}));
+
+/* V1 matrix rain */
+const canvas = document.querySelector('#v1 .rain');
+const ctx = canvas.getContext('2d');
+let drops = [];
+function sizeRain() {
+  canvas.width = innerWidth; canvas.height = innerHeight;
+  drops = Array.from({ length: Math.floor(innerWidth / 18) }, () => Math.random() * -50);
+}
+sizeRain(); addEventListener('resize', sizeRain);
+const GLYPHS = '01ABCDEF<>/{}$#';
+setInterval(() => {
+  if (!document.getElementById('v1').classList.contains('active')) return;
+  ctx.fillStyle = 'rgba(0,0,0,.1)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '14px monospace';
+  drops.forEach((y, i) => {
+    ctx.fillStyle = Math.random() > .96 ? '#00d4ff' : '#00ff41';
+    ctx.fillText(GLYPHS[Math.floor(Math.random() * GLYPHS.length)], i * 18, y * 18);
+    if (y * 18 > innerHeight && Math.random() > .97) drops[i] = Math.random() * -20;
+    drops[i] += .5;
+  });
+}, 60);
+
+/* V3 progress */
+let pctTimer = null;
+function startProgress() {
+  clearInterval(pctTimer);
+  let pct = 0;
+  const pctEl = document.getElementById('pct');
+  const bar = document.getElementById('barfill');
+  const stage = document.getElementById('stage');
+  const done = document.getElementById('done');
+  pctEl.textContent = '0%'; bar.style.width = '0%'; done.classList.remove('show');
+  const stages = ['BAGLANTI KURULUYOR', 'OTURUM DOGRULANIYOR', 'YETKI ESLENIYOR', 'PANEL YUKLENIYOR'];
+  pctTimer = setInterval(() => {
+    pct = Math.min(100, pct + Math.random() * 4 + 1.5);
+    pctEl.textContent = Math.floor(pct) + '%';
+    bar.style.width = pct + '%';
+    stage.textContent = stages[Math.min(stages.length - 1, Math.floor(pct / 26))];
+    if (pct >= 100) { clearInterval(pctTimer); stage.textContent = ''; done.classList.add('show'); }
+  }, 110);
+}
+
+function restart() {
+  document.querySelectorAll('#v1 .line').forEach(l => { l.style.animation = 'none'; l.offsetHeight; l.style.animation = ''; });
+  startProgress();
+}
+startProgress();
+</script>
+</body>
+</html>

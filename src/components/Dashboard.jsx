@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import AccountSwitcher from './AccountSwitcher';
+import AccountSwitchOverlay from './AccountSwitchOverlay';
 import AttackForm from './AttackForm';
 import LiveAttacks from './LiveAttacks';
 import ToolsPanel from './ToolsPanel';
@@ -47,15 +48,20 @@ const Dashboard = () => {
     if (state.isAuthenticated) loadPlan();
   }, [state.isAuthenticated, setPlan, addLog]);
 
-  // Backend'deki hesap listesinden secim: aktif oturumu degistirip sayfayi
-  // yeniden yukler. Tum veri akislari (SSE, loop, plan, gecmis) yeni
-  // session ile temiz baslar; sahte gecis (sadece rozetin degismesi) imkansiz.
+  // Backend'deki hesap listesinden secim: once siber temali gecis overlay'i
+  // oynatilir (~2.5sn), sonra aktif oturum degisip sayfa yeniden yuklenir.
+  const [switchTarget, setSwitchTarget] = useState(null);
   const handleSwitchAccount = useCallback((account) => {
     if (!account?.sessionId || !account?.username) return;
     addLog(`Hesaba geçiliyor: ${account.username}`);
-    apiClient.setActiveSession(account.username, account.sessionId);
-    window.location.reload();
+    setSwitchTarget(account);
   }, [addLog]);
+
+  const completeSwitch = useCallback(() => {
+    if (!switchTarget) return;
+    apiClient.setActiveSession(switchTarget.username, switchTarget.sessionId);
+    window.location.reload();
+  }, [switchTarget]);
 
   // Cikis: aktif oturum kapanir, login ekranina dusulur. Hesaplar defterde
   // kalir; baska hesapla giris yapildiginda ikisi de listede gorunur.
@@ -76,6 +82,12 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-black text-white cyber-grid">
       <ToastContainer />
+      {switchTarget && (
+        <AccountSwitchOverlay
+          targetUsername={switchTarget.username}
+          onComplete={completeSwitch}
+        />
+      )}
       {/* Aktif hesap rozeti + coklu hesap dropdown'i */}
       <AccountSwitcher
         activeUsername={state.user?.username || apiClient.getUsername()}
