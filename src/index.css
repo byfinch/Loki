@@ -270,6 +270,56 @@ body {
   pointer-events: none;
 }
 
+/* --- Etki Monitoru: ozel scroll + satir hover + bos durum --- */
+
+/* Ince neon scrollbar (dahili kayan hedef listesi) */
+.impact-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 65, 0.22) transparent;
+}
+
+.impact-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.impact-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.impact-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.16);
+  border-radius: 3px;
+}
+
+.impact-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 65, 0.45);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.35);
+}
+
+/* Hedef satiri: durum rengine gore sol accent (--impact-accent) + hover glow/translate */
+.impact-row {
+  border-left: 2px solid var(--impact-accent, rgba(255, 255, 255, 0.15));
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+}
+
+.impact-row:hover {
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.4),
+    0 0 14px var(--impact-accent, rgba(0, 255, 65, 0.12));
+}
+
+/* Bos durum ikonu: sadece transform/opacity ile nefes alma efekti */
+@keyframes impact-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+.impact-empty-icon {
+  animation: impact-pulse 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-caret-blink,
   .animate-dropdown-in,
@@ -287,5 +337,18 @@ body {
   .cyber-card .scan-sweep,
   .cyber-table tbody td {
     transition: none;
+  }
+
+  /* Etki Monitoru: hareket ve pulse kapali */
+  .impact-row {
+    transition: none;
+  }
+
+  .impact-row:hover {
+    transform: none;
+  }
+
+  .impact-empty-icon {
+    animation: none;
   }
 }
