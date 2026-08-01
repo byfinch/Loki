@@ -11,10 +11,10 @@ import React, { useEffect, useRef, useState } from 'react';
  *   onComplete(): animasyon bitince cagrilir
  */
 const STAGES = [
-  'BAGLANTI KURULUYOR',
-  'OTURUM DOGRULANIYOR',
-  'YETKI ESLENIYOR',
-  'PANEL YUKLENIYOR'
+  'BAĞLANTI KURULUYOR',
+  'OTURUM DOĞRULANIYOR',
+  'YETKİ EŞLENİYOR',
+  'PANEL YÜKLENİYOR'
 ];
 
 const AccountSwitchOverlay = ({ targetUsername, onComplete }) => {
@@ -77,7 +77,7 @@ const AccountSwitchOverlay = ({ targetUsername, onComplete }) => {
 
       {done && (
         <div className="switch-done text-green-400 text-[15px] tracking-[3px] [text-shadow:0_0_20px_rgba(0,255,65,0.7)]">
-          ERISIM ONAYLANDI
+          ERİŞİM ONAYLANDI
         </div>
       )}
     </div>
