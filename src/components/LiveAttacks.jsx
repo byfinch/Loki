@@ -69,13 +69,17 @@ const LiveAttacks = () => {
   const groupedAttacks = useMemo(() => {
     const THRESHOLD = 7;
 
-    // En son sunucu degerini veya client-side geri sayimi kullan
-    const attacksWithTime = state.liveAttacks.map((attack) => {
-      const attackId = attack.attack_id;
-      const serverTime = parseInt(attack.timeLeft, 10);
-      const currentTime = serverTimeLefts[attackId] ?? serverTime;
-      return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
-    });
+    // En son sunucu degerini veya client-side geri sayimi kullan.
+    // Suresi biten (0'a ulasan) saldirilar gosterilmez; sunucu hala bayat
+    // veri donduruyor olsa bile satir hayalet olarak kalmaz.
+    const attacksWithTime = state.liveAttacks
+      .map((attack) => {
+        const attackId = attack.attack_id;
+        const serverTime = parseInt(attack.timeLeft, 10);
+        const currentTime = serverTimeLefts[attackId] ?? serverTime;
+        return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
+      })
+      .filter((attack) => attack.timeLeft > 0);
 
     const sorted = [...attacksWithTime].sort((a, b) => {
       if (a.target !== b.target) return a.target.localeCompare(b.target);
@@ -290,13 +294,34 @@ const LiveAttacks = () => {
     const username = apiClient.getUsername();
     if (!username) return;
 
+    // Sunucunun bildirdigi son timeLeft degerleri (tazelik kontrolu icin).
+    // Bayat/degismeyen degerler client geri sayimini resetleyemez; boylece
+    // bitmis saldirilar donuk satir olarak kalmaz.
+    const lastServerValues = {};
     const updateTimeLefts = (attacks) => {
-      const next = {};
+      setServerTimeLefts((prev) => {
+        const next = { ...prev };
+        (attacks || []).forEach((a) => {
+          const t = parseInt(a.timeLeft, 10);
+          if (!Number.isFinite(t)) return;
+          const lastServer = lastServerValues[a.attack_id];
+          const isNew = lastServer === undefined;
+          // Sadece gercekten yeni bir saldiri veya sunucu degeri DEGISMISSE
+          // sayaci guncelle; ayni degeri tekrar eden (bayat) veri yoksayilir.
+          if (isNew || t !== lastServer) {
+            next[a.attack_id] = t;
+          }
+        });
+        return next;
+      });
+      // Raporlanan tum degerleri kaydet (degisim tespiti icin)
+      const freshRef = {};
       (attacks || []).forEach((a) => {
         const t = parseInt(a.timeLeft, 10);
-        next[a.attack_id] = Number.isFinite(t) ? t : 0;
+        if (Number.isFinite(t)) freshRef[a.attack_id] = t;
       });
-      setServerTimeLefts(next);
+      Object.keys(lastServerValues).forEach((k) => delete lastServerValues[k]);
+      Object.assign(lastServerValues, freshRef);
     };
 
     // SSE baglantisi acikken poll yapma; poll sadece fallback olarak calisir
