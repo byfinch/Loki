@@ -37,13 +37,9 @@ const NODES = [
   'us1.node.check-host.net'
 ];
 
-// Kontrol noktasi ofsetleri (ms). Loop'ta son ofsetten sonra saat basi devam.
+// Kontrol noktasi ritmi: ilk olcum T+15sn, sonrasi 5'er dakika (saldiri + loop).
 const CP_15S = 15 * 1000;
-const CP_10M = 10 * 60 * 1000;
-const CP_30M = 30 * 60 * 1000;
-const CP_60M = 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
-const BASE_CHECKPOINTS = [CP_15S, CP_10M, CP_30M, CP_60M];
+const CP_5M = 5 * 60 * 1000;
 
 // Takip kayitlari: key -> target
 // key: owner|layer|host|port  (ayni hesabin ayni hedefe paralel saldirilari tek olcumde birlesir)
@@ -128,15 +124,11 @@ function buildDesiredTargets() {
   return desired;
 }
 
-// Siradaki kontrol noktasinin baslangictan itibaren ofseti (ms) veya null.
+// Siradaki kontrol noktasinin baslangictan itibaren ofseti (ms).
 // Index bazli: kacirilan checkpoint atlanmaz, ilk tick'te telafi edilir.
+// Ritim: ilk olcum T+15sn, sonrasi 5'er dakika (saldiri ve loop icin ayni).
 function checkpointOffset(target, index) {
-  if (index < BASE_CHECKPOINTS.length) return BASE_CHECKPOINTS[index];
-  if (target.isLoop) {
-    // Son baz noktasindan sonra saat basi devam.
-    return CP_60M + (index - BASE_CHECKPOINTS.length + 1) * HOUR_MS;
-  }
-  return null; // normal saldiri: 60dk sonrasi olcum yok (final haric)
+  return CP_15S + index * CP_5M;
 }
 
 // check-host sonucunu normalize eder: perNode listesi.
