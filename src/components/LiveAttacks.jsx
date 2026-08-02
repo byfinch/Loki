@@ -69,6 +69,13 @@ const LiveAttacks = () => {
   const groupedAttacks = useMemo(() => {
     const THRESHOLD = 7;
 
+    // Ham target farklari (protokol, sondaki /, buyuk-kucuk harf) ayni hedefi
+    // ayri gruplara bolmesin; gruplama normalize anahtarla yapilir.
+    const targetKey = (t) => String(t || '')
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '');
+
     // En son sunucu degerini veya client-side geri sayimi kullan.
     // Suresi biten (0'a ulasan) saldirilar gosterilmez; sunucu hala bayat
     // veri donduruyor olsa bile satir hayalet olarak kalmaz.
@@ -82,7 +89,9 @@ const LiveAttacks = () => {
       .filter((attack) => attack.timeLeft > 0);
 
     const sorted = [...attacksWithTime].sort((a, b) => {
-      if (a.target !== b.target) return a.target.localeCompare(b.target);
+      const ka = targetKey(a.target);
+      const kb = targetKey(b.target);
+      if (ka !== kb) return ka.localeCompare(kb);
       if (a.method !== b.method) return a.method.localeCompare(b.method);
       return b.timeLeft - a.timeLeft;
     });
@@ -91,7 +100,7 @@ const LiveAttacks = () => {
     sorted.forEach((attack) => {
       const existing = groups.find(
         (g) =>
-          g.target === attack.target &&
+          targetKey(g.target) === targetKey(attack.target) &&
           g.method === attack.method &&
           Math.abs(g.timeLeft - attack.timeLeft) <= THRESHOLD
       );
