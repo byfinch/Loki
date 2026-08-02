@@ -1312,9 +1312,14 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     ongoing.forEach((item) => {
       const id = item.attack_id || item.id;
       const localAttack = activeAttacks[id];
-      if (localAttack) {
-        const remaining = parseInt(item.timeLeft || item.time || localAttack.time) || 60;
-        const newExpires = new Date(now + remaining * 1000).toISOString();
+      if (!localAttack) return;
+      // Sadece gercek kalan sure ile uzat. item.time (tam sure) veya || 60
+      // fallback'i expiresAt'i her poll'da ileri itip kaydi olumsuzlastiriyordu
+      // (hayalet birikim). timeLeft yoksa/0 ise uzatma YOK; kayit dogal
+      // sureciyle biter.
+      const upstreamLeft = parseInt(item.timeLeft, 10);
+      if (Number.isFinite(upstreamLeft) && upstreamLeft > 0) {
+        const newExpires = new Date(now + upstreamLeft * 1000).toISOString();
         if (newExpires > (localAttack.expiresAt || '')) {
           localAttack.expiresAt = newExpires;
         }
@@ -1948,6 +1953,19 @@ app.post('/api/stresse/loop', async (req, res) => {
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
+    }
+
+    // Mukerrer loop engeli: ayni hedef+port+method+layer icin calisan loop
+    // varsa ikincisini baslatma (cift tiklama / ilk tur beklerken tekrar
+    // basma ile olusan mukerrer loop'lar birikim yaratiyordu).
+    const methodLower = String(method).toLowerCase();
+    const duplicate = Object.values(activeLoops).find((l) => l.running
+      && l.params?.host === host
+      && parseInt(l.params?.port) === parseInt(port)
+      && String(l.params?.method || '').toLowerCase() === methodLower
+      && (l.params?.layer || 'L4') === layer);
+    if (duplicate) {
+      return res.status(409).json({ status: 'error', message: 'Bu hedef ve yöntem için zaten aktif bir loop çalışıyor' });
     }
 
     const minTime = getMinTime(method, layer);
