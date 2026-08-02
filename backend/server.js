@@ -1106,14 +1106,16 @@ app.post('/api/stresse/login', async (req, res) => {
       if (!loginPageOk) throw new Error('Login sayfasi alinamadi');
 
       // 2. Submit login credentials (retry ile)
-      step = 'POST /login';
+      // Not: stresse.st login endpoint'ini /login -> /w/login tasidi (eski yol
+      // artik HTML login sayfasi donduruyor).
+      step = 'POST /w/login';
       let loginRes;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          loginRes = await client.post('/login', { username, password });
+          loginRes = await client.post('/w/login', { username, password });
           break;
         } catch (retryErr) {
-          console.warn(`[login] POST /login deneme ${attempt}/3 hata: ${retryErr.message}`);
+          console.warn(`[login] POST /w/login deneme ${attempt}/3 hata: ${retryErr.message}`);
           if (attempt === 3) throw retryErr;
           await new Promise((r) => setTimeout(r, 1000));
         }
