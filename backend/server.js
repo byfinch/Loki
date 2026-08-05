@@ -2037,13 +2037,26 @@ app.post('/api/stresse/stop', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
     const { id } = req.body;
     if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
 
+    // Baska hesaba ait saldiri durdurulamaz: upstream stop atma, kayitlara dokunma.
+    // Yerel kayit yoksa (panel disindan baslatilmis olabilir) durdurmaya izin ver.
+    if (activeAttacks[id] && activeAttacks[id].username !== sessionUser) {
+      return res.status(403).json({ status: 'error', message: 'Bu saldırı sizin hesabınıza ait değil' });
+    }
+
     // Durdurulan saldiri hangi loop'a ait tespit et ve round listesinden cikar.
+    // Sadece istegi yapan hesaba ait loop'lara dokun.
     let affectedLoopKey = null;
     Object.keys(activeLoops).forEach((key) => {
       const loop = activeLoops[key];
+      if (getLoopOwner(loop) !== sessionUser) return;
       if (loop?.roundAttackIds?.includes(id)) {
         affectedLoopKey = key;
         loop.roundAttackIds = loop.roundAttackIds.filter((attackId) => attackId !== id);
@@ -2067,7 +2080,8 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     // Loop'a ait saldiri manuel durdurulduysa loop'u da durdur; aksi halde
     // loop sonraki turda ayni hedefi yeniden baslatir ve satir panele geri gelir.
-    if (loopIdOfAttack && activeLoops[loopIdOfAttack]?.running) {
+    if (loopIdOfAttack && activeLoops[loopIdOfAttack]?.running
+        && getLoopOwner(activeLoops[loopIdOfAttack]) === sessionUser) {
       const stoppedLoop = activeLoops[loopIdOfAttack];
       stoppedLoop.running = false;
       delete activeLoops[loopIdOfAttack];
@@ -2121,10 +2135,27 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'ids array required' });
     }
 
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
     const session = sessions[sessionId];
     if (!session || !session.apiToken) {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
+
+    // Baska hesaba ait saldirilari atla: upstream stop atma, unregister yapma.
+    // Yerel kaydi olmayan ID'lere (panel disindan baslatilmis olabilir) izin ver.
+    const allowedIds = [];
+    const skippedIds = [];
+    ids.forEach((id) => {
+      if (activeAttacks[id] && activeAttacks[id].username !== sessionUser) {
+        skippedIds.push(id);
+      } else {
+        allowedIds.push(id);
+      }
+    });
 
     const size = Math.max(1, Math.min(parseInt(batchSize) || 10, 20));
     const delay = Math.max(0, Math.min(parseInt(delayMs) || 500, 5000));
@@ -2132,17 +2163,22 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
 
     const apiClient = getApiClient(sessionId);
     const results = [];
-    const totalBatches = Math.ceil(ids.length / size);
+    const totalBatches = Math.ceil(allowedIds.length / size);
 
     // Her ID'nin ait oldugu loop'u onceden tespit et (round listesi veya kayit).
     // Batch dongusunde round listeleri temizlendigi icin once bakmak gerek.
+    // Sadece istegi yapan hesaba ait loop'lar kapsanir.
     const affectedLoopKeys = new Set();
-    ids.forEach((id) => {
+    allowedIds.forEach((id) => {
       Object.keys(activeLoops).forEach((key) => {
         const loop = activeLoops[key];
+        if (getLoopOwner(loop) !== sessionUser) return;
         if (loop?.roundAttackIds?.includes(id)) affectedLoopKeys.add(key);
       });
-      if (activeAttacks[id]?.loopId) affectedLoopKeys.add(activeAttacks[id].loopId);
+      const recordLoopId = activeAttacks[id]?.loopId;
+      if (recordLoopId && getLoopOwner(activeLoops[recordLoopId]) === sessionUser) {
+        affectedLoopKeys.add(recordLoopId);
+      }
     });
 
     const stopSingle = async (id) => {
@@ -2167,18 +2203,19 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       return out;
     };
 
-    for (let i = 0; i < ids.length; i += size) {
-      const batch = ids.slice(i, i + size);
+    for (let i = 0; i < allowedIds.length; i += size) {
+      const batch = allowedIds.slice(i, i + size);
       const currentBatch = Math.floor(i / size) + 1;
 
       const batchResults = await runWithConcurrency(batch, stopSingle, concurrent);
       results.push(...batchResults);
 
       // Durdurulan ID'leri ilgili loop'larin round listelerinden cikar;
-      // loop'lar kendi intervaliyle devam etsin.
+      // loop'lar kendi intervaliyle devam etsin. Sadece bu hesabin loop'lari.
       batch.forEach((id) => {
         Object.keys(activeLoops).forEach((key) => {
           const loop = activeLoops[key];
+          if (getLoopOwner(loop) !== sessionUser) return;
           if (loop?.roundAttackIds?.includes(id)) {
             loop.roundAttackIds = loop.roundAttackIds.filter((attackId) => attackId !== id);
             console.log(`[stop/bulk] Loop ${key} roundundan attack ${id} cikarildi`);
@@ -2192,6 +2229,11 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
         await new Promise((r) => setTimeout(r, delay));
       }
     }
+
+    // Atlanan (baska hesaba ait) ID'leri sonuca 'skipped' olarak isaretle.
+    skippedIds.forEach((id) => {
+      results.push({ id, status: 'skipped', message: 'Bu saldırı sizin hesabınıza ait değil' });
+    });
 
     // Loop'a ait saldirilar manuel durdurulduysa ilgili loop'lari da durdur;
     // aksi halde loop sonraki turda ayni hedefleri yeniden baslatir ve
@@ -2213,8 +2255,9 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
     saveState();
 
     // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle.
+    // Atlanan (baska hesaba ait) ID'lere dokunma.
     const stoppedLoopIds = new Set();
-    ids.forEach((id) => {
+    allowedIds.forEach((id) => {
       const attackRecord = activeAttacks[id];
       const loopIdOfAttack = attackRecord?.loopId;
       unregisterAttack(id);
@@ -2237,7 +2280,7 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       }
     });
 
-    res.json({ status: 'success', total: ids.length, results });
+    res.json({ status: 'success', total: ids.length, stopped: allowedIds.length, skipped: skippedIds.length, results });
   } catch (error) {
     handleEndpointError(res, error, 'Bulk stop error');
   }
@@ -2462,13 +2505,21 @@ app.get('/api/stresse/loop/:loopId', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
     const { loopId } = req.params;
     const loop = activeLoops[loopId];
-    if (!loop) {
+    // Baska hesabin loopId'si istenirse varligini ifsa etme: 404 don.
+    if (!loop || getLoopOwner(loop) !== sessionUser) {
       return res.status(404).json({ status: 'error', message: 'Loop bulunamadi', loopId });
     }
 
-    res.json({ status: 'success', loopId, ...loop });
+    // Ham sessionId'yi disari sizdirma; yerine owner koy.
+    const { sessionId: _sid, resolveFirstRound: _r, ...publicLoop } = loop;
+    res.json({ status: 'success', loopId, ...publicLoop, owner: sessionUser });
   } catch (error) {
     handleEndpointError(res, error, 'Loop status error');
   }
