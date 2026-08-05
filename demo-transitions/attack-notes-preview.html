@@ -42,6 +42,27 @@
   .switch::after { content: ''; position: absolute; top: 2px; left: 20px; width: 16px; height: 16px; background: #fff; border-radius: 50%; }
 
   .submit-btn { width: 100%; background: linear-gradient(90deg, #22c55e, #059669); color: #000; font-size: 14px; font-weight: bold; padding: 10px; border: none; border-radius: 8px; font-family: inherit; cursor: pointer; }
+
+  /* ---- Aktif Saldırılar: not salt-okunur ---- */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .active-badge { padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,212,255,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00d4ff; }
+  .total-badge { padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,255,65,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00ff41; }
+  .stop-btn { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); border-radius: 999px; padding: 6px 16px; font-size: 12px; font-family: inherit; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #6b7280; font-weight: 500; font-size: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  td { padding: 12px 8px 12px 0; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+  .host { color: #d1d5db; font-family: 'Courier New', monospace; }
+  .method { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font-size: 11px; font-family: 'Courier New', monospace; }
+  .time { color: #00ff41; font-family: 'Courier New', monospace; font-weight: bold; }
+  .count { display: inline-block; padding: 4px 10px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 999px; font-size: 11px; font-family: 'Courier New', monospace; color: #9ca3af; }
+  .icon-btn { display: inline-block; padding: 6px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; color: #9ca3af; font-size: 11px; }
+
+  .note-sub { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 11px; color: #00d4ff; font-family: 'Courier New', monospace; }
+  .note-sub .tag { color: #4b5563; }
+  .note-sub a { color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.5); }
+  .note-sub a:hover { text-shadow: 0 0 8px rgba(0,255,65,.6); }
 </style>
 </head>
 <body>
@@ -102,6 +123,49 @@
       </div>
 
       <button class="submit-btn">Loop Başlat</button>
+    </div>
+  </section>
+
+  <!-- 2) AKTİF SALDIRILAR — not salt-okunur, satırla aynı anda gelir -->
+  <section>
+    <div class="section-label">2 — Aktif Saldırılar <span>· not salt-okunur (ekleme yok) · loop/launch notu satırla aynı anda (final)</span></div>
+    <div class="card">
+      <div class="header">
+        <h2>Aktif Saldırılar <span class="active-badge">Aktif 65</span><span class="total-badge">Toplam 95</span></h2>
+        <button class="stop-btn">Tümünü Durdur</button>
+      </div>
+      <table>
+        <thead><tr><th>Hedef</th><th>Yöntem</th><th>Kalan Süre</th><th>Adet</th><th>İşlem</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>
+              <span class="host">https://vegasslot26.top/</span>
+              <div class="note-sub"><span class="tag">📝</span> VegasSlot — asıl site: <a href="#" onclick="return false">vegasslot.com</a></div>
+            </td>
+            <td><span class="method">CLOUDFLARE</span></td>
+            <td class="time">187s</td>
+            <td><span class="count">x15</span></td>
+            <td><span class="icon-btn">■</span> <span class="icon-btn">■ x15</span></td>
+          </tr>
+          <tr>
+            <td>
+              <span class="host">65.98.19.42</span>
+              <div class="note-sub"><span class="tag">📝</span> napolibet <a href="#" onclick="return false">tr.napolibet-denemebonuslari1.com</a></div>
+            </td>
+            <td><span class="method">ACK</span></td>
+            <td class="time">40s</td>
+            <td><span class="count">x10</span></td>
+            <td><span class="icon-btn">■</span> <span class="icon-btn">■ x10</span></td>
+          </tr>
+          <tr>
+            <td><span class="host">https://mandala.mk/</span></td>
+            <td><span class="method">CLOUDFLARE</span></td>
+            <td class="time">51s</td>
+            <td><span class="count">x15</span></td>
+            <td><span class="icon-btn">■</span> <span class="icon-btn">■ x15</span></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
