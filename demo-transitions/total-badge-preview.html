@@ -3,30 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aktif Saldırılar — Toplam Rozeti Önizleme</title>
+<title>Aktif Saldırılar — Final Rozet Görünümü</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #050505; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
   .demo-wrap { max-width: 900px; margin: 0 auto; }
   .note { color: #888; font-size: 13px; margin-bottom: 20px; font-family: 'Courier New', monospace; }
   .note b { color: #00ff41; }
-  .controls { display: flex; gap: 8px; margin-bottom: 20px; }
-  .controls button { background: rgba(0,255,65,.07); color: #00ff41; border: 1px solid rgba(0,255,65,.25); border-radius: 999px; padding: 6px 14px; font-family: 'Courier New', monospace; font-size: 12px; cursor: pointer; }
-  .controls button:hover { background: rgba(0,255,65,.15); }
-  .controls button.active { background: #00ff41; color: #000; font-weight: bold; }
+  .note i { color: #00d4ff; }
 
-  /* Panel karti (cyber-card benzeri) */
   .card { position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 24px; overflow: hidden; }
   .card::before { content: ''; position: absolute; inset: 0; border-radius: 12px; padding: 1px; background: linear-gradient(120deg, rgba(0,255,65,.25), rgba(0,212,255,.15), rgba(0,255,65,.05)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
 
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-  .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-  /* YENI ROZET — gercek bilesenle birebir */
+  /* Toplam rozeti (aktif) — yesil */
   .total-badge { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,255,65,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.15); }
-  .total-badge .trend { font-size: 12px; }
-  .trend.up { color: #00ff41; }
-  .trend.down { color: #f87171; }
+
+  /* Baslatilan rozeti (tum zamanlar + bugun) — cyan */
+  .launched-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,212,255,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; color: #00d4ff; box-shadow: 0 0 12px rgba(0,212,255,.12); }
+  .launched-badge .today { font-size: 12px; color: #6b7280; font-weight: normal; }
 
   .stop-btn { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); border-radius: 999px; padding: 6px 16px; font-size: 12px; font-family: inherit; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -40,17 +37,13 @@
 </head>
 <body>
 <div class="demo-wrap">
-  <div class="note">Önizleme: <b>Toplam N + trend rozeti</b> — durumları butonlarla değiştirin:</div>
-  <div class="controls">
-    <button data-trend="up" class="active">▲ Yükseliyor (80)</button>
-    <button data-trend="down">▼ Düşüyor (64)</button>
-    <button data-trend="none">Sabit (72)</button>
-  </div>
+  <div class="note">Final görünüm: <b>Toplam</b> (aktif) + <i>Başlatılan</i> (tüm zamanlar + bugün) — trend yok.</div>
 
   <div class="card">
     <div class="header">
       <h2>Aktif Saldırılar
-        <span class="total-badge">Toplam <span id="total">80</span> <span id="trendIcon" class="trend up">▲</span></span>
+        <span class="total-badge">Toplam 80</span>
+        <span class="launched-badge">Başlatılan 1.247 <span class="today">bugün 42</span></span>
       </h2>
       <button class="stop-btn">Tümünü Durdur</button>
     </div>
@@ -66,24 +59,5 @@
     </table>
   </div>
 </div>
-
-<script>
-const states = {
-  up:   { total: 80, icon: '▲', cls: 'trend up' },
-  down: { total: 64, icon: '▼', cls: 'trend down' },
-  none: { total: 72, icon: '',  cls: 'trend' }
-};
-document.querySelectorAll('.controls button').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('.controls button').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    const s = states[b.dataset.trend];
-    document.getElementById('total').textContent = s.total;
-    const icon = document.getElementById('trendIcon');
-    icon.textContent = s.icon;
-    icon.className = s.cls;
-  });
-});
-</script>
 </body>
 </html>
