@@ -2388,6 +2388,52 @@ app.get('/api/accounts', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/stresse/stats
+ * Hesaba ozel sayaclar: aktif saldiri sayisi, toplam baslatilan (tum zamanlar,
+ * concurrents dahil) ve bugun baslatilan saldiri sayisi.
+ */
+app.get('/api/stresse/stats', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
+    // Aktif saldirilar (bu hesaba ait)
+    const activeCount = Object.values(activeAttacks).filter(
+      (a) => a.username === sessionUser
+    ).length;
+
+    // Gecmis kayitlardan baslatilan toplam (her launch'in concurrents'i sayilir)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    let launchedTotal = 0;
+    let launchedToday = 0;
+    Object.values(attackHistory).forEach((h) => {
+      if (h.username !== sessionUser) return;
+      const n = parseInt(h.concurrents, 10) || 1;
+      launchedTotal += n;
+      const started = new Date(h.startedAt || 0).getTime();
+      if (started >= todayStart.getTime()) launchedToday += n;
+    });
+
+    res.json({
+      status: 'success',
+      stats: {
+        active: activeCount,
+        launchedTotal,
+        launchedToday
+      }
+    });
+  } catch (error) {
+    handleEndpointError(res, error, 'Stats error');
+  }
+});
+
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];

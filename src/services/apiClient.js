@@ -100,6 +100,13 @@ export const apiClient = {
     return Array.isArray(data.accounts) ? data.accounts : [];
   },
 
+  // Hesaba ozel sayaclar: aktif, toplam baslatilan, bugun baslatilan.
+  async getStats() {
+    const res = await apiFetch(`${API_BASE}/stresse/stats`, { headers: getHeaders() });
+    const data = await handleResponse(res);
+    return data.stats || {};
+  },
+
   // Aktif oturumu dogrudan verilen hesap/session ile ayarlar (backend listesinden secim).
   setActiveSession(username, sessionId) {
     localStorage.setItem('lokiSessionId', sessionId);
