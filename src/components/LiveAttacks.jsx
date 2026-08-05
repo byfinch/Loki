@@ -428,13 +428,34 @@ const LiveAttacks = () => {
     return () => clearInterval(timer);
   }, [state.isAuthenticated]);
 
+  // Gercek anlik toplam: gruplanmis satir adetlerinin toplami (filtrelenmis,
+  // canli saldiri sayisi). Loop bitis/baslangic dalgalanmasini da goster.
+  const totalAttacks = useMemo(
+    () => groupedAttacks.reduce((sum, g) => sum + g.count, 0),
+    [groupedAttacks]
+  );
+
+  const prevTotalRef = useRef(totalAttacks);
+  const [totalTrend, setTotalTrend] = useState(0); // 1: yukseliyor, -1: dusuyor, 0: sabit
+  useEffect(() => {
+    if (totalAttacks > prevTotalRef.current) setTotalTrend(1);
+    else if (totalAttacks < prevTotalRef.current) setTotalTrend(-1);
+    else setTotalTrend(0);
+    prevTotalRef.current = totalAttacks;
+  }, [totalAttacks]);
+
   return (
     <CyberCard className="p-5 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           Aktif Saldırılar
-          <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-green-400 font-mono">
-            {state.liveAttacks.length}
+          <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]">
+            Toplam {totalAttacks}
+            {totalTrend !== 0 && (
+              <span className={`text-xs ${totalTrend > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalTrend > 0 ? '▲' : '▼'}
+              </span>
+            )}
           </span>
         </h2>
         <div className="flex items-center gap-3">
