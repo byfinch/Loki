@@ -267,17 +267,6 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  // Saldiri notu guncelle (gruptaki tum attack ID'leri; loop'a aitse loop'a da yazilir)
-  // meta.host/method: ID kaydi olmayan (L4 dogrulanamayan) satirlar icin fallback
-  async updateNote(attackIds, note, meta = {}) {
-    const res = await apiFetch(`${API_BASE}/stresse/note`, {
-      method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify({ attackIds, note, host: meta.host, method: meta.method })
-    });
-    return handleResponse(res);
-  },
-
   // Etki Monitoru
   async getImpact() {
     const res = await apiFetch(`${API_BASE}/impact`, {
