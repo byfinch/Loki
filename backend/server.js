@@ -2408,6 +2408,21 @@ app.get('/api/stresse/stats', async (req, res) => {
       (a) => a.username === sessionUser
     ).length;
 
+    // Turu bitip yeni turu bekleyen loop'larin kapasitesi: saldiri bitince
+    // aktiften duser ama sistemde baslatilmis sayilir; toplam sayi loop
+    // gecislerinde yanlislikla dusmesin diye toplama eklenir.
+    let loopWaiting = 0;
+    Object.values(activeLoops).forEach((loop) => {
+      if (!loop.running) return;
+      if (getLoopOwner(loop) !== sessionUser) return;
+      const hasActiveAttack = Object.values(activeAttacks).some(
+        (a) => a.loopId && activeLoops[a.loopId] === loop
+      );
+      if (!hasActiveAttack) {
+        loopWaiting += parseInt(loop.params?.concurrents, 10) || 0;
+      }
+    });
+
     // Gecmis kayitlardan baslatilan toplam (her launch'in concurrents'i sayilir)
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -2425,6 +2440,7 @@ app.get('/api/stresse/stats', async (req, res) => {
       status: 'success',
       stats: {
         active: activeCount,
+        loopWaiting,
         launchedTotal,
         launchedToday
       }
