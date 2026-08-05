@@ -9,6 +9,41 @@ const LoopManager = () => {
   const { state, setLoops, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState(null);
+  const [editingLoopId, setEditingLoopId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1 });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const startEdit = (loopId, loop) => {
+    setEditingLoopId(loopId);
+    setEditDraft({
+      note: loop.note || '',
+      time: parseInt(loop.params?.time, 10) || 0,
+      interval: parseInt(loop.params?.interval, 10) || 0,
+      concurrents: parseInt(loop.params?.concurrents, 10) || 1
+    });
+  };
+
+  // Loop duzenlemesini kaydet: not + gelecek turlarin saldiri ayarlari.
+  // Yeni degerler bir sonraki turdan itibaren gecerli olur.
+  const handleSaveEdit = async (loopId) => {
+    setSavingEdit(true);
+    try {
+      await apiClient.editLoop(loopId, {
+        note: editDraft.note.trim(),
+        time: parseInt(editDraft.time, 10),
+        interval: parseInt(editDraft.interval, 10),
+        concurrents: parseInt(editDraft.concurrents, 10)
+      });
+      await refreshLoops();
+      setEditingLoopId(null);
+      addLog(`Loop güncellendi: ${loopId}`);
+      showToast('Loop ayarları kaydedildi (yeni turlarda geçerli)', 'success');
+    } catch (err) {
+      showToast(`Loop güncellenemedi: ${err.message}`, 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const refreshLoops = async () => {
     try {
@@ -193,20 +228,97 @@ const LoopManager = () => {
                   <td className="px-5 py-4 text-cyan-400 font-mono font-bold text-center whitespace-nowrap">{loop.roundCount || 0}</td>
                   <td className="px-5 py-4 text-red-400 font-mono text-center whitespace-nowrap">{loop.errors || 0}</td>
                   <td className="px-5 py-4 text-right">
-                    <button
-                      onClick={() => handleStop(loopId)}
-                      disabled={loading === loopId}
-                      className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] disabled:opacity-50 whitespace-nowrap flex items-center justify-center h-8 w-20"
-                    >
-                      {loading === loopId ? (
-                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                      ) : 'Çıkar'}
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => (editingLoopId === loopId ? setEditingLoopId(null) : startEdit(loopId, loop))}
+                        title="Not / saldırı ayarlarını düzenle"
+                        className={`text-xs border rounded-full transition-all duration-300 flex items-center justify-center h-8 w-8 ${
+                          editingLoopId === loopId
+                            ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400'
+                            : 'bg-white/5 hover:bg-cyan-500/10 border-white/10 hover:border-cyan-500/30 text-gray-400 hover:text-cyan-400'
+                        }`}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => handleStop(loopId)}
+                        disabled={loading === loopId}
+                        className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] disabled:opacity-50 whitespace-nowrap flex items-center justify-center h-8 w-20"
+                      >
+                        {loading === loopId ? (
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : 'Çıkar'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
+                {editingLoopId === loopId && (
+                  <tr className="border-b border-white/5">
+                    <td colSpan={7} className="px-5 pb-4 pt-1">
+                      <div className="flex flex-wrap items-end gap-3 bg-black/40 border border-cyan-500/20 rounded-lg p-3">
+                        <div className="flex-1 min-w-[220px]">
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Not</label>
+                          <input
+                            type="text"
+                            value={editDraft.note}
+                            maxLength={120}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
+                            placeholder="Marka / asıl site linki"
+                            className="w-full bg-black/60 border border-dashed border-cyan-500/35 rounded px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-gray-600 focus:outline-none focus:border-cyan-400/60"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Süre (sn)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.time}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, time: e.target.value }))}
+                            className="w-20 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Bekleme (sn)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.interval}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, interval: e.target.value }))}
+                            className="w-20 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Adet</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={editDraft.concurrents}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
+                            className="w-16 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleSaveEdit(loopId)}
+                          disabled={savingEdit}
+                          className="text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-full px-4 h-8 transition-all duration-300 hover:shadow-[0_0_15px_rgba(0,255,65,0.25)] disabled:opacity-50"
+                        >
+                          {savingEdit ? 'Kaydediliyor...' : 'Kaydet'}
+                        </button>
+                        <button
+                          onClick={() => setEditingLoopId(null)}
+                          disabled={savingEdit}
+                          className="text-xs bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 rounded-full px-4 h-8 transition-colors disabled:opacity-50"
+                        >
+                          İptal
+                        </button>
+                        <span className="w-full text-[10px] text-gray-600 font-mono">Yeni ayarlar bir sonraki turdan itibaren geçerli olur; çalışan tur etkilenmez.</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {loop.lastError && (
                   <tr className="border-b border-white/5">
                     <td colSpan={7} className="px-5 pb-3 pt-0 text-[11px] text-red-400/90 font-mono truncate" title={loop.lastError}>

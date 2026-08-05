@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aktif Looplar — Not + Ayar Düzenleme</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050505; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 980px; margin: 0 auto; }
+  .section-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .section-label span { color: #555; letter-spacing: 0; text-transform: none; }
+
+  .card { position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 28px; overflow: hidden; }
+  .card::before { content: ''; position: absolute; inset: 0; border-radius: 12px; padding: 1px; background: linear-gradient(120deg, rgba(0,255,65,.25), rgba(0,212,255,.15), rgba(0,255,65,.05)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+  .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .count-badge { padding: 2px 8px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 4px; font-size: 12px; color: #00d4ff; font-family: 'Courier New', monospace; }
+  .stop-all { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); border-radius: 999px; padding: 6px 16px; font-size: 12px; font-family: inherit; }
+
+  table { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 13px; }
+  th { text-align: left; color: #6b7280; font-weight: 500; font-size: 12px; padding: 8px 20px; }
+  td { padding: 14px 20px; }
+  tbody tr { border-bottom: 1px solid rgba(255,255,255,.05); }
+  .host { color: #e5e5e5; font-family: 'Courier New', monospace; font-size: 13px; }
+  .note-sub { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 11px; color: #00d4ff; font-family: 'Courier New', monospace; }
+  .note-sub .tag { color: #4b5563; }
+  .note-sub a { color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.5); }
+  .method { display: inline-block; padding: 6px 12px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font-size: 12px; color: #fff; }
+  .num { color: #d1d5db; font-family: 'Courier New', monospace; text-align: center; }
+  .set { color: #00d4ff; font-family: 'Courier New', monospace; font-weight: bold; text-align: center; }
+  .err { color: #f87171; font-family: 'Courier New', monospace; text-align: center; }
+  .edit-btn { width: 32px; height: 32px; border-radius: 999px; background: rgba(0,212,255,.15); border: 1px solid rgba(0,212,255,.4); color: #00d4ff; font-size: 12px; cursor: pointer; }
+  .remove-btn { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); border-radius: 999px; width: 80px; height: 32px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Düzenleme paneli (açık haldeki satırın altında) */
+  .edit-panel { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: rgba(0,0,0,.4); border: 1px solid rgba(0,212,255,.2); border-radius: 8px; padding: 12px; margin: 4px 20px 14px; }
+  .edit-field { display: flex; flex-direction: column; gap: 4px; }
+  .edit-field.grow { flex: 1; min-width: 220px; }
+  .edit-field label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+  .edit-field input { background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: #fff; font-family: 'Courier New', monospace; outline: none; }
+  .edit-field input:focus { border-color: rgba(74,222,128,.5); }
+  .edit-field input.note-input { border-style: dashed; border-color: rgba(0,212,255,.35); color: #00d4ff; font-family: inherit; }
+  .w80 { width: 80px; } .w64 { width: 64px; }
+  .save-btn { background: rgba(0,255,65,.15); color: #00ff41; border: 1px solid rgba(0,255,65,.3); border-radius: 999px; padding: 0 16px; height: 32px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  .cancel-btn { background: rgba(255,255,255,.05); color: #9ca3af; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 0 16px; height: 32px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  .edit-hint { width: 100%; font-size: 10px; color: #4b5563; font-family: 'Courier New', monospace; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <div class="section-label">Aktif Looplar <span>· ✎ ile not + saldırı ayarları düzenleme (final)</span></div>
+
+  <div class="card">
+    <div class="header">
+      <h2>Aktif Looplar <span class="count-badge">2</span></h2>
+      <button class="stop-all">Tümünü Kapat</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Hedef</th><th>Yöntem</th><th style="text-align:center">Süre (sn)</th><th style="text-align:center">Bekleme (sn)</th><th style="text-align:center">Set</th><th style="text-align:center">Hata</th><th style="text-align:right">İşlem</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <span class="host">https://vegasslot26.top/</span>
+            <div class="note-sub"><span class="tag">📝</span> VegasSlot — asıl site: <a href="#" onclick="return false">vegasslot.com</a></div>
+          </td>
+          <td><span class="method">CLOUDFLARE</span></td>
+          <td class="num">300s</td>
+          <td class="num">5s</td>
+          <td class="set">14</td>
+          <td class="err">0</td>
+          <td><div class="actions"><button class="edit-btn" title="Not / saldırı ayarlarını düzenle">✎</button><button class="remove-btn">Çıkar</button></div></td>
+        </tr>
+        <!-- ✎ açıkken gelen düzenleme paneli -->
+        <tr>
+          <td colspan="7" style="padding:0;">
+            <div class="edit-panel">
+              <div class="edit-field grow">
+                <label>Not</label>
+                <input class="note-input" value="VegasSlot — asıl site: https://vegasslot.com/" maxlength="120">
+              </div>
+              <div class="edit-field"><label>Süre (sn)</label><input class="w80" value="300"></div>
+              <div class="edit-field"><label>Bekleme (sn)</label><input class="w80" value="5"></div>
+              <div class="edit-field"><label>Adet</label><input class="w64" value="15"></div>
+              <button class="save-btn">Kaydet</button>
+              <button class="cancel-btn">İptal</button>
+              <span class="edit-hint">Yeni ayarlar bir sonraki turdan itibaren geçerli olur; çalışan tur etkilenmez.</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="host">194.39.148.174:53</span></td>
+          <td><span class="method">ACK</span></td>
+          <td class="num">120s</td>
+          <td class="num">10s</td>
+          <td class="set">32</td>
+          <td class="err">1</td>
+          <td><div class="actions"><button class="edit-btn" style="background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:#9ca3af" title="Not / saldırı ayarlarını düzenle">✎</button><button class="remove-btn">Çıkar</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>
