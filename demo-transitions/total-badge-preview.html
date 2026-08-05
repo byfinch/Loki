@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aktif Saldırılar — Final Rozet Görünümü</title>
+<title>Aktif Saldırılar — Aktif + Toplam rozetleri</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #050505; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
@@ -18,12 +18,8 @@
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
   .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-  /* Toplam rozeti (aktif) — yesil */
-  .total-badge { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,255,65,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.15); }
-
-  /* Baslatilan rozeti (tum zamanlar + bugun) — cyan */
-  .launched-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,212,255,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; color: #00d4ff; box-shadow: 0 0 12px rgba(0,212,255,.12); }
-  .launched-badge .today { font-size: 12px; color: #6b7280; font-weight: normal; }
+  .active-badge { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,212,255,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00d4ff; box-shadow: 0 0 12px rgba(0,212,255,.12); }
+  .total-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,255,65,.3); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.15); }
 
   .stop-btn { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); border-radius: 999px; padding: 6px 16px; font-size: 12px; font-family: inherit; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -37,13 +33,13 @@
 </head>
 <body>
 <div class="demo-wrap">
-  <div class="note">Final görünüm: <b>Toplam</b> (aktif) + <i>Başlatılan</i> (tüm zamanlar + bugün) — trend yok.</div>
+  <div class="note">Final görünüm: <i>Aktif</i> = şu an çalışan · <b>Toplam</b> = aktif + tur bekleyen loop</div>
 
   <div class="card">
     <div class="header">
       <h2>Aktif Saldırılar
-        <span class="total-badge">Toplam 80</span>
-        <span class="launched-badge">Başlatılan 1.247 <span class="today">bugün 42</span></span>
+        <span class="active-badge" title="Şu an çalışan saldırılar">Aktif 80</span>
+        <span class="total-badge" title="Aktif çalışanlar + tur bekleyen loop kapasitesi">Toplam 110</span>
       </h2>
       <button class="stop-btn">Tümünü Durdur</button>
     </div>
