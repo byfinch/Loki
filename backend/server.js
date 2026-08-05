@@ -2364,6 +2364,76 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
  * POST /api/stresse/loop/stop
  * Body: { loopId }
  */
+/**
+ * PUT /api/stresse/loop/edit
+ * Body: { loopId, note?, time?, interval?, concurrents? }
+ * Calisan loop'un notunu ve/veya saldiri ayarlarini gunceller. Yeni degerler
+ * bir SONRAKI turdan itibaren gecerlidir; o an calisan tur etkilenmez.
+ */
+app.put('/api/stresse/loop/edit', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
+    const { loopId } = req.body;
+    const loop = activeLoops[loopId];
+    if (!loop || getLoopOwner(loop) !== sessionUser) {
+      return res.status(404).json({ status: 'error', message: 'Loop bulunamadi' });
+    }
+
+    const p = loop.params || {};
+    const newTime = req.body.time !== undefined ? parseInt(req.body.time, 10) : parseInt(p.time, 10);
+    const newInterval = req.body.interval !== undefined ? parseInt(req.body.interval, 10) : parseInt(p.interval, 10);
+    const newConcurrents = req.body.concurrents !== undefined ? parseInt(req.body.concurrents, 10) : parseInt(p.concurrents, 10);
+
+    if (!Number.isFinite(newTime)) {
+      return res.status(400).json({ status: 'error', message: 'Gecersiz sure' });
+    }
+    const minTime = getMinTime(p.method, p.layer || 'L4');
+    if (newTime < minTime) {
+      return res.status(400).json({ status: 'error', message: `Minimum sure ${minTime} saniye (${String(p.method || '').toUpperCase()})` });
+    }
+    if (!Number.isFinite(newConcurrents) || newConcurrents < 1) {
+      return res.status(400).json({ status: 'error', message: 'Concurrents en az 1 olmali' });
+    }
+    if (!Number.isFinite(newInterval) || newInterval < 0) {
+      return res.status(400).json({ status: 'error', message: 'Bekleme 0 veya daha buyuk olmali' });
+    }
+
+    const planCheck = checkPlanLimits(sessionId, newTime, newConcurrents);
+    if (!planCheck.ok) {
+      return res.status(403).json({ status: 'error', message: planCheck.message });
+    }
+
+    p.time = newTime;
+    p.interval = newInterval;
+    p.concurrents = newConcurrents;
+
+    if (req.body.note !== undefined) {
+      const note = sanitizeNote(req.body.note);
+      loop.note = note;
+      setAttackNote(sessionUser, p.host, p.method, note);
+      const hist = loop.historyId ? attackHistory[loop.historyId] : null;
+      if (hist && hist.status === 'active') hist.note = note;
+    }
+
+    saveState();
+    console.log(`[loop/edit] ${loopId} -> time=${p.time} interval=${p.interval} concurrents=${p.concurrents} note="${loop.note || ''}" (${sessionUser})`);
+    res.json({
+      status: 'success',
+      params: { time: p.time, interval: p.interval, concurrents: p.concurrents },
+      note: loop.note || ''
+    });
+  } catch (error) {
+    handleEndpointError(res, error, 'Loop edit error');
+  }
+});
+
 app.post('/api/stresse/loop/stop', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];

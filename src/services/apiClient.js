@@ -241,6 +241,16 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // Calisan loop'un notunu / gelecek tur ayarlarini guncelle
+  async editLoop(loopId, fields) {
+    const res = await apiFetch(`${API_BASE}/stresse/loop/edit`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ loopId, ...fields })
+    });
+    return handleResponse(res);
+  },
+
   async getLoops() {
     const res = await apiFetch(`${API_BASE}/stresse/loops`, {
       headers: getHeaders()
