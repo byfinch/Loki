@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 import CyberCard from './CyberCard';
 
 const AttackHistory = () => {
@@ -263,6 +264,12 @@ const AttackHistory = () => {
                         )}
                       </button>
                     </div>
+                    {record.note && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[10px] font-mono text-cyan-400/90">
+                        <span className="text-gray-600">📝</span>
+                        <span className="truncate max-w-[200px]" title={record.note}>{renderNoteWithLinks(record.note)}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-3.5 text-gray-300 font-mono text-center text-xs">
                     {record.port || '-'}

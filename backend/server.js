@@ -740,6 +740,16 @@ function notifyLoopRemoved(loop, action, details = {}) {
   buildAndSend().catch(() => {});
 }
 
+// Saldiri notu: opsiyonel, hesap bazli paylasilir. Tek satir, kontrol
+// karakterlerinden arindirilmis, uzunluk sinirli metin olarak saklanir.
+const NOTE_MAX_LEN = 120;
+function sanitizeNote(note) {
+  if (typeof note !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  const clean = note.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.slice(0, NOTE_MAX_LEN);
+}
+
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1, elapsedSec = 0) {
   if (!attackId || !sessionId) return;
   // Idempotency: ayni ID baska bir launch/loop tarafindan zaten kayitliysa
@@ -758,6 +768,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     layer: params.layer || 'L4',
     time: parseInt(params.time) || 0,
     concurrents: parseInt(concurrents) || 1,
+    note: sanitizeNote(params.note),
     loopId: loopId || null,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
@@ -860,6 +871,7 @@ function addAttackHistory(sessionId, params, options = {}) {
     layer: params.layer || 'L4',
     time: parseInt(params.time) || 0,
     concurrents: parseInt(options.concurrents) || parseInt(params.concurrents) || 1,
+    note: sanitizeNote(params.note),
     loop: !!options.loop,
     status: 'active',
     startedAt: now.toISOString(),
@@ -1312,6 +1324,8 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       const id = item.attack_id || item.id;
       const localAttack = activeAttacks[id];
       if (!localAttack) return;
+      // Panelde girilen saldiri notunu canli satira birlestir
+      item.note = localAttack.note || '';
       // Sadece gercek kalan sure ile uzat. item.time (tam sure) veya || 60
       // fallback'i expiresAt'i her poll'da ileri itip kaydi olumsuzlastiriyordu
       // (hayalet birikim). timeLeft yoksa/0 ise uzatma YOK; kayit dogal
@@ -1350,6 +1364,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         time: attack.time,
         startedAt: attack.startedAt,
         expiresAt: attack.expiresAt,
+        note: attack.note || '',
         // stresse.st'den gelen gercek deger degil, "persisted" isareti
         persisted: true
       });
@@ -1370,6 +1385,7 @@ app.post('/api/stresse/attack', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4' } = req.body;
+    const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
     if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
       return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
@@ -1411,9 +1427,9 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     if (attackIds.length > 0) {
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
+        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, note });
       });
-      addAttackHistory(sessionId, { host, port, method, time, layer }, {
+      addAttackHistory(sessionId, { host, port, method, time, layer, note }, {
         concurrents: 1,
         attackIds
       });
@@ -1448,6 +1464,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
+    const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
     if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
       return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
@@ -1491,13 +1508,13 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     attackIds.forEach((attackId) => {
-      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, note });
     });
 
     const successCount = attackIds.length;
 
     if (attackIds.length > 0) {
-      addAttackHistory(sessionId, { host, port, method, time, layer }, {
+      addAttackHistory(sessionId, { host, port, method, time, layer, note }, {
         concurrents: count,
         attackIds
       });
@@ -1823,7 +1840,7 @@ async function runLoopRound(loopId) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, loop.sessionId, loop.params, loopId, 1, elapsedSec || 0);
+        registerAttack(attackId, loop.sessionId, { ...loop.params, note: loop.note }, loopId, 1, elapsedSec || 0);
       });
       console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri (istenen: ${loop.params.concurrents})`);
       if (attackIds.length !== loop.params.concurrents) {
@@ -1939,6 +1956,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
+    const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
     const host = normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
@@ -1977,7 +1995,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     }
 
     // Loop saldirisini history'ye sadece bir kez kaydet
-    const historyId = addAttackHistory(sessionId, { host, port, method, time, layer }, {
+    const historyId = addAttackHistory(sessionId, { host, port, method, time, layer, note }, {
       loop: true,
       concurrents: parseInt(concurrents),
       historyId: `hist_loop_${loopId}`
@@ -1989,6 +2007,9 @@ app.post('/api/stresse/loop', async (req, res) => {
       owner: sessions[sessionId]?.username || null,
       historyId,
       schemaVersion: 1,
+      // Not, params ICINDE tutulmaz: loop.params dogrudan stresse.st API
+      // cagrisina spread ediliyor, notun upstream'e sizmamasi icin ayri alan.
+      note,
       params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
@@ -2439,6 +2460,66 @@ app.get('/api/stresse/stats', async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/stresse/note
+ * Body: { attackIds: [..], note }
+ * Bir satirdaki (gruplanmis) saldirilarin notunu gunceller. Saldiri bir
+ * loop'a aitse not loop kaydina da yazilir ki sonraki turlar yeni notu
+ * miras alsin. Bos not = notu temizler.
+ */
+app.put('/api/stresse/note', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+
+    const sessionUser = sessions[sessionId]?.username;
+    if (!sessionUser) {
+      return res.status(401).json({ status: 'error', message: 'Session user not found' });
+    }
+
+    const attackIds = Array.isArray(req.body.attackIds) ? req.body.attackIds : [];
+    const note = sanitizeNote(req.body.note);
+    if (attackIds.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'attackIds required' });
+    }
+
+    let updated = 0;
+    const loopIds = new Set();
+    attackIds.forEach((id) => {
+      const attack = activeAttacks[id];
+      if (!attack || attack.username !== sessionUser) return;
+      attack.note = note;
+      updated += 1;
+      if (attack.loopId) loopIds.add(attack.loopId);
+    });
+
+    // Loop kaydina da yaz: yeni turlar duzenlenen notla devam eder.
+    loopIds.forEach((loopId) => {
+      const loop = activeLoops[loopId];
+      if (loop && getLoopOwner(loop) === sessionUser) {
+        loop.note = note;
+      }
+    });
+
+    // Aktif history kayitlarini da guncelle (tekil saldiri + loop history'si).
+    Object.values(attackHistory).forEach((h) => {
+      if (h.username !== sessionUser || h.status !== 'active') return;
+      const ownsAttack = (h.attackIds || []).some((id) => attackIds.includes(id));
+      const ownsLoop = [...loopIds].some((loopId) => h.historyId === `hist_loop_${loopId}`);
+      if (ownsAttack || ownsLoop) h.note = note;
+    });
+
+    if (updated === 0 && loopIds.size === 0) {
+      return res.status(404).json({ status: 'error', message: 'Saldiri kaydi bulunamadi (bitmis olabilir)' });
+    }
+
+    saveState();
+    res.json({ status: 'success', updated, note });
+  } catch (error) {
+    handleEndpointError(res, error, 'Note update error');
+  }
+});
+
 app.get('/api/stresse/loops', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
@@ -2728,7 +2809,16 @@ async function liveHubTick(hub, username) {
     const requests = [client.get(`/ongoing/${username}`)];
     if (fetchUser) requests.push(client.get(`/user/${username}`));
     const [ongoing, user] = await Promise.all(requests);
-    hub.lastOngoing = ongoing.data;
+    // Panelde girilen saldiri notlarini canli satirlara birlestir
+    // (upstream veri not icermez; not bizim activeAttacks kaydinda yasar).
+    let ongoingData = ongoing.data;
+    if (Array.isArray(ongoingData)) {
+      ongoingData = ongoingData.map((item) => {
+        const local = activeAttacks[item.attack_id || item.id];
+        return local && local.note ? { ...item, note: local.note } : item;
+      });
+    }
+    hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
     hub.consecutiveErrors = 0;
     // user yoksa payload'a koyma; client'lar son user'i kullanmaya devam eder.
