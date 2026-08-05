@@ -435,7 +435,7 @@ const LiveAttacks = () => {
     [groupedAttacks]
   );
 
-  // Hesaba ozel sayaclar (baslatilan toplam/bugun) — canli listeyle beraber tazelenir
+  // Hesaba ozel sayaclar (aktif/toplam kapasite) — canli listeyle beraber tazelenir
   const [stats, setStats] = useState(null);
   useEffect(() => {
     if (!state.isAuthenticated) return undefined;
@@ -464,8 +464,8 @@ const LiveAttacks = () => {
           <span className="ml-2 px-2.5 py-1 bg-black/60 border border-cyan-500/30 rounded-md text-sm text-cyan-400 font-mono font-bold shadow-[0_0_12px_rgba(0,212,255,0.12)]" title="Şu an çalışan saldırılar">
             Aktif {totalAttacks}
           </span>
-          <span className="px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]" title="Aktif çalışanlar + tur bekleyen loop kapasitesi">
-            Toplam {totalAttacks + (stats?.loopWaiting || 0)}
+          <span className="px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]" title="Çalışan loop kapasitesi + loopsuz aktif saldırılar (tur geçişlerinde değişmez)">
+            Toplam {stats?.total ?? totalAttacks}
           </span>
         </h2>
         <div className="flex items-center gap-3">

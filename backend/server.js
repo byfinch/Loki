@@ -2390,8 +2390,9 @@ app.get('/api/accounts', async (req, res) => {
 
 /**
  * GET /api/stresse/stats
- * Hesaba ozel sayaclar: aktif saldiri sayisi, toplam baslatilan (tum zamanlar,
- * concurrents dahil) ve bugun baslatilan saldiri sayisi.
+ * Hesaba ozel sayaclar: aktif saldiri sayisi ve toplam kapasite.
+ * Toplam = calisan loop'larin ayarlanmis concurrents toplami (tur arasi
+ * bosluklardan etkilenmez, sabittir) + loopsuz ve suresi dolmamis saldirilar.
  */
 app.get('/api/stresse/stats', async (req, res) => {
   try {
@@ -2408,26 +2409,29 @@ app.get('/api/stresse/stats', async (req, res) => {
       (a) => a.username === sessionUser
     ).length;
 
-    // Turu bitip yeni turu bekleyen loop'larin kapasitesi: saldiri bitince
-    // aktiften duser ama sistemde baslatilmis sayilir; toplam sayi loop
-    // gecislerinde yanlislikla dusmesin diye toplama eklenir.
-    let loopWaiting = 0;
+    // Calisan loop'larin kapasitesi: loop ayakta oldugu surece sabit;
+    // tur bitip yenisinin baslamasi arasindaki boslukta dusmez.
+    let loopCapacity = 0;
     Object.values(activeLoops).forEach((loop) => {
       if (!loop.running) return;
       if (getLoopOwner(loop) !== sessionUser) return;
-      const hasActiveAttack = Object.values(activeAttacks).some(
-        (a) => a.loopId && activeLoops[a.loopId] === loop
-      );
-      if (!hasActiveAttack) {
-        loopWaiting += parseInt(loop.params?.concurrents, 10) || 0;
-      }
+      loopCapacity += parseInt(loop.params?.concurrents, 10) || 0;
     });
+
+    // Loopsuz (tek seferlik) ve suresi henuz dolmamis saldirilar.
+    const now = Date.now();
+    const nonLoopActive = Object.values(activeAttacks)
+      .filter(
+        (a) => a.username === sessionUser && !a.loopId &&
+          new Date(a.expiresAt || 0).getTime() > now
+      )
+      .reduce((sum, a) => sum + (parseInt(a.concurrents, 10) || 1), 0);
 
     res.json({
       status: 'success',
       stats: {
         active: activeCount,
-        loopWaiting
+        total: loopCapacity + nonLoopActive
       }
     });
   } catch (error) {
