@@ -9,10 +9,7 @@ import React, { useReducer, createContext, useContext, useMemo, useCallback, use
 const MAX_LOGS = 200;
 
 const initialState = {
-  status: 'idle', // idle, running, stopped
-  attackId: null,
   logs: [],
-  verificationData: {},
   user: null,
   plan: null,
   methods: [],
@@ -30,13 +27,6 @@ const initialState = {
 
 function stressTestReducer(state, action) {
   switch (action.type) {
-    case 'START_TEST':
-      return {
-        ...state,
-        status: 'running',
-        attackId: action.payload.attackId,
-        logs: [...state.logs, { message: 'Test başlatılıyor...', time: new Date().toISOString() }]
-      };
     case 'ADD_LOG':
       return {
         ...state,
@@ -65,10 +55,6 @@ function stressTestReducer(state, action) {
           }
         }
       };
-    case 'REMOVE_LOOP':
-      const nextLoops = { ...state.activeLoops };
-      delete nextLoops[action.payload.loopId];
-      return { ...state, activeLoops: nextLoops };
     case 'SET_LOOPS':
       return { ...state, activeLoops: action.payload };
     case 'SET_ATTACK_HISTORY':
@@ -106,7 +92,6 @@ export const StressTestProvider = ({ children }) => {
   // Unmount'ta bekleyen toast zamanlayicilarini temizle
   useEffect(() => clearToastTimeouts, [clearToastTimeouts]);
 
-  const startTest = useCallback((attackId) => dispatch({ type: 'START_TEST', payload: { attackId } }), []);
   const addLog = useCallback((message) => dispatch({ type: 'ADD_LOG', payload: { message } }), []);
   const setUser = useCallback((user) => dispatch({ type: 'SET_USER', payload: user }), []);
   const setPlan = useCallback((plan) => dispatch({ type: 'SET_PLAN', payload: plan }), []);
@@ -115,7 +100,6 @@ export const StressTestProvider = ({ children }) => {
   const setActiveTab = useCallback((tab) => dispatch({ type: 'SET_ACTIVE_TAB', payload: tab }), []);
   const setAttackPrefill = useCallback((prefill) => dispatch({ type: 'SET_ATTACK_PREFILL', payload: prefill }), []);
   const addLoop = useCallback((loopId, loop) => dispatch({ type: 'ADD_LOOP', payload: { loopId, loop } }), []);
-  const removeLoop = useCallback((loopId) => dispatch({ type: 'REMOVE_LOOP', payload: { loopId } }), []);
   const setLoops = useCallback((loops) => dispatch({ type: 'SET_LOOPS', payload: loops }), []);
   const setAttackHistory = useCallback((history) => dispatch({ type: 'SET_ATTACK_HISTORY', payload: history }), []);
   const setStopProgress = useCallback((progress) => dispatch({ type: 'SET_STOP_PROGRESS', payload: progress }), []);
@@ -143,7 +127,6 @@ export const StressTestProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       state,
-      startTest,
       addLog,
       setUser,
       setPlan,
@@ -152,7 +135,6 @@ export const StressTestProvider = ({ children }) => {
       setActiveTab,
       setAttackPrefill,
       addLoop,
-      removeLoop,
       setLoops,
       setAttackHistory,
       setStopProgress,
@@ -165,7 +147,6 @@ export const StressTestProvider = ({ children }) => {
     }),
     [
       state,
-      startTest,
       addLog,
       setUser,
       setPlan,
@@ -174,7 +155,6 @@ export const StressTestProvider = ({ children }) => {
       setActiveTab,
       setAttackPrefill,
       addLoop,
-      removeLoop,
       setLoops,
       setAttackHistory,
       setStopProgress,

@@ -83,13 +83,6 @@ export const apiClient = {
     return this._readAccounts();
   },
 
-  getActiveAccount() {
-    const username = this.getUsername();
-    const sessionId = this.getSessionId();
-    if (!username || !sessionId) return null;
-    return { username, sessionId };
-  },
-
   // Aktif session anahtarlarini hedef hesaba cevirir; hesap yoksa false doner.
   switchAccount(username) {
     const account = this._readAccounts().find((a) => a.username === username);
@@ -150,8 +143,8 @@ export const apiClient = {
   },
 
   // Cikis: sadece aktif oturumu kapatir; hesap defterde KALIR ki kullanici
-  // daha sonra sifre girmeden geri donebilsin. Defterden silme yalnizca
-  // oturum gercekten olmusse (401) yapilir.
+  // daha sonra sifre girmeden geri donebilsin. Defterden silme (removeAccount)
+  // logout'ta yapilmaz; App.jsx'teki 401 akisi oturum gercekten olmusse siler.
   logout() {
     this.clearActiveSession();
   },
@@ -294,23 +287,6 @@ export const apiClient = {
     };
 
     return eventSource;
-  },
-
-  // Tools
-  async checkHost(host, type = 'ping') {
-    const res = await apiFetch(`${API_BASE}/check-host?host=${encodeURIComponent(host)}&type=${type}`, {
-      headers: getHeaders()
-    });
-    const data = await handleResponse(res);
-    return { ...data, type: 'check-host' };
-  },
-
-  async getPingPe(host) {
-    const res = await apiFetch(`${API_BASE}/ping-pe?host=${encodeURIComponent(host)}`, {
-      headers: getHeaders()
-    });
-    const data = await handleResponse(res);
-    return { ...data, type: 'ping-pe' };
   },
 
   // PhishGuard

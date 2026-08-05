@@ -41,9 +41,9 @@ const ToastContainer = () => {
       {state.toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`animate-toast-fade-in flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-sm ${styles[toast.type]}`}
+          className={`animate-toast-fade-in flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-sm ${styles[toast.type] || styles.info}`}
         >
-          {icons[toast.type]}
+          {icons[toast.type] || icons.info}
           <span className="text-sm font-medium">{toast.message}</span>
           <button
             onClick={() => removeToast(toast.id)}
