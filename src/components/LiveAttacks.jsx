@@ -444,10 +444,31 @@ const LiveAttacks = () => {
     prevTotalRef.current = totalAttacks;
   }, [totalAttacks]);
 
+  // Hesaba ozel sayaclar (baslatilan toplam/bugun) — canli listeyle beraber tazelenir
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
+    let cancelled = false;
+    const fetchStats = async () => {
+      try {
+        const s = await apiClient.getStats();
+        if (!cancelled) setStats(s);
+      } catch {
+        // sayac alinamazsa rozet gosterilmez; akis bozulmaz
+      }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [state.isAuthenticated]);
+
   return (
     <CyberCard className="p-5 sm:p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 flex-wrap">
           Aktif Saldırılar
           <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]">
             Toplam {totalAttacks}
@@ -457,6 +478,14 @@ const LiveAttacks = () => {
               </span>
             )}
           </span>
+          {stats && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-cyan-500/30 rounded-md text-sm text-cyan-400 font-mono shadow-[0_0_12px_rgba(0,212,255,0.12)]" title="Tüm zamanlarda başlatılan toplam saldırı (bu hesap)">
+              Başlatılan {stats.launchedTotal ?? '—'}
+              {typeof stats.launchedToday === 'number' && stats.launchedToday > 0 && (
+                <span className="text-xs text-gray-500 font-normal">bugün {stats.launchedToday}</span>
+              )}
+            </span>
+          )}
         </h2>
         <div className="flex items-center gap-3">
           {state.activeStopKey && state.stopProgress && (
