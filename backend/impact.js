@@ -26,6 +26,9 @@ const REQUEST_TIMEOUT_MS = 15000;
 const CHECKS_KEEP = 10;
 // Biten saldirinin final olcumu panelde bu kadar gorunur kalir, sonra silinir.
 const FINAL_RETENTION_MS = 10 * 60 * 1000;
+// Final olcum bu kadar kez basarisiz olursa hedef olcumsuz kapatilir
+// (sonsuz retry yok; Map'ten FINAL_RETENTION_MS sonrasi silinir).
+const FINAL_MAX_ATTEMPTS = 3;
 // Saldiri bitis tespitinde server.js cleanup ile ayni tolerans.
 const EXPIRY_TOLERANCE_MS = 30 * 1000;
 
@@ -134,6 +137,8 @@ function checkpointOffset(target, index) {
 // check-host sonucunu normalize eder: perNode listesi.
 // http: node -> [[ok, saniye, "OK", "200", ip]] | null
 // tcp:  node -> [{ address, time }] | null
+// Yanit vermeyen (cozumlenemeyen) node'lar dead:true isaretlenir; durum
+// hesabinda notr sayilirlar (total'den dusulur, hedefi degrade etmezler).
 function parsePerNode(data, layer, checkType = 'http') {
   const perNode = [];
   for (const node of NODES) {
@@ -142,6 +147,7 @@ function parsePerNode(data, layer, checkType = 'http') {
     let redirect = false;
     let ms = null;
     let code = null;
+    const dead = value == null;
     if (Array.isArray(value) && value.length > 0) {
       if (checkType === 'http') {
         const first = value[0];
@@ -163,17 +169,19 @@ function parsePerNode(data, layer, checkType = 'http') {
         }
       }
     }
-    perNode.push({ node, ok, redirect, ms, code });
+    perNode.push({ node, ok, redirect, ms, code, dead });
   }
   return perNode;
 }
 
-// perNode'dan hedef durumunu hesaplar.
+// perNode'dan hedef durumunu hesaplar. Olu (cozumlenemeyen) node'lar
+// hesaba katilmaz; total yalnizca yanit veren node'lar uzerinden kurulur.
 function computeState(perNode, baselineMs) {
-  const total = perNode.length;
-  const okNodes = perNode.filter((n) => n.ok);
+  const live = perNode.filter((n) => !n.dead);
+  const total = live.length;
+  const okNodes = live.filter((n) => n.ok);
   const okCount = okNodes.length;
-  const redirectCount = perNode.filter((n) => n.redirect).length;
+  const redirectCount = live.filter((n) => n.redirect).length;
   if (total === 0) return { state: 'down', avgMs: null };
   const avgMs = okCount > 0
     ? Math.round(okNodes.reduce((s, n) => s + (n.ms || 0), 0) / okCount)
@@ -221,11 +229,19 @@ async function runCheck(target, { final = false } = {}) {
 
     // Ilk sonuclar ~5-8sn sonra hazir olur; tum node'lar dolana kadar poll et.
     let data = null;
+    let resolved = 0;
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       await new Promise((r) => setTimeout(r, attempt === 0 ? POLL_FIRST_DELAY_MS : POLL_INTERVAL_MS));
       data = await fetchJson(`https://check-host.net/check-result/${requestId}`);
-      const resolved = NODES.filter((n) => data && data[n] !== undefined && data[n] !== null).length;
+      resolved = NODES.filter((n) => data && data[n] !== undefined && data[n] !== null).length;
       if (resolved >= NODES.length) break;
+    }
+
+    // Hic bir node cozumlenemediyse olcum gecersiz: hedefi yanlislikla
+    // 'down' sayma, basarisiz olcum olarak isaretle (retry'e birak).
+    if (resolved === 0) {
+      warn(`olcum gecersiz (${target.host}): hicbir node yanit vermedi`);
+      return false;
     }
 
     const perNode = parsePerNode(data, target.layer, webPort ? 'http' : 'tcp');
@@ -268,6 +284,10 @@ async function tick() {
       existing.isLoop = d.isLoop;
       existing.expiresAt = d.expiresAt;
       existing.endedAt = null;
+      // Hedef tekrar aktif: yeni saldiri icin olcum temiz baslasin,
+      // onceki final kaydi yeni olcumu engellemesin.
+      existing.finalDone = false;
+      existing.finalAttempts = 0;
     } else {
       targets.set(key, {
         ...d,
@@ -281,6 +301,7 @@ async function tick() {
         cpIndex: 0,
         checking: false,
         finalDone: false,
+        finalAttempts: 0,
         endedAt: null
       });
     }
@@ -301,6 +322,16 @@ async function tick() {
         target.finalDone = true;
         target.endedAt = now;
         target.nextCheckAt = null;
+      } else {
+        // Kalici hata (check-host erisilemez, hedef gecersiz): sonsuz retry
+        // yerine birkac denemeden sonra hedefi olcumsuz kapat.
+        target.finalAttempts = (target.finalAttempts || 0) + 1;
+        if (target.finalAttempts >= FINAL_MAX_ATTEMPTS) {
+          warn(`${target.host}: final olcum ${FINAL_MAX_ATTEMPTS} kez basarisiz, hedef kapatiliyor`);
+          target.finalDone = true;
+          target.endedAt = now;
+          target.nextCheckAt = null;
+        }
       }
     }
     if (target.finalDone && target.endedAt && now - target.endedAt > FINAL_RETENTION_MS) {

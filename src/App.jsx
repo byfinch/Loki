@@ -35,8 +35,8 @@ const AppContent = () => {
     sessionValidatedRef.current = true;
 
     const validateSession = async () => {
-      // Aktif session gecersizse kayitli diger hesaplara sirayla dus;
-      // her 401'de apiClient.logout() o hesabi defterden de sildigi icin dongu sonlanir.
+      // Aktif session gecersizse o hesabi defterden silip kayitli diger
+      // hesaplara sirayla dus; hesap kalmazsa login ekranina donulur.
       try {
         for (let attempt = 0; attempt < 10; attempt += 1) {
           const sessionId = apiClient.getSessionId();
@@ -51,7 +51,8 @@ const AppContent = () => {
             return;
           } catch (err) {
             if (err.status === 401 || err.status === 403) {
-              // Oturum gercekten gecersiz; defterden de sil
+              // Oturum gercekten gecersiz: hesabi defterden sil, siradakine gec
+              apiClient.removeAccount(username);
               apiClient.logout();
               const next = apiClient.getAccounts()[0];
               if (next && apiClient.switchAccount(next.username)) {
