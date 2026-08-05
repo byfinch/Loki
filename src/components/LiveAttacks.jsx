@@ -429,20 +429,11 @@ const LiveAttacks = () => {
   }, [state.isAuthenticated]);
 
   // Gercek anlik toplam: gruplanmis satir adetlerinin toplami (filtrelenmis,
-  // canli saldiri sayisi). Loop bitis/baslangic dalgalanmasini da goster.
+  // canli saldiri sayisi).
   const totalAttacks = useMemo(
     () => groupedAttacks.reduce((sum, g) => sum + g.count, 0),
     [groupedAttacks]
   );
-
-  const prevTotalRef = useRef(totalAttacks);
-  const [totalTrend, setTotalTrend] = useState(0); // 1: yukseliyor, -1: dusuyor, 0: sabit
-  useEffect(() => {
-    if (totalAttacks > prevTotalRef.current) setTotalTrend(1);
-    else if (totalAttacks < prevTotalRef.current) setTotalTrend(-1);
-    else setTotalTrend(0);
-    prevTotalRef.current = totalAttacks;
-  }, [totalAttacks]);
 
   // Hesaba ozel sayaclar (baslatilan toplam/bugun) — canli listeyle beraber tazelenir
   const [stats, setStats] = useState(null);
@@ -472,11 +463,6 @@ const LiveAttacks = () => {
           Aktif Saldırılar
           <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]">
             Toplam {totalAttacks}
-            {totalTrend !== 0 && (
-              <span className={`text-xs ${totalTrend > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {totalTrend > 0 ? '▲' : '▼'}
-              </span>
-            )}
           </span>
           {stats && (
             <span className="flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-cyan-500/30 rounded-md text-sm text-cyan-400 font-mono shadow-[0_0_12px_rgba(0,212,255,0.12)]" title="Tüm zamanlarda başlatılan toplam saldırı (bu hesap)">
