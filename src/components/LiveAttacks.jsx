@@ -4,13 +4,31 @@ import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import CyberCard from './CyberCard';
 
+// Sunucunun bildirdigi son timeLeft degerleri ve client geri sayimlari modul
+// seviyesinde tutulur: tab degisiminde unmount/remount'ta sifirlanmazlar.
+// Boylece bayat sunucu degeri "yeni saldiri" sanilmaz, bitmis satirlar
+// hayalet olarak geri gelmez. (Bilesen icinde olsaydi attack/tools tab'lari
+// ayri instance yaratirdi.)
+const lastServerValues = {};
+const persistedTimeLefts = {};
+
 const LiveAttacks = () => {
   const { state, setLiveAttacks, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
   const [lastUpdate, setLastUpdate] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const [stopping, setStopping] = useState(new Set());
   const stopCancelledRef = useRef(state.stopCancelled || false);
-  const [serverTimeLefts, setServerTimeLefts] = useState({});
+  const [serverTimeLefts, setServerTimeLeftsState] = useState(() => ({ ...persistedTimeLefts }));
+
+  // State guncellemelerini modul seviyesindeki depoya da yansit (remount korumasi)
+  const setServerTimeLefts = (updater) => {
+    setServerTimeLeftsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      Object.keys(persistedTimeLefts).forEach((k) => delete persistedTimeLefts[k]);
+      Object.assign(persistedTimeLefts, next);
+      return next;
+    });
+  };
 
   // Sayfa degisince ref'i context ile senkronize tut
   useEffect(() => {
@@ -303,10 +321,10 @@ const LiveAttacks = () => {
     const username = apiClient.getUsername();
     if (!username) return;
 
-    // Sunucunun bildirdigi son timeLeft degerleri (tazelik kontrolu icin).
+    // Sunucunun bildirdigi son timeLeft degerleri (tazelik kontrolu icin)
+    // modul seviyesindeki lastServerValues'ta tutulur; remount'ta korunur.
     // Bayat/degismeyen degerler client geri sayimini resetleyemez; boylece
     // bitmis saldirilar donuk satir olarak kalmaz.
-    const lastServerValues = {};
     const updateTimeLefts = (attacks) => {
       setServerTimeLefts((prev) => {
         const next = { ...prev };
@@ -479,7 +497,7 @@ const LiveAttacks = () => {
             <tbody>
               {groupedAttacks.map((attack) => {
                 const displayTarget = formatTargetForDisplay(attack.target, attack.layer, attack.method);
-                const rowKey = `${attack.target}::${attack.method}`;
+                const rowKey = `${attack.target}::${attack.method}::${attack.ids[0]}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
                 const firstId = attack.ids[0];
