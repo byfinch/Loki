@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
-import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 import CyberCard from './CyberCard';
 
 // Sunucunun bildirdigi son timeLeft degerleri ve client geri sayimlari modul
@@ -18,8 +17,6 @@ const LiveAttacks = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const [stopping, setStopping] = useState(new Set());
-  const [editingNoteKey, setEditingNoteKey] = useState(null);
-  const [noteDraft, setNoteDraft] = useState('');
   const stopCancelledRef = useRef(state.stopCancelled || false);
   const [serverTimeLefts, setServerTimeLeftsState] = useState(() => ({ ...persistedTimeLefts }));
 
@@ -129,8 +126,6 @@ const LiveAttacks = () => {
       if (existing) {
         existing.count += 1;
         existing.ids.push(attack.attack_id);
-        // Grupta notu olan ilk saldirinin notu satira tasinir
-        if (!existing.note && attack.note) existing.note = attack.note;
         if (attack.timeLeft > existing.timeLeft) {
           existing.timeLeft = attack.timeLeft;
         }
@@ -166,25 +161,6 @@ const LiveAttacks = () => {
         next.delete(attackId);
         return next;
       });
-    }
-  };
-
-  // Not kaydetme: gruptaki tum saldiri ID'lerine yazilir; saldiri loop'a
-  // aitse backend loop kaydini da gunceller (yeni turlar notu miras alir).
-  const handleSaveNote = async (attack) => {
-    const draft = noteDraft.trim().slice(0, 120);
-    setEditingNoteKey(null);
-    try {
-      await apiClient.updateNote(attack.ids, draft, { host: attack.target, method: attack.method });
-      // Optimistik guncelleme; SSE bir sonraki tick'te dogrular
-      setLiveAttacks(
-        state.liveAttacks.map((a) =>
-          attack.ids.includes(a.attack_id) ? { ...a, note: draft } : a
-        )
-      );
-      showToast(draft ? 'Not kaydedildi' : 'Not temizlendi', 'success');
-    } catch (err) {
-      showToast(`Not kaydedilemedi: ${err.message}`, 'error');
     }
   };
 
@@ -590,43 +566,6 @@ const LiveAttacks = () => {
                           )}
                         </button>
                       </div>
-                      {editingNoteKey === rowKey ? (
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <input
-                            autoFocus
-                            type="text"
-                            value={noteDraft}
-                            maxLength={120}
-                            onChange={(e) => setNoteDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveNote(attack);
-                              if (e.key === 'Escape') setEditingNoteKey(null);
-                            }}
-                            onBlur={() => handleSaveNote(attack)}
-                            placeholder="Marka / asıl site linki"
-                            className="w-[260px] bg-black/70 border border-cyan-500/40 rounded px-2 py-1 text-[11px] text-cyan-300 font-mono placeholder-gray-600 focus:outline-none focus:border-cyan-400/70"
-                          />
-                        </div>
-                      ) : attack.note ? (
-                        <div className="mt-1 flex items-center gap-1.5 text-[11px] font-mono text-cyan-400">
-                          <span className="text-gray-600">📝</span>
-                          <span className="truncate max-w-[260px]">{renderNoteWithLinks(attack.note)}</span>
-                          <button
-                            title="Notu düzenle"
-                            onClick={() => { setEditingNoteKey(rowKey); setNoteDraft(attack.note); }}
-                            className="text-gray-600 hover:text-green-400 transition-colors"
-                          >
-                            ✎
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => { setEditingNoteKey(rowKey); setNoteDraft(''); }}
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-gray-600 hover:text-cyan-400 border border-dashed border-white/15 hover:border-cyan-500/40 rounded px-2 py-0.5 transition-colors"
-                        >
-                          + not ekle
-                        </button>
-                      )}
                     </td>
                     <td className="py-3 whitespace-nowrap">
                       <span className="px-2.5 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">

@@ -446,7 +446,7 @@ const AttackForm = () => {
             className="w-full bg-black/60 border border-dashed border-cyan-500/35 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 placeholder:italic focus:border-cyan-400/60 focus:outline-none focus:shadow-[0_0_15px_rgba(0,212,255,0.12)] transition"
           />
           <div className="flex items-center justify-between mt-0.5">
-            <p className="text-[10px] text-gray-500">Linkler listede tıklanabilir görünür</p>
+            <p className="text-[10px] text-gray-500">Aktif Looplar ve Geçmiş'te tıklanabilir link olarak görünür</p>
             <p className="text-[10px] text-gray-600 font-mono">{note.length}/120</p>
           </div>
         </div>
