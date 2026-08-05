@@ -103,6 +103,12 @@ const activeLoopRounds = new Set();
 // Active normal attacks registry: { attackId: { username, host, port, method, time, startedAt, expiresAt } }
 const activeAttacks = {};
 
+// Hedef bazli not deposu (ID dogrulamasi guvenilir olmayan methodlar icin
+// fallback): key "username|host|method" -> note. L4 saldirilarinda stresse.st
+// /ongoing ID'leri dogrulanamadiginda activeAttacks kaydi olusmaz; not bu
+// depo uzerinden canli satira birlestirilir.
+const attackNotes = {};
+
 // Basit upstream cache'leri: upstream yavas/hata verdiginde bayat veriyle idare et.
 // methods herkes icin ayni (global, TTL 1 saat); plan kullanici bazli (TTL 5 dk).
 const METHODS_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -131,6 +137,7 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
 const ATTACKS_FILE = path.join(DATA_DIR, 'active-attacks.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'attack-history.json');
+const NOTES_FILE = path.join(DATA_DIR, 'attack-notes.json');
 const API_TOKENS_FILE = path.join(DATA_DIR, 'api-tokens.json');
 
 // Hesap bazli token deposu: { username: apiToken }
@@ -246,6 +253,9 @@ function saveState() {
     // Save attack history
     safeWriteJson(HISTORY_FILE, attackHistory);
 
+    // Save hedef bazli not deposu
+    safeWriteJson(NOTES_FILE, attackNotes);
+
     cleanupOldSessions();
   } finally {
     saveStateRunning = false;
@@ -353,6 +363,20 @@ function loadState() {
   }
 
   cleanupExpiredAttacks();
+
+  // Restore hedef bazli not deposu
+  try {
+    if (fs.existsSync(NOTES_FILE)) {
+      const raw = fs.readFileSync(NOTES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      Object.entries(parsed).forEach(([key, note]) => {
+        if (typeof note === 'string' && note) attackNotes[key] = note;
+      });
+      console.log(`[persistence] Restored ${Object.keys(attackNotes).length} attack note(s)`);
+    }
+  } catch (err) {
+    console.error('[persistence] Failed to load attack notes:', err.message);
+  }
 
   // Restore attack history
   try {
@@ -748,6 +772,26 @@ function sanitizeNote(note) {
   // eslint-disable-next-line no-control-regex
   const clean = note.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim();
   return clean.slice(0, NOTE_MAX_LEN);
+}
+
+// Hedef bazli not deposu yardimcilari. Bos not yazilinca anahtar silinir
+// (yeni notsuz launch eski notu boylece ezer).
+function noteKey(username, host, method) {
+  return `${username}|${String(host || '').toLowerCase()}|${String(method || '').toLowerCase()}`;
+}
+function setAttackNote(username, host, method, note) {
+  if (!username || !host || !method) return;
+  const key = noteKey(username, host, method);
+  if (note) attackNotes[key] = note;
+  else delete attackNotes[key];
+}
+function getAttackNote(username, host, method) {
+  if (!username) return '';
+  return attackNotes[noteKey(username, host, method)] || '';
+}
+// Upstream target ("1.2.3.4:53", "https://host/path", "host/") -> sade host
+function targetHostPart(target) {
+  return String(target || '').replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
 }
 
 function registerAttack(attackId, sessionId, params, loopId = null, concurrents = 1, elapsedSec = 0) {
@@ -1323,9 +1367,10 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     ongoing.forEach((item) => {
       const id = item.attack_id || item.id;
       const localAttack = activeAttacks[id];
+      // Panelde girilen saldiri notunu canli satira birlestir; ID kaydi
+      // yoksa (L4 dogrulanamayan launch) hedef bazli depoya dus.
+      item.note = localAttack?.note || getAttackNote(username, targetHostPart(item.target || item.host), item.method);
       if (!localAttack) return;
-      // Panelde girilen saldiri notunu canli satira birlestir
-      item.note = localAttack.note || '';
       // Sadece gercek kalan sure ile uzat. item.time (tam sure) veya || 60
       // fallback'i expiresAt'i her poll'da ileri itip kaydi olumsuzlastiriyordu
       // (hayalet birikim). timeLeft yoksa/0 ise uzatma YOK; kayit dogal
@@ -1510,6 +1555,13 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     attackIds.forEach((attackId) => {
       registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, note });
     });
+
+    // Notu hedef bazli depoya da yaz: L4 gibi ID dogrulanamayan methodlarda
+    // (attackIds bos kalsa bile) not canli satira bu depodan birlesir.
+    if (attackIds.length > 0 || data?.status === 'success') {
+      setAttackNote(sessions[sessionId]?.username, host, method, note);
+      saveState();
+    }
 
     const successCount = attackIds.length;
 
@@ -2010,6 +2062,7 @@ app.post('/api/stresse/loop', async (req, res) => {
       // Not, params ICINDE tutulmaz: loop.params dogrudan stresse.st API
       // cagrisina spread ediliyor, notun upstream'e sizmamasi icin ayri alan.
       note,
+
       params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
@@ -2018,6 +2071,10 @@ app.post('/api/stresse/loop', async (req, res) => {
       errors: 0,
       roundAttackIds: []
     };
+
+    // Loop notunu hedef bazli depoya da yaz: L4 loop turlarinda attack ID
+    // dogrulanamadiginda not canli satira bu depodan birlesir.
+    setAttackNote(sessions[sessionId]?.username, host, method, note);
 
     // Ilk turun launch sonucunu bekle: method bakimda gibi kalici hatalarda
     // loop hic olusmasin, panel "Loop baslatildi" yerine gercek hatayi gostersin.
@@ -2322,6 +2379,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
         if (getLoopOwner(activeLoops[key]) !== sessionUser) return;
         stoppedLoops.push(activeLoops[key]);
         activeLoops[key].running = false;
+        setAttackNote(sessionUser, activeLoops[key].params?.host, activeLoops[key].params?.method, '');
         delete activeLoops[key];
       });
       saveState();
@@ -2344,6 +2402,7 @@ app.post('/api/stresse/loop/stop', async (req, res) => {
     // saldirilari durdurma. Loop history'si hala "active" kalir; saldirilar
     // normal surelerince bittiginde cleanupExpiredAttacks onu "completed" yapar.
     activeLoops[loopId].running = false;
+    setAttackNote(sessionUser, activeLoops[loopId].params?.host, activeLoops[loopId].params?.method, '');
     delete activeLoops[loopId];
     saveState();
     notifyLoopRemoved(loop, 'durduruldu', {
@@ -2485,13 +2544,27 @@ app.put('/api/stresse/note', async (req, res) => {
 
     let updated = 0;
     const loopIds = new Set();
+    let firstHost = null;
+    let firstMethod = null;
     attackIds.forEach((id) => {
       const attack = activeAttacks[id];
       if (!attack || attack.username !== sessionUser) return;
       attack.note = note;
       updated += 1;
+      if (!firstHost) { firstHost = attack.host; firstMethod = attack.method; }
       if (attack.loopId) loopIds.add(attack.loopId);
     });
+
+    // Hedef bazli depo: kayit bulunamadiysa (L4 dogrulanamayan launch)
+    // frontend'in gonderdigi hedef+method ile yazilir; boylece L4 satirlari
+    // da not alabilir.
+    const fallbackHost = normalizeHost(req.body.host);
+    const fallbackMethod = req.body.method;
+    const registryHost = firstHost || fallbackHost;
+    const registryMethod = firstMethod || fallbackMethod;
+    if (registryHost && registryMethod) {
+      setAttackNote(sessionUser, registryHost, registryMethod, note);
+    }
 
     // Loop kaydina da yaz: yeni turlar duzenlenen notla devam eder.
     loopIds.forEach((loopId) => {
@@ -2509,7 +2582,7 @@ app.put('/api/stresse/note', async (req, res) => {
       if (ownsAttack || ownsLoop) h.note = note;
     });
 
-    if (updated === 0 && loopIds.size === 0) {
+    if (updated === 0 && loopIds.size === 0 && !registryHost) {
       return res.status(404).json({ status: 'error', message: 'Saldiri kaydi bulunamadi (bitmis olabilir)' });
     }
 
@@ -2815,7 +2888,10 @@ async function liveHubTick(hub, username) {
     if (Array.isArray(ongoingData)) {
       ongoingData = ongoingData.map((item) => {
         const local = activeAttacks[item.attack_id || item.id];
-        return local && local.note ? { ...item, note: local.note } : item;
+        if (local?.note) return { ...item, note: local.note };
+        // ID kaydi yoksa (L4 dogrulanamayan launch) hedef bazli depoya dus
+        const fallback = getAttackNote(username, targetHostPart(item.target || item.host), item.method);
+        return fallback ? { ...item, note: fallback } : item;
       });
     }
     hub.lastOngoing = ongoingData;

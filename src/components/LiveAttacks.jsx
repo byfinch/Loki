@@ -175,7 +175,7 @@ const LiveAttacks = () => {
     const draft = noteDraft.trim().slice(0, 120);
     setEditingNoteKey(null);
     try {
-      await apiClient.updateNote(attack.ids, draft);
+      await apiClient.updateNote(attack.ids, draft, { host: attack.target, method: attack.method });
       // Optimistik guncelleme; SSE bir sonraki tick'te dogrular
       setLiveAttacks(
         state.liveAttacks.map((a) =>
