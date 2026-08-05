@@ -257,6 +257,16 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // Saldiri notu guncelle (gruptaki tum attack ID'leri; loop'a aitse loop'a da yazilir)
+  async updateNote(attackIds, note) {
+    const res = await apiFetch(`${API_BASE}/stresse/note`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ attackIds, note })
+    });
+    return handleResponse(res);
+  },
+
   // Etki Monitoru
   async getImpact() {
     const res = await apiFetch(`${API_BASE}/impact`, {

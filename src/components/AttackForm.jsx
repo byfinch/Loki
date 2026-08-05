@@ -49,6 +49,7 @@ const AttackForm = () => {
   const [layer, setLayer] = useState('L4');
   const [loading, setLoading] = useState(false);
   const [congestion, setCongestion] = useState({});
+  const [note, setNote] = useState('');
 
   // Loop controls (integrated into the same form)
   const [loopActive, setLoopActive] = useState(false);
@@ -271,7 +272,8 @@ const AttackForm = () => {
         geo: 'worldwide',
         concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval, 10),
-        infinite: loopActive
+        infinite: loopActive,
+        note: note.trim()
       };
 
       if (loopActive) {
@@ -316,7 +318,7 @@ const AttackForm = () => {
         showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
       }
 
-      if (!loopActive) setHost('');
+      if (!loopActive) { setHost(''); setNote(''); }
     } catch (err) {
       addLog(`Saldırı hatası: ${err.message}`);
       showToast(`Hata: ${err.message}`, 'error');
@@ -427,6 +429,26 @@ const AttackForm = () => {
             onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
             className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
           />
+        </div>
+
+        {/* Not alani (opsiyonel): marka / asil site linki; listede tıklanabilir gösterilir */}
+        <div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider">Not</label>
+            <span className="text-[9px] text-cyan-400 border border-cyan-500/30 rounded px-1.5 py-px">opsiyonel</span>
+          </div>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={120}
+            placeholder="Marka / asıl site linki (ör: VegasSlot — https://vegasslot.com/)"
+            className="w-full bg-black/60 border border-dashed border-cyan-500/35 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 placeholder:italic focus:border-cyan-400/60 focus:outline-none focus:shadow-[0_0_15px_rgba(0,212,255,0.12)] transition"
+          />
+          <div className="flex items-center justify-between mt-0.5">
+            <p className="text-[10px] text-gray-500">Linkler listede tıklanabilir görünür</p>
+            <p className="text-[10px] text-gray-600 font-mono">{note.length}/120</p>
+          </div>
         </div>
 
         {/* Loop toggle */}

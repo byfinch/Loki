@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 import CyberCard from './CyberCard';
 
 const LoopManager = () => {
@@ -175,6 +176,12 @@ const LoopManager = () => {
                         Kopyalandı!
                       </span>
                     </button>
+                    {loop.note && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] font-mono text-cyan-400">
+                        <span className="text-gray-600">📝</span>
+                        <span className="truncate max-w-[240px]" title={loop.note}>{renderNoteWithLinks(loop.note)}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     <span className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
