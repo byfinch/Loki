@@ -28,7 +28,7 @@ const CHECKS_KEEP = 10;
 const FINAL_RETENTION_MS = 10 * 60 * 1000;
 // Final olcum bu kadar kez basarisiz olursa hedef olcumsuz kapatilir
 // (sonsuz retry yok; Map'ten FINAL_RETENTION_MS sonrasi silinir).
-const FINAL_MAX_ATTEMPTS = 3;
+const FINAL_MAX_ATTEMPTS = 5;
 // Saldiri bitis tespitinde server.js cleanup ile ayni tolerans.
 const EXPIRY_TOLERANCE_MS = 30 * 1000;
 
