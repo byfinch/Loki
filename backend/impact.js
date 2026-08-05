@@ -5,8 +5,8 @@
  * yavaslayip yavaslamadigini raporlar.
  *
  * Zamanlama:
- * - Normal saldiri: T+15sn, T+10dk, T+30dk, T+60dk; bitiste 1 final olcum.
- * - Loop: T+15sn, T+10dk, T+30dk, T+60dk, sonrasi saatte bir; final yok.
+ * - Normal saldiri: T+15sn, sonrasi 5'er dakika; bitiste 1 final olcum.
+ * - Loop: T+15sn, sonrasi 5'er dakika; final yok.
  *
  * check-host.net (ucretsiz, key yok):
  * - L7 -> /check-http?host=H, L4 -> /check-tcp?host=H:P
@@ -130,7 +130,7 @@ function buildDesiredTargets() {
 // Siradaki kontrol noktasinin baslangictan itibaren ofseti (ms).
 // Index bazli: kacirilan checkpoint atlanmaz, ilk tick'te telafi edilir.
 // Ritim: ilk olcum T+15sn, sonrasi 5'er dakika (saldiri ve loop icin ayni).
-function checkpointOffset(target, index) {
+function checkpointOffset(index) {
   return CP_15S + index * CP_5M;
 }
 
@@ -343,14 +343,14 @@ async function tick() {
   for (const target of targets.values()) {
     if (target.finalDone || target.checking) continue;
     if (!desired.has(target.key)) continue;
-    const off = checkpointOffset(target, target.cpIndex);
+    const off = checkpointOffset(target.cpIndex);
     const next = off == null ? null : target.startedAt + off;
     target.nextCheckAt = next;
     if (next != null && now >= next) {
       const done = await runCheck(target);
       if (done) {
         target.cpIndex++;
-        const nextOff = checkpointOffset(target, target.cpIndex);
+        const nextOff = checkpointOffset(target.cpIndex);
         target.nextCheckAt = nextOff == null ? null : target.startedAt + nextOff;
       } else {
         // Eszamanlilik limiti veya gecici hata: checkpoint'i atlama, kisa

@@ -38,7 +38,7 @@ function getMinTime(method, layer) {
 }
 
 const AttackForm = () => {
-  const { state, setMethods, startTest, addLog, addLoop, showToast, setAttackPrefill } = useStressTest();
+  const { state, setMethods, addLog, addLoop, showToast, setAttackPrefill } = useStressTest();
 
   const [host, setHost] = useState('');
   const [port, setPort] = useState(53);
@@ -298,7 +298,6 @@ const AttackForm = () => {
           roundCount: 0,
           errors: 0
         });
-        startTest(`loop_${loopId}`);
         showToast('Loop başlatıldı', 'success');
       } else {
         const data = await withMinimumLoading(() => apiClient.startAttacks(payload));
@@ -313,7 +312,6 @@ const AttackForm = () => {
           throw new Error(`Saldırı başlatılamadı: ${reason}`);
         }
 
-        startTest(data.attack_id || `attack_${Date.now()}`);
         addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s) x${ok} başarılı${fail > 0 ? `, ${fail} başarısız` : ''}`);
         showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
       }

@@ -5,7 +5,7 @@ import { apiClient } from '../services/apiClient';
 /**
  * Etki Monitoru (Faz 1)
  * Aktif saldiri/loop hedeflerinin check-host.net olcumlerini gosterir.
- * 30 sn'de bir /api/impact poll eder.
+ * 30 sn'de bir /api/impact poll eder (yalnizca kart gorunurken, lg ve ustu).
  *
  * Liste her zaman onem sirasina gore dizilir:
  * down -> degraded -> redirect -> up -> measuring (kritik durumlar ustte).
@@ -88,6 +88,10 @@ const ImpactMonitor = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let interval = null;
+    // Panel 'hidden lg:block' wrapper'da: poll yalnizca kart gorunurken
+    // (min-width: 1024px) calissin; media query degisimini de dinle.
+    const mql = window.matchMedia('(min-width: 1024px)');
 
     const load = async () => {
       try {
@@ -101,11 +105,26 @@ const ImpactMonitor = () => {
       }
     };
 
-    load();
-    const interval = setInterval(load, POLL_MS);
+    const startPolling = () => {
+      if (interval) return;
+      load();
+      interval = setInterval(load, POLL_MS);
+    };
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const onMediaChange = (e) => (e.matches ? startPolling() : stopPolling());
+
+    if (mql.matches) startPolling();
+    mql.addEventListener('change', onMediaChange);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPolling();
+      mql.removeEventListener('change', onMediaChange);
     };
   }, []);
 

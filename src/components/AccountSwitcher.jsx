@@ -21,8 +21,12 @@ const AccountSwitcher = ({ activeUsername, onSwitch }) => {
 
   const close = () => setOpen(false);
 
-  // Backend'deki hesap listesini cek (mount + her acilista taze)
+  // Backend'deki hesap listesini cek (mount + her acilista taze; kapanista
+  // tekrar fetch edilmez)
+  const fetchedOnceRef = useRef(false);
   useEffect(() => {
+    if (!open && fetchedOnceRef.current) return undefined;
+    fetchedOnceRef.current = true;
     let cancelled = false;
     apiClient.getServerAccounts()
       .then((list) => { if (!cancelled) setAccounts(list); })

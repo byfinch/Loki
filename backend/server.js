@@ -599,10 +599,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   return {
     data,
     attackIds: newIds.slice(0, concurrents),
-    elapsedSec: 0,
-    // success denip hic ID dogrulanamadiysa false; loop ve endpoint'ler buna gore
-    // "sahte basari"yi gercek hata olarak isler.
-    verified: !(newIds.length === 0 && (data?.status === 'success' || data?.message === 'Attack started'))
+    elapsedSec: 0
   };
 }
 
@@ -1572,9 +1569,13 @@ app.post('/api/stresse/test-api', async (req, res) => {
       upstreamErr = err;
     }
 
+    // Guvenlik: debug yanitinda tam API token sizmasin; URL'deki key
+    // parametresini maskele (ilk 8 karakter + '...'), tokenPrefix korunur.
+    const maskedUrl = url.replace(/([?&]key=)[^&]*/, `$1${apiToken.slice(0, 8)}...`);
+
     res.json({
       status: 'debug',
-      requestedUrl: url,
+      requestedUrl: maskedUrl,
       tokenSource: (typeof bodyToken === 'string' && bodyToken.trim()) ? 'body' : 'session',
       tokenPrefix: apiToken.slice(0, 8),
       upstreamStatus: upstreamRes?.status,
@@ -1817,7 +1818,7 @@ async function runLoopRound(loopId) {
   // Tek istekte istenen concurrents kadar saldiri baslat.
   // Gelen attack_id'lerden sadece onceki /ongoing'de olmayan yeni ID'leri kaydet.
   try {
-    const { data, attackIds, elapsedSec, verified } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
+    const { data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -1828,11 +1829,6 @@ async function runLoopRound(loopId) {
       if (attackIds.length !== loop.params.concurrents) {
         console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attackId dondurdu`);
       }
-    } else if (verified && (data?.status === 'success' || data?.message === 'Attack started')) {
-      roundSuccesses = loop.params.concurrents;
-      loop.roundAttackIds = [];
-      loop.lastError = null;
-      console.log(`[loop ${loopId}] round ${round} basarili: ${roundSuccesses} saldiri baslatildi (ID bulunamadi, /ongoing'den gorunecek)`);
     } else if (data?.status === 'success' || data?.message === 'Attack started') {
       // Dogrulanamayan basari: stresse.st success diyor ama /ongoing JSON'u bu
       // method icin guvenilir degil (saldiri web panelinde var, listede yok).
