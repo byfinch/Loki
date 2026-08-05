@@ -616,6 +616,34 @@ function getLoopOwner(loop) {
   return loop.owner || sessions[loop.sessionId]?.username || null;
 }
 
+// Canli satir icin not cozumleme: attack ID'sinden TAMAMEN bagimsiz calisir
+// (L4 dogrulanamayan launch'lar ve tur baslangic gecikmeleri bu yuzden notu
+// geciktirmez/gostermez). Saldiri satiri /ongoing'de gorundugu anda not da
+// hazirdir cunku kaynak loop/launch kaydinin kendisidir.
+//  1) Calisan loop: hedef+method eslesmesi -> loop notu (aninda)
+//  2) Loopsuz launch: aktif history kaydinda hedef+method eslesmesi
+function resolveNoteForRow(username, rawTarget, method) {
+  if (!username || !method) return '';
+  const host = normalizeHost(rawTarget);
+  if (!host) return '';
+  const m = String(method).toLowerCase();
+  for (const loop of Object.values(activeLoops)) {
+    if (!loop.running || !loop.note) continue;
+    if (getLoopOwner(loop) !== username) continue;
+    if (String(loop.params?.host || '').toLowerCase() === host &&
+        String(loop.params?.method || '').toLowerCase() === m) {
+      return loop.note;
+    }
+  }
+  for (const h of Object.values(attackHistory)) {
+    if (h.username !== username || h.status !== 'active' || h.loop || !h.note) continue;
+    if (normalizeHost(h.target) === host && String(h.method || '').toLowerCase() === m) {
+      return h.note;
+    }
+  }
+  return '';
+}
+
 // Bir hesabin aktif saldiri sayisi (activeAttacks uzerinden).
 function countAttacksForUser(username) {
   if (!username) return 0;
@@ -1321,6 +1349,8 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     // Boylece cleanup erken silmez ve liste azalip artmaz.
     ongoing.forEach((item) => {
       const id = item.attack_id || item.id;
+      // Loop/launch notu: ID dogrulamasindan bagimsiz, satirla ayni anda gelir
+      item.note = resolveNoteForRow(username, item.target || item.host, item.method);
       const localAttack = activeAttacks[id];
       if (!localAttack) return;
       // Sadece gercek kalan sure ile uzat. item.time (tam sure) veya || 60
@@ -1357,6 +1387,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         method: attack.method,
         layer: attack.layer || 'L4',
         timeLeft,
+        note: resolveNoteForRow(username, attack.host, attack.method),
         // Frontend'in diger alanlarini doldur
         time: attack.time,
         startedAt: attack.startedAt,
@@ -2815,7 +2846,16 @@ async function liveHubTick(hub, username) {
     const requests = [client.get(`/ongoing/${username}`)];
     if (fetchUser) requests.push(client.get(`/user/${username}`));
     const [ongoing, user] = await Promise.all(requests);
-    hub.lastOngoing = ongoing.data;
+    // Not cozumleme ID'den bagimsiz oldugu icin satir /ongoing'de gorunur
+    // gorunmez not da ayni tick'te hazirdir (gec gelme sorunu yok).
+    let ongoingData = ongoing.data;
+    if (Array.isArray(ongoingData)) {
+      ongoingData = ongoingData.map((item) => {
+        const note = resolveNoteForRow(username, item.target || item.host, item.method);
+        return note ? { ...item, note } : item;
+      });
+    }
+    hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
     hub.consecutiveErrors = 0;
     // user yoksa payload'a koyma; client'lar son user'i kullanmaya devam eder.

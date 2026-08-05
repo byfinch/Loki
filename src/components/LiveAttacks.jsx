@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 import CyberCard from './CyberCard';
 
 // Sunucunun bildirdigi son timeLeft degerleri ve client geri sayimlari modul
@@ -126,6 +127,8 @@ const LiveAttacks = () => {
       if (existing) {
         existing.count += 1;
         existing.ids.push(attack.attack_id);
+        // Grupta notu olan ilk saldirinin notu satira tasinir (salt-okunur)
+        if (!existing.note && attack.note) existing.note = attack.note;
         if (attack.timeLeft > existing.timeLeft) {
           existing.timeLeft = attack.timeLeft;
         }
@@ -566,6 +569,12 @@ const LiveAttacks = () => {
                           )}
                         </button>
                       </div>
+                      {attack.note && (
+                        <div className="mt-1 flex items-center gap-1.5 text-[11px] font-mono text-cyan-400">
+                          <span className="text-gray-600">📝</span>
+                          <span className="truncate max-w-[260px]" title={attack.note}>{renderNoteWithLinks(attack.note)}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 whitespace-nowrap">
                       <span className="px-2.5 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
