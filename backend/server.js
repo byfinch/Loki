@@ -2423,26 +2423,11 @@ app.get('/api/stresse/stats', async (req, res) => {
       }
     });
 
-    // Gecmis kayitlardan baslatilan toplam (her launch'in concurrents'i sayilir)
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    let launchedTotal = 0;
-    let launchedToday = 0;
-    Object.values(attackHistory).forEach((h) => {
-      if (h.username !== sessionUser) return;
-      const n = parseInt(h.concurrents, 10) || 1;
-      launchedTotal += n;
-      const started = new Date(h.startedAt || 0).getTime();
-      if (started >= todayStart.getTime()) launchedToday += n;
-    });
-
     res.json({
       status: 'success',
       stats: {
         active: activeCount,
-        loopWaiting,
-        launchedTotal,
-        launchedToday
+        loopWaiting
       }
     });
   } catch (error) {

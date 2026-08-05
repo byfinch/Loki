@@ -461,17 +461,12 @@ const LiveAttacks = () => {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 flex-wrap">
           Aktif Saldırılar
-          <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]" title="Aktif çalışanlar + tur bekleyen loop kapasitesi">
+          <span className="ml-2 px-2.5 py-1 bg-black/60 border border-cyan-500/30 rounded-md text-sm text-cyan-400 font-mono font-bold shadow-[0_0_12px_rgba(0,212,255,0.12)]" title="Şu an çalışan saldırılar">
+            Aktif {totalAttacks}
+          </span>
+          <span className="px-2.5 py-1 bg-black/60 border border-green-500/30 rounded-md text-sm text-green-400 font-mono font-bold shadow-[0_0_12px_rgba(0,255,65,0.15)]" title="Aktif çalışanlar + tur bekleyen loop kapasitesi">
             Toplam {totalAttacks + (stats?.loopWaiting || 0)}
           </span>
-          {stats && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-cyan-500/30 rounded-md text-sm text-cyan-400 font-mono shadow-[0_0_12px_rgba(0,212,255,0.12)]" title="Tüm zamanlarda başlatılan toplam saldırı (bu hesap)">
-              Başlatılan {stats.launchedTotal ?? '—'}
-              {typeof stats.launchedToday === 'number' && stats.launchedToday > 0 && (
-                <span className="text-xs text-gray-500 font-normal">bugün {stats.launchedToday}</span>
-              )}
-            </span>
-          )}
         </h2>
         <div className="flex items-center gap-3">
           {state.activeStopKey && state.stopProgress && (
