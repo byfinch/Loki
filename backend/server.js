@@ -1546,8 +1546,9 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
         concurrents: count,
         attackIds
       });
-      // Saldiri basladi: hedefin Rich Results durumunu arka planda olc (24s cache tekillestirir)
-      rrt.scheduleRrtCheck(host, { delayMs: 5000 });
+      // Saldiri basladi: L7 hedefin Rich Results durumunu arka planda olc
+      // (L4/IP hedeflerde rich result aranmaz; 24s cache tekillestirir)
+      if (layer === 'L7') rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     }
 
     res.json({
@@ -2070,8 +2071,8 @@ app.post('/api/stresse/loop', async (req, res) => {
     }
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
-    // Loop basladi: hedefin Rich Results durumunu arka planda olc (bir kez; cache tekillestirir)
-    rrt.scheduleRrtCheck(host, { delayMs: 5000 });
+    // Loop basladi: L7 hedefin Rich Results durumunu arka planda olc (bir kez; cache tekillestirir)
+    if (layer === 'L7') rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     saveState();
   } catch (error) {
     handleEndpointError(res, error, 'Loop error');
@@ -3015,9 +3016,10 @@ initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
 setTimeout(() => {
   try {
     const hosts = new Set();
-    Object.values(activeAttacks).forEach((a) => { if (a.host) hosts.add(a.host); });
+    // Sadece L7 (URL) hedefleri: L4/IP icin rich result aranmaz
+    Object.values(activeAttacks).forEach((a) => { if (a.host && a.layer === 'L7') hosts.add(a.host); });
     Object.values(activeLoops).forEach((l) => {
-      if (l && l.running !== false && l.params?.host) hosts.add(l.params.host);
+      if (l && l.running !== false && l.params?.host && l.params?.layer === 'L7') hosts.add(l.params.host);
     });
     let scheduled = 0;
     hosts.forEach((host) => {
