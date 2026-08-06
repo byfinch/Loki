@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import CyberCard from './CyberCard';
 import { apiClient } from '../services/apiClient';
 
 /**
@@ -87,7 +86,6 @@ function nodeShortName(node) {
 const ImpactMonitor = () => {
   const [targets, setTargets] = useState([]);
   const [error, setError] = useState(null);
-
   useEffect(() => {
     let cancelled = false;
     let interval = null;
@@ -146,146 +144,127 @@ const ImpactMonitor = () => {
 
   const scrollable = sortedTargets.length > MAX_VISIBLE;
 
+  // Lite satir stili: durum nokta + metin rengi
+  const DOT = {
+    down: 'bg-[#ff2d2d] shadow-[0_0_8px_#ff2d2d] animate-pulse',
+    degraded: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]',
+    redirect: 'bg-yellow-300 shadow-[0_0_8px_rgba(250,204,21,0.7)]',
+    up: 'bg-green-400 shadow-[0_0_8px_rgba(0,255,65,0.6)]',
+    measuring: 'bg-gray-500'
+  };
+  const STATE_TEXT = {
+    down: 'text-[#ff5c5c]',
+    degraded: 'text-amber-400',
+    redirect: 'text-yellow-300',
+    up: 'text-green-400',
+    measuring: 'text-gray-500'
+  };
+
   return (
-    <CyberCard className="p-5 flex flex-col gap-4">
-      {/* Baslik: ikon + sayac + atif */}
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-green-400 font-mono flex items-center gap-2 shrink-0">
-          <i className="ph ph-pulse text-base"></i>
-          Etki Monitörü
-        </h3>
-        <div className="flex items-center gap-2 min-w-0">
-          {targets.length > 0 && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-gray-400 whitespace-nowrap">
-              {targets.length} hedef
-              {criticalCount > 0 && (
-                <span className="text-red-400"> · {criticalCount} kritik</span>
-              )}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap">
-            check-host.net · 30sn
+    <div className="relative flex w-full flex-col overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
+      {/* CRT scanline dokusu */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,65,0.015) 0 1px, transparent 1px 3px)' }}
+      />
+
+      {/* Title bar */}
+      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
+        <span className="text-green-300/90">root@loki:~</span>
+        <span className="text-green-500/60">$ watcher --interval 30s --source check-host.net</span>
+        <span className="animate-pulse">▊</span>
+        {targets.length > 0 && (
+          <span className="ml-auto whitespace-nowrap text-[10px] text-green-500/60">
+            {targets.length} hedef
+            {criticalCount > 0 && <span className="font-bold text-[#ff5c5c]"> · {criticalCount} kritik</span>}
           </span>
-        </div>
+        )}
       </div>
 
-      {error && (
-        <div className="text-xs text-red-400 font-mono flex items-center gap-2">
-          <i className="ph ph-warning-circle"></i>
-          Veri alınamadı: {error}
-        </div>
-      )}
+      <div className="relative z-10 p-3 sm:p-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-sm border border-[#ff2d2d]/45 border-l-[3px] border-l-[#ff2d2d] bg-[#ff2d2d]/10 px-3 py-2 text-[11px] text-[#ff5c5c]">
+            <span className="font-bold text-[#ff2d2d]">[ERR]</span>
+            <span className="truncate">veri alinamadi: {error}</span>
+          </div>
+        )}
 
-      {/* Bos durum */}
-      {!error && targets.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-          <span className="impact-empty-icon flex items-center justify-center w-12 h-12 rounded-full border border-green-500/20 bg-green-500/5 text-green-400/70">
-            <i className="ph ph-radar text-2xl"></i>
-          </span>
-          <p className="text-xs text-gray-500 font-mono max-w-[260px] leading-relaxed">
-            Aktif saldırı yok — etki ölçümü saldırı başlayınca görünür.
-          </p>
-        </div>
-      )}
+        {!error && targets.length === 0 && (
+          <div className="py-10 text-center text-green-500/50">
+            <p>aktif saldiri yok.</p>
+            <p className="mt-2 text-[10px] text-green-500/30"># etki olcumu saldiri baslayinca gorunur</p>
+          </div>
+        )}
 
-      {/* Hedef listesi: 4'ten fazlaysa sabit yukseklikte dahili scroll */}
-      <div
-        className={`flex flex-col gap-2.5 ${
-          scrollable ? 'max-h-[420px] overflow-y-auto impact-scroll pr-1.5' : ''
-        }`}
-      >
-        {sortedTargets.map((t) => {
-          const state = STATE_CONFIG[t.state] || STATE_CONFIG.measuring;
-          const next = formatNext(t.nextCheckAt);
-          return (
-            <div
-              key={t.key}
-              className="impact-row rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 flex flex-col gap-2"
-              style={{ '--impact-accent': state.accent }}
-            >
-              {/* Hedef + durum rozeti */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className="text-[13px] text-white font-mono truncate tracking-tight"
-                    title={t.host}
-                  >
+        {/* Hedef listesi: 4'ten fazlaysa sabit yukseklikte dahili scroll */}
+        <div className={scrollable ? 'max-h-[420px] overflow-y-auto impact-scroll pr-1.5' : ''}>
+          {sortedTargets.map((t) => {
+            const state = STATE_CONFIG[t.state] || STATE_CONFIG.measuring;
+            const next = formatNext(t.nextCheckAt);
+            return (
+              <div
+                key={t.key}
+                className="border-b border-dashed border-green-500/10 px-2 py-2.5 transition-colors hover:bg-green-500/5"
+              >
+                {/* Satir 1: nokta + hedef + chip'ler + durum */}
+                <div className="flex items-center gap-2.5">
+                  <span className={`h-2 w-2 flex-shrink-0 rounded-full ${DOT[t.state] || DOT.measuring}`} />
+                  <span className="truncate text-[12px] font-bold text-green-100" title={t.host}>
                     {shortenHost(t.host)}
                   </span>
-                  <span className="text-[9px] font-mono px-1.5 py-px rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400/90 shrink-0">
+                  <span className="flex-shrink-0 rounded-sm border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-px text-[9px] text-cyan-400/90">
                     {t.layer}
                   </span>
                   {t.isLoop && (
-                    <span className="text-[9px] font-mono px-1.5 py-px rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-400 shrink-0 inline-flex items-center gap-1">
-                      <i className="ph ph-repeat"></i> Loop
+                    <span className="flex-shrink-0 rounded-sm border border-purple-500/30 bg-purple-500/10 px-1.5 py-px text-[9px] text-purple-400">
+                      loop
                     </span>
                   )}
                   {t.final && (
-                    <span className="text-[9px] font-mono px-1.5 py-px rounded-full border border-gray-500/30 bg-gray-500/10 text-gray-400 shrink-0 inline-flex items-center gap-1">
-                      <i className="ph ph-flag-checkered"></i> Final
+                    <span className="flex-shrink-0 rounded-sm border border-gray-500/30 bg-gray-500/10 px-1.5 py-px text-[9px] text-gray-400">
+                      final
+                    </span>
+                  )}
+                  <span className={`ml-auto flex-shrink-0 text-[11px] font-bold ${STATE_TEXT[t.state] || STATE_TEXT.measuring}`}>
+                    {state.label}
+                  </span>
+                </div>
+
+                {/* Satir 2: gecikme + node ozeti */}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-[18px] text-[10px] text-gray-500">
+                  <span>
+                    gecikme <span className="text-gray-200">{t.avgMs != null ? `${t.avgMs}ms` : '—'}</span>
+                    <span className="text-gray-700"> / </span>
+                    baseline <span className="text-gray-200">{t.baselineMs != null ? `${t.baselineMs}ms` : '—'}</span>
+                  </span>
+                  {t.perNode && t.perNode.length > 0 && (
+                    <span className="flex flex-wrap gap-x-2.5">
+                      {t.perNode.map((n) => (
+                        <span key={n.node}>
+                          <span className="text-gray-600">{nodeShortName(n.node)} </span>
+                          <span className={n.ok ? 'text-green-500/80' : 'text-[#ff5c5c]'}>
+                            {n.ok ? `${n.ms != null ? `${n.ms}ms` : 'ok'}` : 'timeout'}
+                          </span>
+                        </span>
+                      ))}
                     </span>
                   )}
                 </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${state.pill}`}
-                >
-                  {state.icon} {state.label}
-                </span>
-              </div>
 
-              {/* Gecikme ozeti */}
-              <div className="flex items-center gap-4 text-[11px] font-mono">
-                <span className="text-gray-500">
-                  Gecikme{' '}
-                  <span className="text-white">
-                    {t.avgMs != null ? `${t.avgMs} ms` : '—'}
-                  </span>
-                </span>
-                <span className="text-gray-700 select-none">/</span>
-                <span className="text-gray-500">
-                  Baseline{' '}
-                  <span className="text-white">
-                    {t.baselineMs != null ? `${t.baselineMs} ms` : '—'}
-                  </span>
-                </span>
-              </div>
-
-              {/* Node basina mini satirlar: ad solda, ms/code sagda */}
-              {t.perNode && t.perNode.length > 0 && (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-white/5 pt-1.5">
-                  {t.perNode.map((n) => (
-                    <div
-                      key={n.node}
-                      className="flex items-center justify-between text-[10px] font-mono"
-                    >
-                      <span className="text-gray-500">{nodeShortName(n.node)}</span>
-                      <span className={n.ok ? 'text-green-400' : 'text-red-400'}>
-                        {n.ok
-                          ? `${n.ms != null ? `${n.ms} ms` : 'ok'}${n.code ? ` · ${n.code}` : ''}`
-                          : 'timeout'}
-                      </span>
-                    </div>
-                  ))}
+                {/* Satir 3: zaman */}
+                <div className="mt-0.5 pl-[18px] text-[9px] text-gray-600">
+                  # son ölçüm {formatTime(t.lastCheckAt)}
+                  {next ? ` · sıradaki ${next}` : t.final ? ' · takip tamamlandı' : ''}
                 </div>
-              )}
-
-              {/* Zaman bilgisi */}
-              <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-mono">
-                <i className="ph ph-clock text-gray-600"></i>
-                <span>
-                  Son ölçüm {formatTime(t.lastCheckAt)}
-                  {next
-                    ? ` · Sıradaki ${next}`
-                    : t.final
-                      ? ' · Takip tamamlandı'
-                      : ''}
-                </span>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </CyberCard>
+    </div>
   );
 };
 

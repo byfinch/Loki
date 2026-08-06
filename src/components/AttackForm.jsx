@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
-import CyberCard from './CyberCard';
 import CyberSelect from './CyberSelect';
 
 function normalizeHost(host) {
@@ -329,173 +328,199 @@ const AttackForm = () => {
   };
 
   return (
-    <CyberCard className="p-6 sm:p-7">
-      <div className="inline-flex gap-1 p-1 bg-black/40 border border-white/10 rounded-lg mb-6">
-        {['L4', 'L7'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setLayer(tab)}
-            className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-300 ${
-              layer === tab
-                ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(0,255,65,0.4)]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+    <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
+      {/* CRT scanline dokusu */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,65,0.015) 0 1px, transparent 1px 3px)' }}
+      />
+
+      {/* Title bar */}
+      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
+        <span className="text-green-300/90">root@loki:~/saldiri-baslat</span>
+        <span className="text-green-500/60">$ ./launch.sh --interactive</span>
+        <span className="animate-pulse">▊</span>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
-            {layer === 'L4' ? 'Hedef IP' : 'Hedef URL'}
-          </label>
-          <input
-            type="text"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            placeholder={layer === 'L4' ? '1.1.1.1' : 'https://example.com'}
-            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
-            required
-          />
+      <div className="relative z-10 p-4 sm:p-5">
+        {/* L4/L7 secimi */}
+        <div className="mb-5 inline-flex overflow-hidden rounded-sm border border-green-500/30">
+          {['L4', 'L7'].map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setLayer(tab)}
+              className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
+                layer === tab
+                  ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
+                  : 'text-green-500/50 hover:text-green-400'
+              }`}
+            >
+              [{tab}]
+            </button>
+          ))}
         </div>
 
-        <div className={`grid gap-4 ${layer === 'L7' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Süre (sn)</label>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">
+              &gt; {layer === 'L4' ? 'hedef_ip' : 'hedef_url'}
+            </label>
             <input
-              type="number"
-              min={getMinTime(method, layer)}
-              max={state.plan?.MaxTime || 86400}
-              value={time}
-              onChange={(e) => setTime(parseInt(e.target.value, 10) || 0)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+              type="text"
+              value={host}
+              onChange={(e) => setHost(e.target.value)}
+              placeholder={layer === 'L4' ? '1.1.1.1' : 'https://example.com'}
+              className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 placeholder-green-500/30 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
               required
             />
-            <p className="text-[10px] text-gray-500 mt-0.5">
-              Minimum: {getMinTime(method, layer)} sn
-            </p>
           </div>
-          {layer === 'L4' && (
+
+          <div className={`grid gap-3 ${layer === 'L7' ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <div>
-              <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Port</label>
+              <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; sure_sn</label>
               <input
                 type="number"
-                min={1}
-                max={65535}
-                value={port}
-                onChange={(e) => setPort(parseInt(e.target.value, 10) || 0)}
-                className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
+                min={getMinTime(method, layer)}
+                max={state.plan?.MaxTime || 86400}
+                value={time}
+                onChange={(e) => setTime(parseInt(e.target.value, 10) || 0)}
+                className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
                 required
               />
+              <p className="mt-0.5 text-[9px] text-gray-600"># minimum: {getMinTime(method, layer)} sn</p>
             </div>
-          )}
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider">Yöntem</label>
-            {congestion[method?.toLowerCase()]?.busy && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                Yoğun
-              </span>
+            {layer === 'L4' && (
+              <div>
+                <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; port</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={port}
+                  onChange={(e) => setPort(parseInt(e.target.value, 10) || 0)}
+                  className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+                  required
+                />
+              </div>
             )}
           </div>
-          <CyberSelect
-            value={method}
-            onChange={setMethod}
-            options={filteredMethods.map((m) => {
-              const busy = congestion[m.method?.toLowerCase()]?.busy;
-              return {
-                value: m.method,
-                label: busy ? `${m.method} · Yoğun` : m.method,
-                description: m.description
-              };
-            })}
-            placeholder="Yöntem seç"
-            emptyPlaceholder="Yöntemler yükleniyor..."
-          />
-        </div>
 
-        <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Concurrents</label>
-          <input
-            ref={concurrentsRef}
-            type="number"
-            min={1}
-            max={state.plan?.Concurrents || 80}
-            value={concurrents}
-            onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
-            className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
-          />
-        </div>
-
-        {/* Not alani (opsiyonel): marka / asil site linki; listede tıklanabilir gösterilir */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider">Not</label>
-            <span className="text-[9px] text-cyan-400 border border-cyan-500/30 rounded px-1.5 py-px">opsiyonel</span>
-          </div>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            maxLength={120}
-            placeholder="Marka / asıl site linki (ör: VegasSlot — https://vegasslot.com/)"
-            className="w-full bg-black/60 border border-dashed border-cyan-500/35 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 placeholder:italic focus:border-cyan-400/60 focus:outline-none focus:shadow-[0_0_15px_rgba(0,212,255,0.12)] transition"
-          />
-          <div className="flex items-center justify-between mt-0.5">
-            <p className="text-[10px] text-gray-500">Aktif Looplar ve Geçmiş'te tıklanabilir link olarak görünür</p>
-            <p className="text-[10px] text-gray-600 font-mono">{note.length}/120</p>
-          </div>
-        </div>
-
-        {/* Loop toggle */}
-        <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-lg p-4 hover:border-green-500/20 transition-colors">
           <div>
-            <p className="text-xs font-bold text-white">Loop Aktif</p>
-            <p className="text-[10px] text-gray-500">Açıkken saldırılar bittikçe otomatik tekrar başlar</p>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-[10px] tracking-wider text-green-500/55">&gt; yontem</label>
+              {congestion[method?.toLowerCase()]?.busy && (
+                <span className="inline-flex items-center gap-1 rounded-sm border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                  Yoğun
+                </span>
+              )}
+            </div>
+            <CyberSelect
+              value={method}
+              onChange={setMethod}
+              options={filteredMethods.map((m) => {
+                const busy = congestion[m.method?.toLowerCase()]?.busy;
+                return {
+                  value: m.method,
+                  label: busy ? `${m.method} · Yoğun` : m.method,
+                  description: m.description
+                };
+              })}
+              placeholder="Yöntem seç"
+              emptyPlaceholder="Yöntemler yükleniyor..."
+            />
           </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; concurrents</label>
+            <input
+              ref={concurrentsRef}
+              type="number"
+              min={1}
+              max={state.plan?.Concurrents || 80}
+              value={concurrents}
+              onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
+              className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+            />
+          </div>
+
+          {/* Not alani (opsiyonel) */}
+          <div>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">
+              &gt; not <span className="text-cyan-400/80">(opsiyonel)</span>
+            </label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={120}
+              placeholder="Marka / asıl site linki (ör: VegasSlot — https://vegasslot.com/)"
+              className="w-full rounded-sm border border-dashed border-cyan-500/40 bg-black px-3 py-2.5 text-[13px] text-cyan-300 placeholder-cyan-700/50 placeholder:italic transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,212,255,0.15)]"
+            />
+            <div className="mt-0.5 flex items-center justify-between">
+              <p className="text-[9px] text-gray-600"># Aktif Looplar ve Geçmiş'te tıklanabilir görünür</p>
+              <p className="text-[9px] text-gray-700">{note.length}/120</p>
+            </div>
+          </div>
+
+          {/* Loop toggle: terminal checkbox */}
           <button
             type="button"
             onClick={() => setLoopActive(!loopActive)}
-            className={`w-10 h-5 rounded-full transition relative ${loopActive ? 'bg-green-500 shadow-[0_0_10px_rgba(0,255,65,0.4)]' : 'bg-gray-600'}`}
+            className={`flex w-full items-center gap-2.5 rounded-sm border px-3 py-2.5 text-left transition-all ${
+              loopActive
+                ? 'border-green-500/40 bg-green-500/[0.07] shadow-[0_0_12px_rgba(0,255,65,0.1)]'
+                : 'border-green-500/15 bg-black/50 hover:border-green-500/30'
+            }`}
           >
-            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition ${loopActive ? 'left-5' : 'left-0.5'}`}></span>
+            <span
+              className={`text-[13px] font-bold transition-all ${
+                loopActive ? 'text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.7)]' : 'text-gray-600'
+              }`}
+            >
+              {loopActive ? '[x]' : '[ ]'}
+            </span>
+            <span className={`text-[12px] transition-colors ${loopActive ? 'text-green-300' : 'text-gray-400'}`}>
+              loop_aktif
+            </span>
+            <span className="ml-auto text-[9px] text-gray-600"># bittikçe otomatik tekrar başlar</span>
           </button>
-        </div>
 
-        {loopActive && (
-          <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Bekleme (sn)</label>
-            <input
-              type="number"
-              min={0}
-              value={loopInterval}
-              onChange={(e) => setLoopInterval(parseInt(e.target.value, 10) || 0)}
-              className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-green-400/50 focus:outline-none focus:shadow-[0_0_15px_rgba(0,255,65,0.1)] transition"
-              required
-            />
-            <p className="text-[10px] text-gray-500 mt-0.5">Bir set bittikten sonraki bekleme süresi</p>
-          </div>
-        )}
+          {loopActive && (
+            <div>
+              <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; bekleme_sn</label>
+              <input
+                type="number"
+                min={0}
+                value={loopInterval}
+                onChange={(e) => setLoopInterval(parseInt(e.target.value, 10) || 0)}
+                className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+                required
+              />
+              <p className="mt-0.5 text-[9px] text-gray-600"># bir set bittikten sonraki bekleme süresi</p>
+            </div>
+          )}
 
-        <button
-          type="submit"
-          disabled={loading || !state.plan}
-          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black text-sm font-bold py-2.5 rounded-lg transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
-        >
-          {!state.plan
-            ? 'Plan yükleniyor...'
-            : loading
-              ? loopActive ? (starting ? 'Loop başlatılıyor...' : 'Başlatılıyor...') : 'Başlatılıyor...'
-              : loopActive
-                ? 'Loop Başlat'
-                : 'Saldırı Başlat'}
-        </button>
-      </form>
-    </CyberCard>
+          <button
+            type="submit"
+            disabled={loading || !state.plan}
+            className="w-full rounded-sm border border-green-500/50 bg-green-500/[0.14] py-3 text-[13px] font-bold tracking-widest text-green-400 transition-all duration-300 [text-shadow:0_0_10px_rgba(0,255,65,0.5)] hover:bg-green-500/[0.22] hover:shadow-[0_0_20px_rgba(0,255,65,0.25)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+          >
+            <span className="mb-0.5 block text-[9px] font-normal tracking-normal text-green-500/60">$ ./launch --execute</span>
+            {!state.plan
+              ? 'PLAN YÜKLENİYOR...'
+              : loading
+                ? loopActive ? (starting ? 'LOOP BAŞLATILIYOR...' : 'BAŞLATILIYOR...') : 'BAŞLATILIYOR...'
+                : loopActive
+                  ? 'LOOP BAŞLAT'
+                  : 'SALDIRI BAŞLAT'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 };
 
