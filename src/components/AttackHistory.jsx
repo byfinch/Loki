@@ -143,10 +143,10 @@ const AttackHistory = () => {
   };
 
   const statusText = (status) => {
-    if (status === 'active') return <span className="text-green-400 [text-shadow:0_0_6px_rgba(0,255,65,0.6)]">[OK] aktif</span>;
-    if (status === 'stopped') return <span className="text-red-400">[!!] durd.</span>;
-    if (status === 'completed') return <span className="text-gray-500">[--] tamam</span>;
-    return <span className="text-gray-500">{status}</span>;
+    if (status === 'active') return <span className="whitespace-nowrap text-green-400 [text-shadow:0_0_6px_rgba(0,255,65,0.6)]">[OK] aktif</span>;
+    if (status === 'stopped') return <span className="whitespace-nowrap text-red-400">[!!] durd.</span>;
+    if (status === 'completed') return <span className="whitespace-nowrap text-gray-500">[--] tamam</span>;
+    return <span className="whitespace-nowrap text-gray-500">{status}</span>;
   };
 
   return (
@@ -216,19 +216,34 @@ const AttackHistory = () => {
           </div>
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
-            <table className="w-full text-xs">
+            {/* table-fixed: sutun genislikleri sayfa iceriginden bagimsiz sabit;
+                aksi halde uzun not/hedef iceren sayfalar tabloyu genisletip
+                diger sutunlari sikistiriyordu (sayfa bazli kutu boyutu degisimi) */}
+            <table className="w-full table-fixed text-xs">
+              <colgroup>
+                <col className="w-[230px]" />
+                <col className="w-[200px]" />
+                <col className="w-[55px]" />
+                <col className="w-[135px]" />
+                <col className="w-[60px]" />
+                <col className="w-[60px]" />
+                <col className="w-[60px]" />
+                <col className="w-[95px]" />
+                <col className="w-[150px]" />
+                <col className="w-[150px]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
-                  <th className="px-3 py-2 font-normal">&gt; Hedef</th>
-                  <th className="px-3 py-2 font-normal">&gt; Not</th>
-                  <th className="px-3 py-2 text-center font-normal">&gt; Port</th>
-                  <th className="px-3 py-2 font-normal">&gt; Yöntem</th>
-                  <th className="px-3 py-2 text-center font-normal">&gt; Süre</th>
-                  <th className="px-3 py-2 text-center font-normal">&gt; Conc.</th>
-                  <th className="px-3 py-2 text-center font-normal">&gt; Tür</th>
-                  <th className="px-3 py-2 font-normal">&gt; Durum</th>
-                  <th className="px-3 py-2 font-normal">&gt; Başlangıç</th>
-                  <th className="px-3 py-2 font-normal">&gt; Bitiş</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Not</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Port</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Yöntem</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Süre</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Conc.</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Tür</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Durum</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Başlangıç</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Bitiş</th>
                 </tr>
               </thead>
               <tbody>
@@ -242,7 +257,7 @@ const AttackHistory = () => {
                         <span
                           title="URL'yi kopyala"
                           onClick={() => handleCopyTarget(record.target, record.historyId, record.layer, record.method)}
-                          className="inline-block w-[180px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
+                          className="inline-block w-full cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
                         >
                           {formatTargetShort(formatTargetForDisplay(record.target, record.layer, record.method))}
                         </span>
@@ -276,7 +291,7 @@ const AttackHistory = () => {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-gray-400">{record.port || '-'}</td>
-                    <td className="px-3 py-2.5 text-gray-200">{record.method}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">{record.method}</td>
                     <td className="px-3 py-2.5 text-center text-gray-400">{record.time}s</td>
                     <td className="px-3 py-2.5 text-center text-gray-400">x{record.concurrents}</td>
                     <td className="px-3 py-2.5 text-center">
