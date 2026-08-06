@@ -87,6 +87,10 @@ const LoopManager = () => {
     return t;
   };
 
+  // Goruntude sade domain; kopyalamada tam URL (formatTargetForDisplay).
+  const formatTargetShort = (target) =>
+    String(target || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
   const handleCopyTarget = async (target, key, layer = 'L7') => {
     const copyTarget = formatTargetForDisplay(target, layer);
     try {
@@ -201,7 +205,7 @@ const LoopManager = () => {
                           copiedKey === loopId ? 'opacity-0' : 'opacity-100'
                         }`}
                       >
-                        {formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer)}
+                        {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
                       </span>
                       <span
                         className={`absolute inset-0 flex items-center text-left text-green-400 text-xs font-bold transition-opacity duration-200 ${

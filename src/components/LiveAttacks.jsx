@@ -68,6 +68,11 @@ const LiveAttacks = () => {
     return t;
   };
 
+  // Goruntude sade domain (protokol ve sondaki / kirpilir); kopyalamada tam
+  // https:// URL kullanilir (handleCopy formatTargetForDisplay'i cagirir).
+  const formatTargetShort = (target) =>
+    String(target || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
   const handleCopy = async (target, layer, method, key) => {
     const copyTarget = formatTargetForDisplay(target, layer, method);
     try {
@@ -530,7 +535,7 @@ const LiveAttacks = () => {
             </thead>
             <tbody>
               {groupedAttacks.map((attack) => {
-                const displayTarget = formatTargetForDisplay(attack.target, attack.layer, attack.method);
+                const displayTarget = formatTargetShort(formatTargetForDisplay(attack.target, attack.layer, attack.method));
                 const rowKey = `${attack.target}::${attack.method}::${attack.ids[0]}`;
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
