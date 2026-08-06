@@ -815,7 +815,7 @@ const LiveAttacks = () => {
                         onClick={() => handleStopSingle(firstId, rowKey, sigOf(attack.target, attack.method))}
                         disabled={isFirstStopping}
                         title="Tek durdur"
-                        className="inline-flex h-7 items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2.5 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                        className="inline-flex h-7 w-[76px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
                       >
                         {isFirstStopping ? '…' : '■ durdur'}
                       </button>
@@ -823,7 +823,7 @@ const LiveAttacks = () => {
                         onClick={() => attack.count > 1 && handleStopRow(attack.ids, rowKey, sigOf(attack.target, attack.method))}
                         disabled={attack.count <= 1 || rowKeyStopping}
                         title={attack.count > 1 ? `Bu satırdaki ${attack.count} saldırıyı durdur` : 'Tek saldırı - satır durdurma kullanılamaz'}
-                        className="inline-flex h-7 items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2.5 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+                        className="inline-flex h-7 w-[60px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
                       >
                         {rowKeyStopping ? '…' : `■ x${attack.count}`}
                       </button>
