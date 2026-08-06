@@ -54,7 +54,7 @@ const AttackRow = ({ phase, initialOpen = false, children }) => {
 };
 
 const LiveAttacks = () => {
-  const { state, setLiveAttacks, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
+  const { state, setLiveAttacks, setLoops, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
   const [lastUpdate, setLastUpdate] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const [stopping, setStopping] = useState(new Set());
@@ -500,34 +500,48 @@ const LiveAttacks = () => {
   // gorunur kalir; sonra saga kayar ve 1fr->0fr ile yumusakca kapanir.
   // Boylece kutu bitis/baslangiclarda ziplamadan kuculup buyur.
   const [dyingRows, setDyingRows] = useState([]);
+  // Loop tur arasi bekleme satirlari: loop'un bir turu bitip yeni turu
+  // baslayana kadar satir "[..] tur arasi" olarak kalir; bitti animasyonu
+  // ve cift satir (eski+yeni tur) olusmaz.
+  const [waitingRows, setWaitingRows] = useState([]);
   const prevGroupsRef = useRef(new Map());
-  useEffect(() => {
-    const current = new Map(groupedAttacks.map((g) => [rowKeyOf(g), g]));
-    const prev = prevGroupsRef.current;
 
-    // Calisan loop'larin imzalari: loop tur rotasyonunda eski tur kaybolur
-    // ama yeni tur ayni imzayla zaten listededir; bitti animasyonu YAPILMAZ
-    // (yoksa ayni saldiri hem aktif hem "bitti" olarak cift gorunur).
-    const loopSigs = new Set(
+  // Calisan loop'larin imzalari (hedef+yontem)
+  const loopSigs = useMemo(
+    () => new Set(
       Object.values(state.activeLoops || {})
         .filter((l) => l && l.running !== false)
         .map((l) => sigOf(l.params?.host, l.params?.method))
-    );
+    ),
+    [state.activeLoops]
+  );
+
+  useEffect(() => {
+    const current = new Map(groupedAttacks.map((g) => [rowKeyOf(g), g]));
+    const currentSigs = new Set(groupedAttacks.map((g) => sigOf(g.target, g.method)));
+    const prev = prevGroupsRef.current;
 
     const vanished = [];
+    const waitingAdd = [];
     prev.forEach((g, key) => {
       if (current.has(key)) return;
       const sig = sigOf(g.target, g.method);
       const isStopped = stoppedKeysRef.current.has(key) || stoppedSigsRef.current.has(sig);
-      const isNaturalEnd = (parseInt(g.timeLeft, 10) || 0) <= 2;
-      // Loop rotasyonu veya ID kaynakli anahtar degisimi (sahte kaybolma):
-      // gercek bitis (sure <=2) veya kullanici durdurmasi degilse atla.
-      if (!isStopped && (loopSigs.has(sig) || !isNaturalEnd)) return;
       if (isStopped) {
         stoppedKeysRef.current.delete(key);
         stoppedSigsRef.current.delete(sig);
+        vanished.push([key, g, true]);
+        return;
       }
-      vanished.push([key, g, isStopped]);
+      // Loop tur rotasyonu: bitti animasyonu YOK; tur arasi bekleme satiri
+      if (loopSigs.has(sig)) {
+        waitingAdd.push([sig, g]);
+        return;
+      }
+      // ID kaymasi / veri glitchi (sure >2 iken kaybolma): atla
+      const isNaturalEnd = (parseInt(g.timeLeft, 10) || 0) <= 2;
+      if (!isNaturalEnd) return;
+      vanished.push([key, g, false]);
     });
 
     if (vanished.length > 0) {
@@ -544,8 +558,24 @@ const LiveAttacks = () => {
         setTimeout(() => setDyingRows((d) => d.filter((r) => r.key !== key)), 2100);
       });
     }
+
+    // Bekleme satirlarini guncelle: yeni turu baslayan (sig artik listede)
+    // veya loop'u kapanan / 120sn'yi asan satirlar duser.
+    const now = Date.now();
+    setWaitingRows((w) => {
+      const kept = w.filter((r) => !currentSigs.has(r.sig) && loopSigs.has(r.sig) && now - r.since < 120000);
+      const keptSigs = new Set(kept.map((r) => r.sig));
+      waitingAdd.forEach(([sig, g]) => {
+        if (!keptSigs.has(sig)) {
+          kept.push({ sig, group: g, since: now });
+          keptSigs.add(sig);
+        }
+      });
+      return kept.length === w.length && waitingAdd.length === 0 ? w : kept;
+    });
+
     prevGroupsRef.current = current;
-  }, [groupedAttacks, state.activeLoops]);
+  }, [groupedAttacks, loopSigs]);
 
   // Hesaba ozel sayaclar (aktif/toplam kapasite) — canli listeyle beraber tazelenir
   const [stats, setStats] = useState(null);
@@ -562,6 +592,32 @@ const LiveAttacks = () => {
     };
     fetchStats();
     const interval = setInterval(fetchStats, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [state.isAuthenticated]);
+
+  // Loop listesini her sekmede taze tut: LoopManager sadece Looplar
+  // sekmesinde mount oldugundan state.activeLoops baska sekmelerde bayat
+  // kalir; loopSigs eslesmeleri (tur rotasyonu/bekleme satirlari) her
+  // sekmede dogru calissin diye burada da senkronlanir.
+  useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
+    let cancelled = false;
+    const sync = async () => {
+      try {
+        const data = await apiClient.getLoops();
+        if (cancelled) return;
+        const map = {};
+        (data.loops || []).forEach((l) => { map[l.loopId] = l; });
+        setLoops(map);
+      } catch {
+        // bir sonraki tazelemede tekrar dener
+      }
+    };
+    sync();
+    const interval = setInterval(sync, 10000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -637,7 +693,7 @@ const LiveAttacks = () => {
       )}
 
       <div className="relative z-10 p-4 sm:p-5">
-        {state.liveAttacks.length === 0 && dyingRows.length === 0 ? (
+        {state.liveAttacks.length === 0 && dyingRows.length === 0 && waitingRows.length === 0 ? (
           <div className="py-12 text-center text-green-500/50">
             <p>aktif saldiri yok.</p>
             {lastUpdate && <p className="mt-2 text-[11px] text-green-500/30"># son guncelleme: {lastUpdate.toLocaleTimeString()}</p>}
@@ -728,6 +784,21 @@ const LiveAttacks = () => {
                   </AttackRow>
                 );
               })}
+
+              {/* Loop tur arasi bekleme satirlari: bitti degil, yeni tur bekleniyor */}
+              {waitingRows.map((r) => (
+                <AttackRow key={`wait::${r.sig}`} initialOpen>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
+                      {formatTargetShort(formatTargetForDisplay(r.group.target, r.group.layer, r.group.method))}
+                    </span>
+                  </div>
+                  <span className="text-gray-400">{r.group.method}</span>
+                  <span className="font-bold text-cyan-400/80">[..] tur arası</span>
+                  <span className="text-gray-500">x{r.group.count}</span>
+                  <div />
+                </AttackRow>
+              ))}
 
               {/* Bitmis/durdurulmus satirlar: V2 status-flip cikis animasyonu */}
               {dyingRows.map((r) => (
