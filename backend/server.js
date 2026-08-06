@@ -3009,6 +3009,25 @@ app.get('/api/phish/stats', (req, res) => {
 loadState();
 // Etki Monitoru: aktif saldiri/loop hedeflerini check-host.net ile olcer.
 initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
+// RRT ilk tarama: yeni launch beklenmeden, acilista sistemde zaten aktif olan
+// saldiri/loop hedeflerini de teste sok (24s cache tekrarlari engeller;
+// kuyruk seri calisir). Boot'un hemen ardinda degil, 20sn sonra baslar.
+setTimeout(() => {
+  try {
+    const hosts = new Set();
+    Object.values(activeAttacks).forEach((a) => { if (a.host) hosts.add(a.host); });
+    Object.values(activeLoops).forEach((l) => {
+      if (l && l.running !== false && l.params?.host) hosts.add(l.params.host);
+    });
+    let scheduled = 0;
+    hosts.forEach((host) => {
+      if (rrt.scheduleRrtCheck(host, { delayMs: 5000 })) scheduled += 1;
+    });
+    if (scheduled > 0) console.log(`[rrt] acilis taramasi: ${scheduled} hedef kuyruga eklendi`);
+  } catch (err) {
+    console.warn('[rrt] acilis taramasi hatasi:', err.message);
+  }
+}, 20000);
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
