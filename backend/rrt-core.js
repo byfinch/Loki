@@ -274,6 +274,7 @@ async function runTestInner(url, record) {
     const inspId = new URL(page.url()).searchParams.get('id');
     const deadline = Date.now() + (TEST_TIMEOUT_MS - 30000);
     let state = 1;
+    let terminalText = null;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       const poll = await page.evaluate(async (id) => {
@@ -290,11 +291,18 @@ async function runTestInner(url, record) {
       const st = frames.MrNfbc;
       if (Array.isArray(st) && st[1]) state = st[1];
       if (state === 2) break;
+      // Bazi sonuclarda (ozellikle crawl hatasi) durum kodu 2'ye DONMUYOR;
+      // sonuc sayfasinin metnindeki terminal isaretleri de bitis say.
+      const txt = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
+      if (/Crawl failed|not available to Google|No rich results detected|valid items? detected/i.test(txt)) {
+        terminalText = txt;
+        break;
+      }
     }
-    if (state !== 2) throw new Error('Test durumu 3 dakikada tamamlanmadi');
+    if (state !== 2 && !terminalText) throw new Error('Test durumu 3 dakikada tamamlanmadi');
 
     // Crawl hatasi kontrolu (sayfa metni uzerinden)
-    const pageText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
+    const pageText = terminalText || await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
     if (/not available to Google|Crawl failed/i.test(pageText)) {
       record.verdict = 'crawl_error';
       record.crawlError = (pageText.match(/(URL is not available to Google[^.]*|Crawl failed[^.]*)/i) || [])[0] || 'Crawl failed';
