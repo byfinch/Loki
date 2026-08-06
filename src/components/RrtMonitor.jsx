@@ -44,6 +44,10 @@ const RrtMonitor = () => {
 
   const pendingLabel = (p) => (p.state === 'running' ? '[..] test çalışıyor' : p.state === 'queued' ? '[..] kuyrukta' : '[..] zamanlandı');
 
+  // Yeniden denemesi kuyrukta/calisiyor olan hostlarin eski (hata) satirini
+  // gosterme; aksi halde ayni host hem bekleyen hem sonuc olarak cift gorunur.
+  const pendingHosts = new Set(pending.map((p) => p.host));
+
   return (
     <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
       {/* CRT scanline dokusu */}
@@ -89,7 +93,7 @@ const RrtMonitor = () => {
           </div>
         ))}
 
-        {!error && results.map((r) => {
+        {!error && results.filter((r) => !pendingHosts.has(r.host)).map((r) => {
           const v = verdictView(r);
           return (
             <div key={r.host} className="flex items-center gap-2.5 border-b border-dashed border-green-500/10 px-2 py-2.5 text-[12px] last:border-b-0">
