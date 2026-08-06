@@ -174,7 +174,7 @@ const ImpactMonitor = () => {
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
         <span className="text-green-300/90">root@loki:~</span>
-        <span className="text-green-500/60">$ watcher --interval 30s --source check-host.net</span>
+        <span className="text-green-500/60">$ watcher -i 30s</span>
         <span className="animate-pulse">▊</span>
         {targets.length > 0 && (
           <span className="ml-auto whitespace-nowrap text-[10px] text-green-500/60">
