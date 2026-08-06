@@ -27,6 +27,9 @@ const DATA_DIR = path.join(__dirname, 'data');
 const RESULTS_FILE = path.join(DATA_DIR, 'rrt-results.json');
 
 const CACHE_MS = 24 * 60 * 60 * 1000;   // ayni host 24 saatte bir
+// Hatali testler (Chrome yoktu, ag sorunu vb.) 24s KILITLENMESIN:
+// kisa cache sonrasi tekrar denenebilsin.
+const ERROR_CACHE_MS = 10 * 60 * 1000;
 const TEST_TIMEOUT_MS = 3 * 60 * 1000;  // test basina toplam ust sinir
 const NAV_WAIT_MS = 20 * 1000;          // tek tiklamada sonuc sayfasina gecis bekleme
 const MAX_CLICK_ATTEMPTS = 4;
@@ -110,8 +113,10 @@ function scheduleRrtCheck(host, { delayMs = 0 } = {}) {
     if (!key) return false;
 
     const cached = results[key];
-    if (cached && Date.now() - new Date(cached.testedAt).getTime() < CACHE_MS) {
-      return false; // 24 saat icinde test edilmis
+    if (cached) {
+      const age = Date.now() - new Date(cached.testedAt).getTime();
+      const ttl = cached.verdict === 'error' ? ERROR_CACHE_MS : CACHE_MS;
+      if (age < ttl) return false; // cache suresi icinde test edilmis
     }
     if (delayed.has(key) || running === key || queue.some((q) => q.key === key)) {
       return false; // zaten sirada veya calisiyor
