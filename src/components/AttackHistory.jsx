@@ -100,6 +100,10 @@ const AttackHistory = () => {
     return t;
   };
 
+  // Goruntude sade domain; kopyalamada tam URL (formatTargetForDisplay).
+  const formatTargetShort = (target) =>
+    String(target || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
   const handleCopyTarget = async (target, key, layer, method) => {
     const copyTarget = formatTargetForDisplay(target, layer, method);
     try {
@@ -241,7 +245,7 @@ const AttackHistory = () => {
                           onClick={() => handleCopyTarget(record.target, record.historyId, record.layer, record.method)}
                         className="inline-block text-left text-gray-200 font-mono text-xs truncate w-[180px] hover:text-green-400 transition-colors cursor-pointer"
                       >
-                        {formatTargetForDisplay(record.target, record.layer, record.method)}
+                        {formatTargetShort(formatTargetForDisplay(record.target, record.layer, record.method))}
                       </span>
                       <button
                           onClick={() => handleCopyTarget(record.target, record.historyId, record.layer, record.method)}

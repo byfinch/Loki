@@ -19,7 +19,7 @@ export const renderNoteWithLinks = (text) => {
             onClick={(e) => e.stopPropagation()}
             className="text-green-400 border-b border-dotted border-green-500/50 hover:text-green-300 transition"
           >
-            {href.replace(/^https?:\/\//i, '')}
+            {href.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}
           </a>
           {trail}
         </React.Fragment>

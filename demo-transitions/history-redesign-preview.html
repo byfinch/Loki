@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saldırı Geçmişi — Tasarım Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050505; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+
+  .host { color: #e5e5e5; font-family: 'Courier New', monospace; font-size: 12px; }
+  .note-link { color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.5); font-family: 'Courier New', monospace; }
+  .note-link:hover { text-shadow: 0 0 8px rgba(0,255,65,.6); }
+
+  /* ============ V1: TERMINAL ============ */
+  .v1-card { background: #02060310; background: rgba(2,10,4,.7); border: 1px solid rgba(0,255,65,.25); border-radius: 4px; padding: 0; overflow: hidden; box-shadow: 0 0 40px rgba(0,255,65,.06), inset 0 0 60px rgba(0,255,65,.02); font-family: 'Courier New', monospace; }
+  .v1-titlebar { display: flex; align-items: center; gap: 10px; background: rgba(0,255,65,.06); border-bottom: 1px solid rgba(0,255,65,.2); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .v1-titlebar .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .v1-titlebar .path { color: #4ade80; }
+  .v1-titlebar .cursor { margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .v1-body { padding: 16px; position: relative; }
+  .v1-body::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .v1-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .v1-search { flex: 1; min-width: 200px; background: #000; border: 1px solid rgba(0,255,65,.3); padding: 8px 12px; color: #00ff41; font-family: inherit; font-size: 12px; border-radius: 2px; outline: none; }
+  .v1-search::placeholder { color: rgba(0,255,65,.35); }
+  .v1-search:focus { box-shadow: 0 0 12px rgba(0,255,65,.2); }
+  .v1-tab { background: transparent; border: 1px solid rgba(0,255,65,.2); color: rgba(0,255,65,.6); padding: 6px 12px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 2px; }
+  .v1-tab.on { background: rgba(0,255,65,.15); color: #00ff41; border-color: rgba(0,255,65,.5); text-shadow: 0 0 6px rgba(0,255,65,.7); }
+  .v1-clear { border-color: rgba(248,113,113,.3); color: #f87171; }
+  .v1-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v1-table th { text-align: left; color: rgba(0,255,65,.5); font-weight: normal; font-size: 11px; padding: 8px 10px; border-bottom: 1px solid rgba(0,255,65,.25); white-space: nowrap; }
+  .v1-table th::before { content: '> '; color: rgba(0,255,65,.3); }
+  .v1-table td { padding: 9px 10px; border-bottom: 1px dashed rgba(0,255,65,.08); color: #86efac; white-space: nowrap; }
+  .v1-table tr:hover td { background: rgba(0,255,65,.05); }
+  .v1-status { color: #00ff41; text-shadow: 0 0 6px rgba(0,255,65,.6); }
+  .v1-status::before { content: '[OK] '; font-size: 10px; }
+  .v1-loop { color: #00d4ff; }
+  .v1-note { max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ============ V2: NEON HUD ============ */
+  .v2-card { position: relative; background: linear-gradient(135deg, rgba(10,10,18,.9), rgba(5,5,10,.95)); border: 1px solid rgba(0,212,255,.25); padding: 24px; clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 24px)); box-shadow: 0 0 50px rgba(0,212,255,.08); }
+  .v2-corner { position: absolute; width: 22px; height: 22px; border-color: #00d4ff; border-style: solid; }
+  .v2-corner.tl { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .v2-corner.br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+  .v2-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .v2-head h2 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: 3px; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+  .v2-head h2::before { content: ''; width: 4px; height: 20px; background: linear-gradient(180deg, #00d4ff, #c084fc); box-shadow: 0 0 10px rgba(0,212,255,.8); }
+  .v2-count { font-family: 'Courier New', monospace; color: #00d4ff; border: 1px solid rgba(0,212,255,.4); padding: 2px 10px; font-size: 12px; background: rgba(0,212,255,.06); text-shadow: 0 0 8px rgba(0,212,255,.6); }
+  .v2-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .v2-search { flex: 1; min-width: 200px; background: rgba(0,0,0,.5); border: 1px solid rgba(0,212,255,.25); border-left: 3px solid #00d4ff; padding: 9px 12px; color: #fff; font-size: 12px; outline: none; }
+  .v2-search:focus { box-shadow: 0 0 15px rgba(0,212,255,.15); }
+  .v2-tab { position: relative; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.1); color: #9ca3af; padding: 7px 14px; font-size: 11px; cursor: pointer; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+  .v2-tab.on { background: rgba(168,85,247,.15); color: #c084fc; border-color: rgba(168,85,247,.5); text-shadow: 0 0 8px rgba(192,132,252,.7); }
+  .v2-clear { border-color: rgba(248,113,113,.3); color: #f87171; }
+  .v2-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v2-table th { text-align: left; color: rgba(0,212,255,.6); font-weight: 600; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; padding: 10px; border-bottom: 1px solid rgba(0,212,255,.3); white-space: nowrap; }
+  .v2-table td { padding: 11px 10px; border-bottom: 1px solid rgba(255,255,255,.04); color: #d1d5db; white-space: nowrap; }
+  .v2-table tr:hover td { background: rgba(0,212,255,.04); }
+  .v2-method { display: inline-block; padding: 4px 10px; background: rgba(0,212,255,.08); border: 1px solid rgba(0,212,255,.3); font-family: 'Courier New', monospace; font-size: 11px; color: #67e8f9; }
+  .v2-loop { display: inline-block; padding: 3px 10px; background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.4); font-size: 10px; color: #c084fc; }
+  .v2-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(0,255,65,.08); border: 1px solid rgba(0,255,65,.35); font-size: 11px; color: #00ff41; }
+  .v2-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 8px #00ff41; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+  .v2-note { max-width: 210px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+
+  /* ============ V3: STEALTH GLASS ============ */
+  .v3-card { background: linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,.015)); border: 1px solid rgba(255,255,255,.09); border-radius: 16px; padding: 26px; backdrop-filter: blur(8px); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .v3-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .v3-head h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 10px; }
+  .v3-count { font-family: 'Courier New', monospace; color: #00ff41; background: rgba(0,255,65,.07); border: 1px solid rgba(0,255,65,.2); padding: 2px 10px; border-radius: 999px; font-size: 12px; }
+  .v3-toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+  .v3-search { flex: 1; min-width: 200px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 9px 14px; color: #fff; font-size: 12px; outline: none; transition: border-color .2s, box-shadow .2s; }
+  .v3-search:focus { border-color: rgba(0,255,65,.5); box-shadow: 0 0 0 3px rgba(0,255,65,.08); }
+  .v3-tabs { display: flex; gap: 2px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 3px; }
+  .v3-tab { background: transparent; border: none; color: #9ca3af; padding: 6px 14px; font-size: 11px; cursor: pointer; border-radius: 999px; transition: all .2s; }
+  .v3-tab.on { background: rgba(0,255,65,.15); color: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.15); }
+  .v3-clear { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); color: #f87171; padding: 7px 14px; font-size: 11px; border-radius: 999px; cursor: pointer; }
+  .v3-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v3-table th { text-align: left; color: #6b7280; font-weight: 500; font-size: 11px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+  .v3-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.04); color: #d1d5db; white-space: nowrap; }
+  .v3-table tbody tr { transition: background .15s; }
+  .v3-table tbody tr:hover { background: rgba(0,255,65,.03); }
+  .v3-method { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 11px; color: #fff; }
+  .v3-loop { display: inline-block; padding: 3px 10px; background: rgba(0,212,255,.07); border: 1px solid rgba(0,212,255,.25); border-radius: 999px; font-size: 10px; color: #00d4ff; }
+  .v3-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(0,255,65,.08); border: 1px solid rgba(0,255,65,.25); border-radius: 999px; font-size: 11px; color: #00ff41; }
+  .v3-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 6px #00ff41; }
+  .v3-note { max-width: 210px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: #67e8f9; font-family: 'Courier New', monospace; }
+  .v3-empty { color: #3f3f46; }
+  .date { color: #9ca3af; font-size: 11px; font-family: 'Courier New', monospace; }
+  .num { font-family: 'Courier New', monospace; text-align: center; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1: TERMINAL ================= -->
+  <section>
+    <div class="variant-label">V1 — Terminal <span>· CRT scanline, monospace, root-shell hissi · en "hacker"</span></div>
+    <div class="v1-card">
+      <div class="v1-titlebar">
+        <span class="dot" style="background:#f87171"></span>
+        <span class="dot" style="background:#fbbf24"></span>
+        <span class="dot" style="background:#00ff41"></span>
+        <span class="path">root@loki:~/saldiri-gecmisi</span>
+        <span>$ tail -f --lines=227</span>
+        <span class="cursor">▊</span>
+      </div>
+      <div class="v1-body">
+        <div class="v1-toolbar">
+          <input class="v1-search" placeholder="grep -i 'hedef|yontem|port|durum'...">
+          <button class="v1-tab">Tümü</button>
+          <button class="v1-tab on">Aktif</button>
+          <button class="v1-tab">Tamamlandı</button>
+          <button class="v1-tab">Durduruldu</button>
+          <button class="v1-tab v1-clear">rm -rf</button>
+        </div>
+        <table class="v1-table">
+          <thead><tr><th>Hedef</th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="host">crownroyalecashpro…</td>
+              <td class="v1-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+              <td class="num">443</td><td>HTTP-TEMPESTA</td><td class="num">200s</td><td class="num">x10</td>
+              <td class="v1-loop">loop</td><td class="v1-status">aktif</td>
+              <td class="date">06.08 14:26:59</td><td class="date">-</td>
+            </tr>
+            <tr>
+              <td class="host">crownroyalecashpro…</td>
+              <td class="v1-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+              <td class="num">443</td><td>CLOUDFLARE</td><td class="num">200s</td><td class="num">x10</td>
+              <td class="v1-loop">loop</td><td class="v1-status">aktif</td>
+              <td class="date">06.08 14:26:29</td><td class="date">-</td>
+            </tr>
+            <tr>
+              <td class="host">65.98.19.42</td>
+              <td class="v1-note v3-empty">—</td>
+              <td class="num">53</td><td>ACK</td><td class="num">60s</td><td class="num">x10</td>
+              <td class="v1-loop">loop</td><td class="v1-status">aktif</td>
+              <td class="date">06.08 14:26:10</td><td class="date">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2: NEON HUD ================= -->
+  <section>
+    <div class="variant-label">V2 — Neon HUD <span>· kesik köşeler, cyan-mor neon, nabız atan durum ışığı · en "sci-fi"</span></div>
+    <div class="v2-card">
+      <div class="v2-corner tl"></div>
+      <div class="v2-corner br"></div>
+      <div class="v2-head"><h2>Saldırı Geçmişi</h2><span class="v2-count">227 KAYIT</span></div>
+      <div class="v2-toolbar">
+        <input class="v2-search" placeholder="Hedef, yöntem, port veya durum ara...">
+        <button class="v2-tab">Tümü</button>
+        <button class="v2-tab on">Aktif</button>
+        <button class="v2-tab">Tamamlandı</button>
+        <button class="v2-tab">Durduruldu</button>
+        <button class="v2-tab v2-clear">Temizle</button>
+      </div>
+      <table class="v2-table">
+        <thead><tr><th>Hedef</th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v2-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="v2-method">HTTP-TEMPESTA</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v2-loop">Loop</span></td><td><span class="v2-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v2-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="v2-method">CLOUDFLARE</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v2-loop">Loop</span></td><td><span class="v2-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:29</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">65.98.19.42</td>
+            <td class="v2-note v3-empty">—</td>
+            <td class="num">53</td><td><span class="v2-method">ACK</span></td><td class="num">60s</td><td class="num">x10</td>
+            <td><span class="v2-loop">Loop</span></td><td><span class="v2-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:10</td><td class="date">-</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= V3: STEALTH GLASS ================= -->
+  <section>
+    <div class="variant-label">V3 — Stealth Glass <span>· yumuşak cam, pill filtreler, minimal premium · en "zarif"</span></div>
+    <div class="v3-card">
+      <div class="v3-head"><h2>Saldırı Geçmişi <span class="v3-count">227</span></h2></div>
+      <div class="v3-toolbar">
+        <input class="v3-search" placeholder="Hedef, yöntem, port veya durum ara...">
+        <div class="v3-tabs">
+          <button class="v3-tab">Tümü</button>
+          <button class="v3-tab on">Aktif</button>
+          <button class="v3-tab">Tamamlandı</button>
+          <button class="v3-tab">Durduruldu</button>
+        </div>
+        <button class="v3-clear">Temizle</button>
+      </div>
+      <table class="v3-table">
+        <thead><tr><th>Hedef</th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v3-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="v3-method">HTTP-TEMPESTA</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v3-loop">Loop</span></td><td><span class="v3-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v3-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="v3-method">CLOUDFLARE</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v3-loop">Loop</span></td><td><span class="v3-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:29</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">65.98.19.42</td>
+            <td class="v3-note v3-empty">—</td>
+            <td class="num">53</td><td><span class="v3-method">ACK</span></td><td class="num">60s</td><td class="num">x10</td>
+            <td><span class="v3-loop">Loop</span></td><td><span class="v3-status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:10</td><td class="date">-</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

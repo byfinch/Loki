@@ -74,7 +74,9 @@ function formatNext(nextCheckAt) {
 
 function shortenHost(host) {
   if (!host) return '—';
-  return host.length > 28 ? `${host.slice(0, 25)}...` : host;
+  // Goruntude sade domain (protokol ve sondaki / kirpilir)
+  const bare = String(host).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return bare.length > 28 ? `${bare.slice(0, 25)}...` : bare;
 }
 
 function nodeShortName(node) {
