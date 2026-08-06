@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RRT Otomasyonu — GERÇEK Sonuç Örneği</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 860px; margin: 0 auto; }
+  .note { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 6px; }
+  .note-sub { color: #6b7280; font-size: 12px; font-family: 'Courier New', monospace; margin-bottom: 20px; }
+
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); margin-bottom: 24px; }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 14px 16px; }
+
+  .rrt-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px dashed rgba(0,255,65,.1); font-size: 12px; }
+  .rrt-row:last-child { border-bottom: none; }
+  .rrt-host { color: #bbf7d0; font-weight: bold; }
+  .rrt-when { color: #4b5563; font-size: 10px; }
+  .rrt-verdict { font-size: 11px; font-weight: bold; }
+  .rrt-verdict.ok { color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.5); }
+  .rrt-verdict.none { color: #6b7280; }
+  .rrt-items { font-size: 10px; color: #9ca3af; }
+  .rrt-open { margin-left: auto; font-size: 10px; color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.5); white-space: nowrap; }
+  .rrt-pending { color: #00d4ff; font-size: 11px; }
+  .rrt-pending::after { content: ' ▊'; animation: blink 1s steps(1) infinite; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <div class="note">RRT Otomasyonu — panel görünümü (GERÇEK veriyle)</div>
+  <div class="note-sub"># alttaki iki satır bu makinede Google'ın gerçek testinden üretildi · linkler Google'ın kendi sonuç sayfasına gider</div>
+
+  <!-- Otomasyon kartı: Aktif Saldırılar'ın altına / Araçlar'a eklenecek görünüm -->
+  <div class="t-card">
+    <div class="t-scan"></div>
+    <div class="t-titlebar">
+      <span class="t-dot" style="background:#f87171"></span>
+      <span class="t-dot" style="background:#fbbf24"></span>
+      <span class="t-dot" style="background:#00ff41"></span>
+      <span style="color:#86efac">root@loki:~</span>
+      <span style="color:rgba(0,255,65,.6)">$ rrt --watch attacks</span>
+      <span class="t-cursor">▊</span>
+      <span style="margin-left:auto;font-size:10px;color:rgba(0,255,65,.55)">saldırı hedefleri otomatik test edilir</span>
+    </div>
+    <div class="t-body">
+
+      <!-- GERÇEK: youtube.com testi (recon yakalaması, gerçek zUbeBb verisi) -->
+      <div class="rrt-row">
+        <span class="rrt-host">youtube.com</span>
+        <span class="rrt-verdict ok">[OK] 2 öğe · 3 geçerli</span>
+        <span class="rrt-items">BreadcrumbList, VideoObject · 6 kaynak sorunu</span>
+        <span class="rrt-when">bugün</span>
+        <a class="rrt-open" href="https://search.google.com/test/rich-results" target="_blank" rel="noopener noreferrer">>> google'da aç</a>
+      </div>
+
+      <!-- GERÇEK: example.com testi (bugün 19:17'de worker ile koştu, 14sn) -->
+      <div class="rrt-row">
+        <span class="rrt-host">example.com</span>
+        <span class="rrt-verdict none">[--] no items</span>
+        <span class="rrt-items">yapısal veri yok · 14sn</span>
+        <span class="rrt-when">19:17</span>
+        <a class="rrt-open" href="https://search.google.com/test/rich-results/result?id=1K67hQeP9f_dazXJ9RjKSw" target="_blank" rel="noopener noreferrer">>> google'da aç</a>
+      </div>
+
+      <!-- Kuyruk durumu örneği -->
+      <div class="rrt-row">
+        <span class="rrt-host">vegasslot26.top</span>
+        <span class="rrt-pending">[..] kuyrukta · ~90sn sonra</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="note-sub"># akış: saldırı/loop başlar → ~90sn sonra worker hedefi Google RRT'den geçirir → satır burada belirir · aynı host 24 saatte 1 kez test edilir · [OK]/[--]/[X] + google'da aç linki</div>
+</div>
+</body>
+</html>

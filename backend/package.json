@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "puppeteer-core": "^25.5.0",
     "tough-cookie": "^5.1.0"
   },
   "devDependencies": {
