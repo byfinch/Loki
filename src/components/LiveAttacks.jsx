@@ -12,9 +12,6 @@ import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 const lastServerValues = {};
 const persistedTimeLefts = {};
 
-// Satir anahtari: grup kimligi (target + method + ilk attack id)
-const rowKeyOf = (g) => `${g.target}::${g.method}::${g.ids[0]}`;
-
 // Normalize imza: ham target farklari (protokol, sondaki /, buyuk-kucuk harf)
 // ve method buyuklugu ayni mantiksal satiri eslesir kilar.
 const targetKeyNorm = (t) => String(t || '')
@@ -22,6 +19,11 @@ const targetKeyNorm = (t) => String(t || '')
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '');
 const sigOf = (target, method) => `${targetKeyNorm(target)}::${String(method || '').toLowerCase()}`;
+
+// Satir anahtari = hedef+yontem imzasi. ID'den bagimsizdir: loop turlari
+// ve attack ID rotasyonlari satiri yeniden DOGURMAZ; ayni hedef+yontem
+// her zaman tek ve ayni satirda kalir.
+const rowKeyOf = (g) => sigOf(g.target, g.method);
 
 // V2 "Status Flip" satir kapsayicisi:
 //  - Yeni satir kapali baslar, ilk frame'de yumusakca acilir (kutu ziplamaz).
@@ -135,58 +137,40 @@ const LiveAttacks = () => {
   };
 
   const groupedAttacks = useMemo(() => {
-    const THRESHOLD = 7;
-
-    // Ham target farklari (protokol, sondaki /, buyuk-kucuk harf) ayni hedefi
-    // ayri gruplara bolmesin; gruplama normalize anahtarla yapilir.
-    const targetKey = (t) => String(t || '')
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .replace(/\/+$/, '');
-
-    // En son sunucu degerini veya client-side geri sayimi kullan.
-    // Suresi biten (0'a ulasan) saldirilar gosterilmez; sunucu hala bayat
-    // veri donduruyor olsa bile satir hayalet olarak kalmaz.
-    const attacksWithTime = state.liveAttacks
+    // Hedef+yontem basina TEK satir: loop turlari ve farkli zamanlarda
+    // baslatilan ayni imzali saldirilar ayni satirda birlesir (adet
+    // toplanir, kalan sure en buyuk/guncel deger). Satir kimligi imzaya
+    // bagli oldugundan tur gecislerinde satir yerinde kalir; kaybolup
+    // yeniden dogmaz (titreme/yeniden belirme bug'i).
+    const byKey = new Map();
+    state.liveAttacks
       .map((attack) => {
         const attackId = attack.attack_id;
         const serverTime = parseInt(attack.timeLeft, 10);
         const currentTime = serverTimeLefts[attackId] ?? serverTime;
         return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
       })
-      .filter((attack) => attack.timeLeft > 0);
-
-    const sorted = [...attacksWithTime].sort((a, b) => {
-      const ka = targetKey(a.target);
-      const kb = targetKey(b.target);
+      .filter((attack) => attack.timeLeft > 0)
+      .forEach((attack) => {
+        const key = sigOf(attack.target, attack.method);
+        const existing = byKey.get(key);
+        if (existing) {
+          existing.count += 1;
+          existing.ids.push(attack.attack_id);
+          // Grupta notu olan ilk saldirinin notu satira tasinir (salt-okunur)
+          if (!existing.note && attack.note) existing.note = attack.note;
+          if (attack.timeLeft > existing.timeLeft) existing.timeLeft = attack.timeLeft;
+        } else {
+          byKey.set(key, { ...attack, count: 1, ids: [attack.attack_id] });
+        }
+      });
+    return [...byKey.values()].sort((a, b) => {
+      const ka = targetKeyNorm(a.target);
+      const kb = targetKeyNorm(b.target);
       if (ka !== kb) return ka.localeCompare(kb);
       if (a.method !== b.method) return a.method.localeCompare(b.method);
       return b.timeLeft - a.timeLeft;
     });
-
-    const groups = [];
-    sorted.forEach((attack) => {
-      const existing = groups.find(
-        (g) =>
-          targetKey(g.target) === targetKey(attack.target) &&
-          g.method === attack.method &&
-          Math.abs(g.timeLeft - attack.timeLeft) <= THRESHOLD
-      );
-
-      if (existing) {
-        existing.count += 1;
-        existing.ids.push(attack.attack_id);
-        // Grupta notu olan ilk saldirinin notu satira tasinir (salt-okunur)
-        if (!existing.note && attack.note) existing.note = attack.note;
-        if (attack.timeLeft > existing.timeLeft) {
-          existing.timeLeft = attack.timeLeft;
-        }
-      } else {
-        groups.push({ ...attack, count: 1, ids: [attack.attack_id] });
-      }
-    });
-
-    return groups;
   }, [state.liveAttacks, serverTimeLefts]);
 
   const handleStopSingle = async (attackId, rowKey = null, sig = null) => {
@@ -624,6 +608,30 @@ const LiveAttacks = () => {
     };
   }, [state.isAuthenticated]);
 
+  // Tek siralama: aktif + tur-arasi + olmakte olan satirlar ayni liste
+  // icinde konumlanir. Biten satir listenin ALTINA dusmez; kendi sirasinda
+  // "[--] bitti" olur ve oradan kaybolur.
+  const combinedRows = useMemo(() => {
+    const rows = groupedAttacks.map((g) => ({
+      key: rowKeyOf(g), type: 'active', group: g,
+      sortTarget: targetKeyNorm(g.target), sortMethod: String(g.method || '').toLowerCase(), sortTime: g.timeLeft || 0
+    }));
+    waitingRows.forEach((r) => rows.push({
+      // Aktif satirla ayni anahtar: tur baslayinca satir yerinde guncellenir
+      key: r.sig, type: 'wait', group: r.group,
+      sortTarget: targetKeyNorm(r.group.target), sortMethod: String(r.group.method || '').toLowerCase(), sortTime: r.group.timeLeft || 0
+    }));
+    dyingRows.forEach((r) => rows.push({
+      key: `dying::${r.key}`, type: 'dying', row: r, group: r.group,
+      sortTarget: targetKeyNorm(r.group.target), sortMethod: String(r.group.method || '').toLowerCase(), sortTime: r.group.timeLeft || 0
+    }));
+    return rows.sort((a, b) =>
+      a.sortTarget.localeCompare(b.sortTarget) ||
+      a.sortMethod.localeCompare(b.sortMethod) ||
+      b.sortTime - a.sortTime
+    );
+  }, [groupedAttacks, waitingRows, dyingRows]);
+
   return (
     <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
       {/* CRT scanline dokusu */}
@@ -713,8 +721,47 @@ const LiveAttacks = () => {
                 <span className="text-right">&gt; İşlem</span>
               </div>
 
-              {groupedAttacks.map((attack) => {
-                const rowKey = rowKeyOf(attack);
+              {combinedRows.map((row) => {
+                // Tur arasi bekleme satiri (loop): yeni tur bekleniyor
+                if (row.type === 'wait') {
+                  const g = row.group;
+                  return (
+                    <AttackRow key={row.key} initialOpen>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
+                          {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
+                        </span>
+                      </div>
+                      <span className="text-gray-400">{g.method}</span>
+                      <span className="font-bold text-cyan-400/80">[..] tur arası</span>
+                      <span className="text-gray-500">x{g.count}</span>
+                      <div />
+                    </AttackRow>
+                  );
+                }
+
+                // Bitmis/durdurulmus satir: kendi sirasinda V2 status-flip
+                if (row.type === 'dying') {
+                  const r = row.row;
+                  const g = row.group;
+                  return (
+                    <AttackRow key={row.key} phase={r.phase} initialOpen>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block max-w-[230px] truncate text-left text-gray-500">
+                          {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
+                        </span>
+                      </div>
+                      <span className="text-gray-600">{g.method}</span>
+                      <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
+                      <span className="text-gray-600">x{g.count}</span>
+                      <div />
+                    </AttackRow>
+                  );
+                }
+
+                // Aktif satir
+                const attack = row.group;
+                const rowKey = row.key;
                 const displayTarget = formatTargetShort(formatTargetForDisplay(attack.target, attack.layer, attack.method));
                 const isCopied = copiedKey === rowKey;
                 const rowKeyStopping = stopping.has(attack.ids.join(','));
@@ -784,36 +831,6 @@ const LiveAttacks = () => {
                   </AttackRow>
                 );
               })}
-
-              {/* Loop tur arasi bekleme satirlari: bitti degil, yeni tur bekleniyor */}
-              {waitingRows.map((r) => (
-                <AttackRow key={`wait::${r.sig}`} initialOpen>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
-                      {formatTargetShort(formatTargetForDisplay(r.group.target, r.group.layer, r.group.method))}
-                    </span>
-                  </div>
-                  <span className="text-gray-400">{r.group.method}</span>
-                  <span className="font-bold text-cyan-400/80">[..] tur arası</span>
-                  <span className="text-gray-500">x{r.group.count}</span>
-                  <div />
-                </AttackRow>
-              ))}
-
-              {/* Bitmis/durdurulmus satirlar: V2 status-flip cikis animasyonu */}
-              {dyingRows.map((r) => (
-                <AttackRow key={r.key} phase={r.phase} initialOpen>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block max-w-[230px] truncate text-left text-gray-500">
-                      {formatTargetShort(formatTargetForDisplay(r.group.target, r.group.layer, r.group.method))}
-                    </span>
-                  </div>
-                  <span className="text-gray-600">{r.group.method}</span>
-                  <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
-                  <span className="text-gray-600">x{r.group.count}</span>
-                  <div />
-                </AttackRow>
-              ))}
             </div>
           </div>
         )}
