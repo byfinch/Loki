@@ -78,6 +78,9 @@ const RrtMonitor = () => {
           </div>
         )}
 
+        {/* Liste sabit yukseklikte: ~4 satir gorunur, fazlasi dahili scroll
+            (Etki Monitoru ile ayni pattern; sayfalama yerine canli akis) */}
+        <div className="max-h-[190px] overflow-y-auto impact-scroll pr-1">
         {!error && pending.map((p) => (
           <div key={`p-${p.host}`} className="flex items-center gap-2.5 border-b border-dashed border-green-500/10 px-2 py-2.5 text-[12px]">
             <span className="truncate font-bold text-green-100/70">{p.host}</span>
@@ -113,6 +116,7 @@ const RrtMonitor = () => {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
