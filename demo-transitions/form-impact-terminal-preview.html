@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saldırı Başlat + Etki Monitörü — Terminal Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  /* ===== Ortak terminal ===== */
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 16px 18px; }
+
+  /* ===== FORM V1: full terminal prompt ===== */
+  .f1-field { margin-bottom: 14px; }
+  .f1-label { display: block; color: rgba(0,255,65,.55); font-size: 10px; letter-spacing: 1px; margin-bottom: 5px; }
+  .f1-label::before { content: '> '; color: rgba(0,255,65,.3); }
+  .f1-input { width: 100%; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 13px; outline: none; }
+  .f1-input:focus { box-shadow: 0 0 12px rgba(0,255,65,.2); }
+  .f1-input::placeholder { color: rgba(0,255,65,.3); }
+  .f1-input.note { border-style: dashed; border-color: rgba(0,212,255,.4); color: #00d4ff; }
+  .f1-input.note::placeholder { color: rgba(0,212,255,.3); }
+  .f1-hint { font-size: 9px; color: #374151; margin-top: 3px; }
+  .f1-hint::before { content: '# '; }
+  .f1-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .f1-tabs { display: inline-flex; gap: 0; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; overflow: hidden; margin-bottom: 16px; }
+  .f1-tabs button { font-family: inherit; font-size: 11px; padding: 6px 16px; background: transparent; border: none; color: rgba(0,255,65,.5); cursor: pointer; }
+  .f1-tabs button.on { background: rgba(0,255,65,.15); color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.6); }
+  .f1-select { position: relative; }
+  .f1-select select { width: 100%; appearance: none; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 13px; outline: none; }
+  .f1-toggle { display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(0,255,65,.2); background: rgba(0,0,0,.5); border-radius: 2px; padding: 10px 12px; margin-bottom: 14px; }
+  .f1-toggle .tt { font-size: 11px; color: #86efac; }
+  .f1-toggle .ts { font-size: 9px; color: #4b5563; }
+  .f1-switch { font-size: 11px; color: #4b5563; letter-spacing: 2px; }
+  .f1-switch.on { color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.6); }
+  .f1-exec { width: 100%; font-family: inherit; font-size: 13px; font-weight: bold; letter-spacing: 2px; padding: 11px; background: rgba(0,255,65,.14); border: 1px solid rgba(0,255,65,.5); color: #00ff41; border-radius: 2px; cursor: pointer; text-shadow: 0 0 10px rgba(0,255,65,.5); transition: all .2s; }
+  .f1-exec:hover { background: rgba(0,255,65,.22); box-shadow: 0 0 20px rgba(0,255,65,.25); }
+  .f1-exec::before { content: '$ ./launch --execute'; display: block; font-size: 9px; font-weight: normal; letter-spacing: 0; color: rgba(0,255,65,.5); margin-bottom: 2px; }
+
+  /* ===== FORM V2: lite ===== */
+  .f2-field { margin-bottom: 14px; }
+  .f2-label { display: block; color: #6b7280; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
+  .f2-input { width: 100%; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; padding: 9px 12px; color: #fff; font-family: 'Courier New', monospace; font-size: 13px; outline: none; }
+  .f2-input:focus { border-color: rgba(0,255,65,.5); box-shadow: 0 0 12px rgba(0,255,65,.12); }
+  .f2-input.note { border-style: dashed; border-color: rgba(0,212,255,.35); }
+  .f2-hint { font-size: 9px; color: #4b5563; margin-top: 3px; }
+  .f2-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .f2-tabs { display: inline-flex; gap: 4px; padding: 3px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; margin-bottom: 16px; }
+  .f2-tabs button { font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; padding: 5px 14px; background: transparent; border: none; color: #9ca3af; cursor: pointer; border-radius: 4px; }
+  .f2-tabs button.on { background: #22c55e; color: #000; box-shadow: 0 0 10px rgba(0,255,65,.4); }
+  .f2-toggle { display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,.1); background: rgba(0,0,0,.4); border-radius: 6px; padding: 12px; margin-bottom: 14px; }
+  .f2-toggle .tt { font-size: 12px; font-weight: bold; color: #fff; font-family: system-ui; }
+  .f2-toggle .ts { font-size: 9px; color: #6b7280; font-family: system-ui; }
+  .f2-switch { width: 36px; height: 18px; border-radius: 999px; background: #22c55e; position: relative; box-shadow: 0 0 10px rgba(0,255,65,.4); }
+  .f2-switch::after { content: ''; position: absolute; top: 2px; left: 18px; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
+  .f2-exec { width: 100%; font-family: system-ui; font-size: 13px; font-weight: bold; padding: 10px; background: linear-gradient(90deg, #22c55e, #059669); border: none; color: #000; border-radius: 6px; cursor: pointer; }
+
+  /* ===== IMPACT V1: full terminal ===== */
+  .i1-target { border: 1px solid rgba(255,45,45,.4); border-left: 3px solid #ff2d2d; background: rgba(255,45,45,.05); border-radius: 2px; padding: 10px 12px; margin-bottom: 10px; }
+  .i1-target.ok { border-color: rgba(0,255,65,.3); border-left-color: #00ff41; background: rgba(0,255,65,.04); }
+  .i1-tline { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .i1-host { color: #e5e5e5; font-weight: bold; }
+  .i1-chip { font-size: 9px; padding: 1px 6px; border-radius: 2px; border: 1px solid rgba(0,212,255,.4); color: #00d4ff; }
+  .i1-chip.loop { border-color: rgba(168,85,247,.4); color: #c084fc; }
+  .i1-state { margin-left: auto; font-size: 11px; font-weight: bold; }
+  .i1-state.down { color: #ff2d2d; text-shadow: 0 0 8px rgba(255,45,45,.6); }
+  .i1-state.up { color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.5); }
+  .i1-nodes { margin-top: 6px; font-size: 10px; color: #6b7280; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .i1-nodes .to { color: #ff5c5c; }
+  .i1-nodes .ok { color: #4ade80; }
+  .i1-meta { margin-top: 5px; font-size: 9px; color: #374151; }
+  .i1-meta::before { content: '# '; }
+  .i1-summary { font-size: 10px; color: rgba(0,255,65,.5); }
+
+  /* ===== IMPACT V2: htop-lite ===== */
+  .i2-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px dashed rgba(0,255,65,.1); font-size: 12px; }
+  .i2-row .st { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .i2-row .st.down { background: #ff2d2d; box-shadow: 0 0 8px #ff2d2d; animation: pulse2 1.4s ease-in-out infinite; }
+  .i2-row .st.up { background: #00ff41; box-shadow: 0 0 8px rgba(0,255,65,.6); }
+  @keyframes pulse2 { 50% { opacity: .35; } }
+  .i2-host { color: #e5e5e5; font-weight: bold; }
+  .i2-detail { color: #6b7280; font-size: 10px; }
+  .i2-state { margin-left: auto; font-size: 11px; font-weight: bold; }
+  .i2-state.down { color: #ff5c5c; }
+  .i2-state.up { color: #00ff41; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= FORM V1 + IMPACT V1 (full terminal) ================= -->
+  <section>
+    <div class="variant-label">V1 — Full Terminal <span>· form prompt'ları + impact hedef kartları [DOWN] şeritli</span></div>
+    <div class="variant-desc"># iki kart da geçmiş/loop/canlı listeyle birebir aynı dilde; en tutarlı paket</div>
+    <div class="pair">
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/saldiri-baslat</span>
+          <span style="color:rgba(0,255,65,.6)">$ ./launch.sh --interactive</span>
+          <span class="t-cursor">▊</span>
+        </div>
+        <div class="t-body">
+          <div class="f1-tabs"><button class="on">[L4]</button><button>[L7]</button></div>
+          <div class="f1-field"><label class="f1-label">hedef_ip</label><input class="f1-input" value="1.1.1.1" readonly></div>
+          <div class="f1-grid2">
+            <div class="f1-field"><label class="f1-label">sure_sn</label><input class="f1-input" value="60" readonly><div class="f1-hint">minimum: 60 sn</div></div>
+            <div class="f1-field"><label class="f1-label">port</label><input class="f1-input" value="53" readonly></div>
+          </div>
+          <div class="f1-field"><label class="f1-label">yontem</label><div class="f1-select"><select><option>DNS — DNS Amplification Flood</option></select></div></div>
+          <div class="f1-field"><label class="f1-label">concurrents</label><input class="f1-input" value="1" readonly></div>
+          <div class="f1-field"><label class="f1-label">not <span style="color:#00d4ff">(opsiyonel)</span></label><input class="f1-input note" placeholder="Marka / asıl site linki"><div class="f1-hint">Aktif Looplar ve Geçmiş'te tıklanabilir görünür</div></div>
+          <div class="f1-toggle">
+            <div><div class="tt">loop_aktif</div><div class="ts">açıkken saldırılar bittikçe otomatik tekrar başlar</div></div>
+            <span class="f1-switch on">[●]</span>
+          </div>
+          <button class="f1-exec">SALDIRI BAŞLAT</button>
+        </div>
+      </div>
+
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/etki-monitoru</span>
+          <span style="color:rgba(0,255,65,.6)">$ watch -n30 checkhost</span>
+          <span class="t-cursor">▊</span>
+          <span class="i1-summary" style="margin-left:auto">3 hedef · 2 kritik</span>
+        </div>
+        <div class="t-body">
+          <div class="i1-target">
+            <div class="i1-tline">
+              <span class="i1-host">secantoutreach.com</span>
+              <span class="i1-chip">L7</span><span class="i1-chip loop">Loop</span>
+              <span class="i1-state down">[DOWN]</span>
+            </div>
+            <div class="i1-nodes"><span>tr1 <span class="to">timeout</span></span><span>de4 <span class="to">timeout</span></span><span>fr2 <span class="to">timeout</span></span><span>us1 <span class="to">timeout</span></span></div>
+            <div class="i1-meta">son ölçüm 18:23:06 · sıradaki ~1 dk</div>
+          </div>
+          <div class="i1-target">
+            <div class="i1-tline">
+              <span class="i1-host">188.114.97.2</span>
+              <span class="i1-chip">L4</span><span class="i1-chip loop">Loop</span>
+              <span class="i1-state down">[DOWN]</span>
+            </div>
+            <div class="i1-nodes"><span>tr1 <span class="to">timeout</span></span><span>de4 <span class="to">timeout</span></span><span>fr2 <span class="to">timeout</span></span><span>us1 <span class="to">timeout</span></span></div>
+            <div class="i1-meta">son ölçüm 18:22:50 · sıradaki ~1 dk</div>
+          </div>
+          <div class="i1-target ok">
+            <div class="i1-tline">
+              <span class="i1-host">194.39.149.94</span>
+              <span class="i1-chip">L4</span>
+              <span class="i1-state up">[UP]</span>
+            </div>
+            <div class="i1-nodes"><span>tr1 <span class="ok">12ms</span></span><span>de4 <span class="ok">9ms</span></span><span>fr2 <span class="ok">14ms</span></span><span>us1 <span class="ok">88ms</span></span></div>
+            <div class="i1-meta">son ölçüm 18:22:44 · sıradaki ~1 dk</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FORM V2 + IMPACT V2 (lite) ================= -->
+  <section>
+    <div class="variant-label">V2 — Terminal Lite <span>· form mevcut yapıya yakın (yuvarlak, sistem fontu karışımı), impact kompakt satır listesi</span></div>
+    <div class="variant-desc"># daha az kostüm; form alışıldık, impact her hedef tek satır</div>
+    <div class="pair">
+      <div class="t-card">
+        <div class="t-titlebar">
+          <span style="color:#86efac">saldiri-baslat</span>
+          <span style="color:rgba(0,255,65,.5)">— yeni saldırı</span>
+        </div>
+        <div class="t-body">
+          <div class="f2-tabs"><button class="on">L4</button><button>L7</button></div>
+          <div class="f2-field"><label class="f2-label">Hedef IP</label><input class="f2-input" value="1.1.1.1" readonly></div>
+          <div class="f2-grid2">
+            <div class="f2-field"><label class="f2-label">Süre (sn)</label><input class="f2-input" value="60" readonly><div class="f2-hint">Minimum: 60 sn</div></div>
+            <div class="f2-field"><label class="f2-label">Port</label><input class="f2-input" value="53" readonly></div>
+          </div>
+          <div class="f2-field"><label class="f2-label">Yöntem</label><input class="f2-input" value="DNS — DNS Amplification Flood" readonly></div>
+          <div class="f2-field"><label class="f2-label">Concurrents</label><input class="f2-input" value="1" readonly></div>
+          <div class="f2-field"><label class="f2-label">Not <span style="color:#00d4ff">(opsiyonel)</span></label><input class="f2-input note" placeholder="Marka / asıl site linki"><div class="f2-hint">Aktif Looplar ve Geçmiş'te tıklanabilir görünür</div></div>
+          <div class="f2-toggle">
+            <div><div class="tt">Loop Aktif</div><div class="ts">Açıkken saldırılar bittikçe otomatik tekrar başlar</div></div>
+            <div class="f2-switch"></div>
+          </div>
+          <button class="f2-exec">Saldırı Başlat</button>
+        </div>
+      </div>
+
+      <div class="t-card">
+        <div class="t-titlebar">
+          <span style="color:#86efac">etki-monitoru</span>
+          <span style="color:rgba(0,255,65,.5)">— 3 hedef · 2 kritik · check-host.net</span>
+        </div>
+        <div class="t-body" style="padding:8px 18px">
+          <div class="i2-row">
+            <span class="st down"></span>
+            <div><div class="i2-host">secantoutreach.com</div><div class="i2-detail">4/4 timeout · son ölçüm 18:23:06</div></div>
+            <span class="i2-state down">Düştü</span>
+          </div>
+          <div class="i2-row">
+            <span class="st down"></span>
+            <div><div class="i2-host">188.114.97.2</div><div class="i2-detail">4/4 timeout · son ölçüm 18:22:50</div></div>
+            <span class="i2-state down">Düştü</span>
+          </div>
+          <div class="i2-row">
+            <span class="st up"></span>
+            <div><div class="i2-host">194.39.149.94</div><div class="i2-detail">~33ms · son ölçüm 18:22:44</div></div>
+            <span class="i2-state up">Ayakta</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
