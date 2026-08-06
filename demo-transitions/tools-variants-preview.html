@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Araçlar (Check-Host / Ping.pe) — Varyantlar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 16px 18px; }
+
+  .tl-tabs { display: inline-flex; overflow: hidden; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; }
+  .tl-tabs button { font-family: inherit; font-size: 11px; padding: 6px 14px; background: transparent; border: none; color: rgba(0,255,65,.5); cursor: pointer; }
+  .tl-tabs button.on { background: rgba(0,255,65,.15); color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.6); }
+  .tl-label { display: block; color: rgba(0,255,65,.55); font-size: 10px; letter-spacing: 1px; margin-bottom: 5px; }
+  .tl-label::before { content: '> '; color: rgba(0,255,65,.3); }
+  .tl-input { width: 100%; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 13px; outline: none; }
+  .tl-input:focus { box-shadow: 0 0 12px rgba(0,255,65,.2); }
+  .tl-input::placeholder { color: rgba(0,255,65,.3); }
+  .tl-select { width: 100%; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 12px; outline: none; appearance: none; }
+  .tl-exec { width: 100%; font-family: inherit; font-size: 12px; font-weight: bold; letter-spacing: 2px; padding: 10px; background: rgba(0,255,65,.14); border: 1px solid rgba(0,255,65,.5); color: #00ff41; border-radius: 2px; cursor: pointer; text-shadow: 0 0 10px rgba(0,255,65,.5); transition: all .2s; }
+  .tl-exec:hover { background: rgba(0,255,65,.22); box-shadow: 0 0 20px rgba(0,255,65,.25); }
+  .tl-exec::before { content: '$ ./check --run'; display: block; font-size: 9px; font-weight: normal; letter-spacing: 0; color: rgba(0,255,65,.5); margin-bottom: 2px; }
+  .tl-desc { font-size: 10px; color: #4b5563; }
+  .tl-desc::before { content: '# '; }
+
+  /* sonuç alanı: terminal çıktısı */
+  .t-out { margin-top: 14px; border: 1px solid rgba(0,255,65,.15); background: #000; border-radius: 2px; padding: 10px 12px; font-size: 11px; }
+  .t-out .ln { display: flex; justify-content: space-between; padding: 2px 0; color: #9ca3af; }
+  .t-out .ln .ok { color: #00ff41; }
+  .t-out .ln .to { color: #ff5c5c; }
+  .t-out .hd { color: rgba(0,255,65,.5); font-size: 10px; margin-bottom: 6px; }
+
+  /* V2: tek satır komut formu */
+  .v2-cmdline { display: flex; align-items: center; gap: 8px; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 10px 12px; font-size: 13px; }
+  .v2-cmdline .prompt { color: rgba(0,255,65,.55); white-space: nowrap; }
+  .v2-cmdline input { flex: 1; background: transparent; border: none; outline: none; color: #00ff41; font-family: inherit; font-size: 13px; }
+  .v2-cmdline input::placeholder { color: rgba(0,255,65,.3); }
+  .v2-cmdline .go { font-family: inherit; font-size: 10px; padding: 4px 12px; background: rgba(0,255,65,.14); border: 1px solid rgba(0,255,65,.5); color: #00ff41; border-radius: 2px; cursor: pointer; white-space: nowrap; }
+  .v2-flags { display: flex; gap: 6px; margin: 10px 0; font-size: 10px; }
+  .v2-flag { border: 1px solid rgba(0,255,65,.25); color: rgba(0,255,65,.55); padding: 3px 10px; border-radius: 2px; cursor: pointer; background: transparent; font-family: inherit; }
+  .v2-flag.on { background: rgba(0,255,65,.15); color: #00ff41; border-color: rgba(0,255,65,.5); }
+
+  /* V3: split — form solda, canlı çıktı sağda */
+  .v3-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .v3-left { padding: 16px; border-right: 1px dashed rgba(0,255,65,.15); }
+  .v3-right { padding: 16px; }
+  .v3-right .hd { color: rgba(0,255,65,.5); font-size: 10px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1 ================= -->
+  <section>
+    <div class="variant-label">V1 — Full Terminal Form <span>· sonuçlar terminal çıktısı kutusunda</span></div>
+    <div class="variant-desc"># saldırı formuyla aynı dil; sonuçlar ./check çıktısı gibi</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="tl-tabs"><button class="on">[check-host]</button><button>[ping.pe]</button></div>
+          <span class="tl-desc" style="margin:0">uluslararası nodelarla kontrol</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 130px;gap:10px;margin-bottom:12px">
+          <div><label class="tl-label">hedef</label><input class="tl-input" placeholder="IP veya domain"></div>
+          <div><label class="tl-label">tip</label><select class="tl-select"><option>HTTP</option><option>Ping</option><option>TCP</option><option>DNS</option></select></div>
+        </div>
+        <button class="tl-exec">KONTROL ET</button>
+        <div class="t-out">
+          <div class="hd">$ ./check --host vegasslot26.top --type http</div>
+          <div class="ln"><span>tr1.node</span><span class="ok">200 · 142ms</span></div>
+          <div class="ln"><span>de4.node</span><span class="ok">200 · 98ms</span></div>
+          <div class="ln"><span>fr2.node</span><span class="to">timeout</span></div>
+          <div class="ln"><span>us1.node</span><span class="ok">200 · 210ms</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2 ================= -->
+  <section>
+    <div class="variant-label">V2 — Komut Satırı <span>· form yok, tek satır komut</span></div>
+    <div class="variant-desc"># en minimal: komut yazar gibi hedef girilir; tip flag butonları</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="tl-tabs" style="margin-bottom:12px"><button class="on">[check-host]</button><button>[ping.pe]</button></div>
+        <div class="v2-flags">
+          <button class="v2-flag on">--http</button>
+          <button class="v2-flag">--ping</button>
+          <button class="v2-flag">--tcp</button>
+          <button class="v2-flag">--dns</button>
+        </div>
+        <div class="v2-cmdline">
+          <span class="prompt">$ check --http</span>
+          <input placeholder="vegasslot26.top">
+          <button class="go">çalıştır ⏎</button>
+        </div>
+        <div class="t-out">
+          <div class="hd"># çıktı — 4 node · 3 ok · 1 timeout</div>
+          <div class="ln"><span>tr1.node</span><span class="ok">200 · 142ms</span></div>
+          <div class="ln"><span>de4.node</span><span class="ok">200 · 98ms</span></div>
+          <div class="ln"><span>fr2.node</span><span class="to">timeout</span></div>
+          <div class="ln"><span>us1.node</span><span class="ok">200 · 210ms</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V3 ================= -->
+  <section>
+    <div class="variant-label">V3 — Split Panel <span>· form solda, canlı çıktı sağda</span></div>
+    <div class="variant-desc"># sonuçlar hep görünür; sol form sağ çıktı</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools --split</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="v3-split">
+        <div class="v3-left">
+          <div class="tl-tabs" style="margin-bottom:12px"><button class="on">[check-host]</button><button>[ping.pe]</button></div>
+          <div style="margin-bottom:12px"><label class="tl-label">hedef</label><input class="tl-input" placeholder="IP veya domain"></div>
+          <div style="margin-bottom:12px"><label class="tl-label">tip</label><select class="tl-select"><option>HTTP</option><option>Ping</option><option>TCP</option><option>DNS</option></select></div>
+          <button class="tl-exec">KONTROL ET</button>
+        </div>
+        <div class="v3-right">
+          <div class="hd"># çıktı — 4 node · 3 ok · 1 timeout</div>
+          <div class="ln" style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:#9ca3af"><span>tr1.node</span><span style="color:#00ff41">200 · 142ms</span></div>
+          <div class="ln" style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:#9ca3af"><span>de4.node</span><span style="color:#00ff41">200 · 98ms</span></div>
+          <div class="ln" style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:#9ca3af"><span>fr2.node</span><span style="color:#ff5c5c">timeout</span></div>
+          <div class="ln" style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:#9ca3af"><span>us1.node</span><span style="color:#00ff41">200 · 210ms</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
