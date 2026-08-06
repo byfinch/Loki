@@ -2,16 +2,22 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
-import CyberCard from './CyberCard';
 
 const REFRESH_INTERVAL_MS = 10000;
+const ITEMS_PER_PAGE = 15;
 
-// Band rozet stilleri (panelin koyu/neon paletine uygun)
+// Risk bantlari: kritik kirmizi / yuksek turuncu / orta cyan (net ayrim)
 const BAND_STYLES = {
-  critical: { label: 'KRİTİK', emoji: '🔴', className: 'bg-red-500/10 text-red-400 border-red-500/30' },
-  high: { label: 'YÜKSEK', emoji: '🟠', className: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
-  medium: { label: 'ORTA', emoji: '🟡', className: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' },
-  low: { label: 'DÜŞÜK', emoji: '⚪', className: 'bg-gray-500/10 text-gray-400 border-gray-500/30' }
+  critical: { label: 'KRİTİK', className: 'text-[#ff2d2d] [text-shadow:0_0_8px_rgba(255,45,45,0.6)]' },
+  high: { label: 'YÜKSEK', className: 'text-[#fb923c]' },
+  medium: { label: 'ORTA', className: 'text-cyan-400' },
+  low: { label: 'DÜŞÜK', className: 'text-gray-500' }
+};
+
+const BAND_DOTS = {
+  critical: '#ff2d2d',
+  high: '#fb923c',
+  medium: '#00d4ff'
 };
 
 // 'YYYY-MM-DD HH:MM:SS UTC' -> tr-TR yerel tarih metni
@@ -37,11 +43,12 @@ const PhishPanel = () => {
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [bandFilter, setBandFilter] = useState('all'); // all, critical, high, medium
+  const [currentPage, setCurrentPage] = useState(1);
   const [copiedId, setCopiedId] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const params = { limit: 100 };
+      const params = { limit: ITEMS_PER_PAGE, offset: (currentPage - 1) * ITEMS_PER_PAGE };
       if (bandFilter !== 'all') params.band = bandFilter;
       const [statsData, alertsData] = await Promise.all([
         apiClient.getPhishStats(),
@@ -57,7 +64,7 @@ const PhishPanel = () => {
     } finally {
       setLoading(false);
     }
-  }, [bandFilter]);
+  }, [bandFilter, currentPage]);
 
   useEffect(() => {
     if (!state.isAuthenticated) return;
@@ -65,6 +72,18 @@ const PhishPanel = () => {
     const interval = setInterval(fetchData, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [state.isAuthenticated, fetchData]);
+
+  // Filtre degisince ilk sayfaya don
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [bandFilter]);
+
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
+
+  // Sayfa numarasi kisayollarinda bos sayfada kalmayi onle
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
 
   const handleCopyDomain = async (domain, id) => {
     const ok = await copyTextToClipboard(domain);
@@ -82,168 +101,231 @@ const PhishPanel = () => {
     showToast(`Hedef alındı: ${domain}`, 'success');
   };
 
-  const statChips = stats
-    ? [
-        { label: 'Toplam Uyarı', value: stats.total, className: 'text-green-400 border-green-500/30 bg-green-500/10' },
-        { label: 'Son 24 Saat', value: stats.last24h, className: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10' },
-        { label: '🔴 Kritik', value: stats.bands?.critical ?? 0, className: 'text-red-400 border-red-500/30 bg-red-500/10' },
-        { label: '🟠 Yüksek', value: stats.bands?.high ?? 0, className: 'text-orange-400 border-orange-500/30 bg-orange-500/10' },
-        { label: '🟡 Orta', value: stats.bands?.medium ?? 0, className: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' }
-      ]
-    : [];
+  // Sayfa numaralari: aktif +-2, ilk/son ve ellipsis
+  const pageNumbers = () => {
+    const pages = [];
+    const push = (v) => { if (!pages.includes(v)) pages.push(v); };
+    push(1);
+    for (let p = currentPage - 2; p <= currentPage + 2; p += 1) {
+      if (p > 1 && p < totalPages) push(p);
+    }
+    if (totalPages > 1) push(totalPages);
+    const out = [];
+    pages.forEach((p, i) => {
+      if (i > 0 && p - pages[i - 1] > 1) out.push('…');
+      out.push(p);
+    });
+    return out;
+  };
 
   return (
-    <CyberCard className="p-6 sm:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div>
-          <h2 className="text-lg font-bold text-white">PhishGuard Uyarıları</h2>
-          <p className="text-[11px] text-gray-500">
-            Phishing / klon domain tespitleri
-            {stats?.lastRun?.finishedAt ? ` · Son tarama: ${formatPhishDate(stats.lastRun.finishedAt)}` : ''}
-          </p>
-        </div>
-        <div className="inline-flex gap-1 p-1 bg-black/40 border border-white/10 rounded-lg">
-          {[
-            { id: 'all', label: 'Tümü' },
-            { id: 'critical', label: '🔴' },
-            { id: 'high', label: '🟠' },
-            { id: 'medium', label: '🟡' }
-          ].map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setBandFilter(f.id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all duration-300 ${
-                bandFilter === f.id
-                  ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(0,255,65,0.4)]'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+    <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
+      {/* CRT scanline dokusu */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,65,0.015) 0 1px, transparent 1px 3px)' }}
+      />
+
+      {/* Title bar */}
+      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
+        <span className="text-green-300/90">root@loki:~/phishguard</span>
+        <span className="text-green-500/60">$ tail -f alerts.log</span>
+        <span className="animate-pulse">▊</span>
+        {stats?.lastRun?.finishedAt && (
+          <span className="ml-auto whitespace-nowrap text-[10px] text-green-500/50">
+            son tarama: {formatPhishDate(stats.lastRun.finishedAt)}
+          </span>
+        )}
       </div>
 
-      {statChips.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-5">
-          {statChips.map((chip) => (
-            <div
-              key={chip.label}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-mono ${chip.className}`}
-            >
-              <span className="opacity-80">{chip.label}:</span>{' '}
-              <span className="font-bold">{chip.value}</span>
-            </div>
-          ))}
+      <div className="relative z-10 p-4 sm:p-5">
+        {/* Istatistik + filtre seridi */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-[10px]">
+          {stats && (
+            <>
+              <span className="rounded-sm border border-green-500/30 bg-green-500/[0.06] px-2.5 py-1 text-green-400">
+                toplam: {stats.total}
+              </span>
+              <span className="rounded-sm border border-white/15 bg-white/[0.03] px-2.5 py-1 text-gray-400">
+                24s: {stats.last24h}
+              </span>
+              <span className="rounded-sm border border-[#ff2d2d]/40 bg-[#ff2d2d]/[0.07] px-2.5 py-1 text-[#ff5c5c]">
+                kritik: {stats.bands?.critical ?? 0}
+              </span>
+              <span className="rounded-sm border border-[#fb923c]/40 bg-[#fb923c]/[0.06] px-2.5 py-1 text-[#fb923c]">
+                yüksek: {stats.bands?.high ?? 0}
+              </span>
+              <span className="rounded-sm border border-cyan-500/30 bg-cyan-500/[0.06] px-2.5 py-1 text-cyan-400">
+                orta: {stats.bands?.medium ?? 0}
+              </span>
+            </>
+          )}
+          <span className="ml-auto inline-flex overflow-hidden rounded-sm border border-green-500/25">
+            {[
+              { id: 'all', label: 'tümü' },
+              { id: 'critical', label: 'kritik' },
+              { id: 'high', label: 'yüksek' },
+              { id: 'medium', label: 'orta' }
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setBandFilter(f.id)}
+                className={`px-3 py-1.5 text-[10px] transition-all ${
+                  bandFilter === f.id
+                    ? 'bg-green-500/15 text-green-400'
+                    : 'text-green-500/50 hover:text-green-400'
+                }`}
+              >
+                {f.id !== 'all' && (
+                  <span
+                    className="mr-1 inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: BAND_DOTS[f.id] }}
+                  />
+                )}
+                {f.label}
+              </button>
+            ))}
+          </span>
         </div>
-      )}
 
-      {unavailable ? (
-        <div className="text-center py-12 text-gray-500">
-          <i className="ph ph-shield-warning text-3xl mb-3 block text-gray-600"></i>
-          <p>PhishGuard entegrasyonu kullanılamıyor</p>
-          <p className="text-[11px] text-gray-600 mt-1">Veritabanına ulaşılamadı veya entegrasyon devre dışı.</p>
-        </div>
-      ) : loading && alerts.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p>Uyarılar yükleniyor...</p>
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p>Henüz uyarı bulunmuyor.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto -mx-2 px-2">
-          <table className="cyber-table w-full text-sm border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="px-3 py-3.5 font-medium">#ID</th>
-                <th className="px-3 py-3.5 font-medium">Domain</th>
-                <th className="px-3 py-3.5 font-medium">Marka</th>
-                <th className="px-3 py-3.5 font-medium text-center">Skor</th>
-                <th className="px-3 py-3.5 font-medium text-center">Risk</th>
-                <th className="px-3 py-3.5 font-medium">Tarih</th>
-                <th className="px-3 py-3.5 font-medium text-center">Aksiyon</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((alert) => {
-                const band = BAND_STYLES[alert.band] || BAND_STYLES.low;
-                return (
-                  <tr
-                    key={alert.id}
-                    className="border-b border-white/5 hover:bg-white/[0.03] transition-colors h-14"
-                  >
-                    <td className="px-3 py-3.5 text-gray-400 font-mono text-xs whitespace-nowrap">
-                      #{alert.id}
-                    </td>
-                    <td className="px-3 h-14 align-middle">
-                      <div className="flex items-center gap-2 h-full">
-                        <span
-                          title="Domain'i kopyala"
-                          onClick={() => handleCopyDomain(alert.domain, alert.id)}
-                          className="inline-block text-left text-gray-200 font-mono text-xs truncate w-[200px] hover:text-green-400 transition-colors cursor-pointer"
-                        >
-                          {alert.domain}
-                        </span>
+        {unavailable ? (
+          <div className="py-12 text-center text-green-500/50">
+            <p>phishguard entegrasyonu kullanılamıyor.</p>
+            <p className="mt-2 text-[10px] text-green-500/30"># veritabanına ulaşılamadı veya entegrasyon devre dışı</p>
+          </div>
+        ) : loading && alerts.length === 0 ? (
+          <div className="py-12 text-center text-green-500/50">
+            <p>uyarilar yukleniyor...</p>
+          </div>
+        ) : alerts.length === 0 ? (
+          <div className="py-12 text-center text-green-500/50">
+            <p>uyari bulunamadi.</p>
+          </div>
+        ) : (
+          <div className="-mx-2 overflow-x-auto px-2">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; #id</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; domain</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; marka</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; skor</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; risk</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; tarih</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-normal">&gt; aksiyon</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert) => {
+                  const band = BAND_STYLES[alert.band] || BAND_STYLES.low;
+                  return (
+                    <tr
+                      key={alert.id}
+                      className="border-b border-dashed border-green-500/10 transition-colors hover:bg-green-500/5"
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 text-[10px] text-gray-600">
+                        #{alert.id}
+                      </td>
+                      <td className="px-3 py-2.5 align-middle">
+                        <div className="flex items-center gap-2">
+                          <span
+                            title="Domain'i kopyala"
+                            onClick={() => handleCopyDomain(alert.domain, alert.id)}
+                            className="inline-block max-w-[220px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
+                          >
+                            {alert.domain}
+                          </span>
+                          <button
+                            onClick={() => handleCopyDomain(alert.domain, alert.id)}
+                            title="Domain'i kopyala"
+                            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
+                              copiedId === alert.id
+                                ? 'border-green-500/40 bg-green-500/20 text-green-400'
+                                : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                            }`}
+                          >
+                            {copiedId === alert.id ? (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            ) : (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-400">{alert.brand || '-'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-center text-gray-200">{alert.score}</td>
+                      <td className={`whitespace-nowrap px-3 py-2.5 text-[11px] font-bold ${band.className}`}>
+                        {band.label}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-[10px] text-gray-500">
+                        {formatPhishDate(alert.createdAt)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right">
                         <button
-                          onClick={() => handleCopyDomain(alert.domain, alert.id)}
-                          title="Domain'i kopyala"
-                          className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center border transition-colors duration-200 ${
-                            copiedId === alert.id
-                              ? 'bg-green-500/20 border-green-500/40 text-green-400'
-                              : 'bg-white/5 border-white/10 text-gray-500 hover:text-green-400 hover:border-green-500/30'
-                          }`}
+                          onClick={() => handleTakeTarget(alert.domain)}
+                          title="Bu domain'i saldırı hedefi yap"
+                          className="rounded-sm border border-red-500/35 bg-red-500/[0.08] px-3 py-1 text-[10px] text-red-400 transition-all hover:bg-red-500/15 hover:shadow-[0_0_12px_rgba(248,113,113,0.2)]"
                         >
-                          {copiedId === alert.id ? (
-                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          ) : (
-                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                          )}
+                          &gt;&gt; hedef al
                         </button>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3.5">
-                      <span className="px-2 py-1 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
-                        {alert.brand || '-'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3.5 text-gray-300 font-mono text-center text-xs">
-                      {alert.score}
-                    </td>
-                    <td className="px-3 py-3.5 text-center">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border whitespace-nowrap ${band.className}`}>
-                        {band.emoji} {band.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3.5 text-gray-400 text-[11px] whitespace-nowrap">
-                      {formatPhishDate(alert.createdAt)}
-                    </td>
-                    <td className="px-3 py-3.5 text-center">
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Sayfalama */}
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-between border-t border-green-500/20 pt-3 text-[10px] text-green-500/50">
+                <span>sayfa {currentPage}/{totalPages} · {total} kayıt</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="rounded-sm border border-green-500/20 px-3 py-1 text-green-500/60 transition-all hover:border-green-500/40 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    &lt; önceki
+                  </button>
+                  {pageNumbers().map((p, i) =>
+                    p === '…' ? (
+                      <span key={`e${i}`} className="px-1 text-gray-600">…</span>
+                    ) : (
                       <button
-                        onClick={() => handleTakeTarget(alert.domain)}
-                        title="Bu domain'i saldırı hedefi yap"
-                        className="px-3 py-1.5 rounded-md text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all duration-300 whitespace-nowrap"
+                        key={p}
+                        onClick={() => setCurrentPage(p)}
+                        className={`rounded-sm px-2.5 py-1 transition-all ${
+                          p === currentPage
+                            ? 'border border-green-500/40 bg-green-500/[0.08] text-green-400'
+                            : 'text-gray-500 hover:text-green-400'
+                        }`}
                       >
-                        Hedef Al
+                        {p}
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="text-[11px] text-gray-600 mt-3">
-            {alerts.length} / {total} uyarı gösteriliyor · 10 saniyede bir yenilenir
-          </p>
-        </div>
-      )}
-    </CyberCard>
+                    )
+                  )}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="rounded-sm border border-green-500/20 px-3 py-1 text-green-500/60 transition-all hover:border-green-500/40 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    sonraki &gt;
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

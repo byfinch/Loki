@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhishGuard Uyarıları — Varyantlar (Sayfalamalı)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  /* ===== Ortak terminal ===== */
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 16px 18px; }
+
+  /* istatistik + filtre şeridi */
+  .p-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 10px; }
+  .p-chip { border: 1px solid rgba(0,255,65,.3); background: rgba(0,255,65,.06); color: #00ff41; padding: 3px 9px; border-radius: 2px; }
+  .p-chip.gray { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.03); color: #9ca3af; }
+  .p-filters { margin-left: auto; display: inline-flex; overflow: hidden; border: 1px solid rgba(0,255,65,.25); border-radius: 2px; }
+  .p-filters button { font-family: inherit; font-size: 10px; padding: 4px 12px; background: transparent; border: none; color: rgba(0,255,65,.5); cursor: pointer; }
+  .p-filters button.on { background: rgba(0,255,65,.15); color: #00ff41; }
+  .p-filters button .d { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+
+  /* tablo ortak */
+  .p-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .p-table th { text-align: left; color: rgba(0,255,65,.5); font-weight: normal; font-size: 10px; padding: 8px 10px; border-bottom: 1px solid rgba(0,255,65,.25); white-space: nowrap; }
+  .p-table td { padding: 9px 10px; border-bottom: 1px dashed rgba(0,255,65,.1); color: #c9d1d9; white-space: nowrap; }
+  .p-id { color: #3f3f46; font-size: 10px; }
+  .p-domain { color: #bbf7d0; }
+  .p-brand { color: #9ca3af; }
+  .p-date { color: #4b5563; font-size: 10px; }
+  .p-act { font-family: inherit; font-size: 10px; padding: 4px 12px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.35); color: #f87171; border-radius: 2px; cursor: pointer; transition: all .2s; }
+  .p-act:hover { background: rgba(248,113,113,.15); box-shadow: 0 0 12px rgba(248,113,113,.2); }
+  .p-act::before { content: '>> '; }
+
+  /* sayfalama */
+  .p-pager { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(0,255,65,.2); font-size: 10px; color: rgba(0,255,65,.5); }
+  .p-pager .btns { display: flex; gap: 6px; }
+  .p-pager button { font-family: inherit; font-size: 10px; padding: 4px 12px; background: transparent; border: 1px solid rgba(0,255,65,.2); color: rgba(0,255,65,.6); border-radius: 2px; cursor: pointer; }
+  .p-pager button:hover:not(:disabled) { border-color: rgba(0,255,65,.45); color: #00ff41; }
+  .p-pager button:disabled { opacity: .35; cursor: not-allowed; }
+  .p-pager .pages { display: flex; gap: 3px; }
+  .p-pager .pages span { padding: 4px 8px; border-radius: 2px; color: #4b5563; }
+  .p-pager .pages span.on { color: #00ff41; border: 1px solid rgba(0,255,65,.4); background: rgba(0,255,65,.08); }
+
+  /* V1: risk glow metin */
+  .v1-risk { font-weight: bold; font-size: 11px; }
+  .v1-risk.kritik { color: #ff2d2d; text-shadow: 0 0 8px rgba(255,45,45,.6); }
+  .v1-risk.yuksek { color: #fb923c; }
+  .v1-risk.orta { color: #00d4ff; }
+
+  /* V2: sol şerit + nokta */
+  .v2-table td { border-bottom: 1px dashed rgba(0,255,65,.08); }
+  .v2-table tr.kritik { box-shadow: inset 2px 0 0 #ff2d2d; }
+  .v2-table tr.yuksek { box-shadow: inset 2px 0 0 #fb923c; }
+  .v2-table tr.orta { box-shadow: inset 2px 0 0 rgba(0,212,255,.5); }
+  .v2-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+  .v2-dot.kritik { background: #ff2d2d; box-shadow: 0 0 8px #ff2d2d; animation: pulse2 1.4s ease-in-out infinite; }
+  .v2-dot.yuksek { background: #fb923c; box-shadow: 0 0 8px rgba(251,146,60,.6); }
+  .v2-dot.orta { background: #00d4ff; }
+  @keyframes pulse2 { 50% { opacity: .35; } }
+  .v2-risk { font-size: 10px; letter-spacing: 1px; }
+  .v2-risk.kritik { color: #ff5c5c; }
+  .v2-risk.yuksek { color: #fb923c; }
+  .v2-risk.orta { color: #00d4ff; }
+
+  /* V3: skor barı */
+  .v3-scorebar { display: inline-block; width: 60px; height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 8px; }
+  .v3-scorebar span { display: block; height: 100%; }
+  .v3-risk { font-size: 10px; padding: 2px 8px; border-radius: 2px; border: 1px solid; }
+  .v3-risk.kritik { color: #ff5c5c; border-color: rgba(255,45,45,.45); background: rgba(255,45,45,.08); }
+  .v3-risk.yuksek { color: #fb923c; border-color: rgba(251,146,60,.4); background: rgba(251,146,60,.07); }
+  .v3-risk.orta { color: #00d4ff; border-color: rgba(0,212,255,.3); background: rgba(0,212,255,.05); }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1 ================= -->
+  <section>
+    <div class="variant-label">V1 — Rafine Tablo <span>· glow risk + numaralı sayfalama</span></div>
+    <div class="variant-desc"># istatistik + filtre aynı şeritte; risk parlak metin; sayfa numaraları</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fb923c"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/phishguard</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f alerts.log</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="p-strip">
+          <span class="p-chip">toplam: 1556</span>
+          <span class="p-chip gray">24s: 62</span>
+          <span class="p-filters">
+            <button class="on">tümü</button>
+            <button><span class="d" style="background:#ff2d2d"></span>kritik</button>
+            <button><span class="d" style="background:#fb923c"></span>yüksek</button>
+            <button><span class="d" style="background:#00d4ff"></span>orta</button>
+          </span>
+        </div>
+        <table class="p-table">
+          <thead><tr><th>#id</th><th>domain</th><th>marka</th><th>skor</th><th>risk</th><th>tarih</th><th style="text-align:right">aksiyon</th></tr></thead>
+          <tbody>
+            <tr><td class="p-id">#1556</td><td class="p-domain">casivera-buradan.cam</td><td class="p-brand">casivera</td><td>90</td><td class="v1-risk kritik">KRİTİK</td><td class="p-date">06.08 16:10</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1555</td><td class="p-domain">casivera-takgiris.cam</td><td class="p-brand">casivera</td><td>100</td><td class="v1-risk kritik">KRİTİK</td><td class="p-date">06.08 16:09</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1552</td><td class="p-domain">rovbet.casino</td><td class="p-brand">rovbet</td><td>95</td><td class="v1-risk kritik">KRİTİK</td><td class="p-date">06.08 16:04</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1541</td><td class="p-domain">vegasslot-giris.bet</td><td class="p-brand">vegasslot</td><td>78</td><td class="v1-risk yuksek">YÜKSEK</td><td class="p-date">06.08 15:58</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1539</td><td class="p-domain">mariobet-guncel.cam</td><td class="p-brand">mariobet</td><td>64</td><td class="v1-risk orta">ORTA</td><td class="p-date">06.08 15:52</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+          </tbody>
+        </table>
+        <div class="p-pager">
+          <span>sayfa 1/312 · 1556 kayıt</span>
+          <div class="btns">
+            <button disabled>&lt; önceki</button>
+            <div class="pages"><span class="on">1</span><span>2</span><span>3</span><span>…</span><span>312</span></div>
+            <button>sonraki &gt;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2 ================= -->
+  <section>
+    <div class="variant-label">V2 — Şeritli Satırlar <span>· risk sol şerit + nabız noktası</span></div>
+    <div class="variant-desc"># kritik satırın sol kenarı kırmızı şerit; göz riski satırdan yakalar</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fb923c"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/phishguard</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f alerts.log</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="p-strip">
+          <span class="p-chip">toplam: 1556</span>
+          <span class="p-chip gray">24s: 62</span>
+          <span class="p-filters">
+            <button class="on">tümü</button>
+            <button><span class="d" style="background:#ff2d2d"></span>kritik</button>
+            <button><span class="d" style="background:#fb923c"></span>yüksek</button>
+            <button><span class="d" style="background:#00d4ff"></span>orta</button>
+          </span>
+        </div>
+        <table class="p-table v2-table">
+          <thead><tr><th>#id</th><th>domain</th><th>marka</th><th>skor</th><th>risk</th><th>tarih</th><th style="text-align:right">aksiyon</th></tr></thead>
+          <tbody>
+            <tr class="kritik"><td class="p-id">#1556</td><td class="p-domain"><span class="v2-dot kritik"></span>casivera-buradan.cam</td><td class="p-brand">casivera</td><td>90</td><td class="v2-risk kritik">KRİTİK</td><td class="p-date">06.08 16:10</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr class="kritik"><td class="p-id">#1555</td><td class="p-domain"><span class="v2-dot kritik"></span>casivera-takgiris.cam</td><td class="p-brand">casivera</td><td>100</td><td class="v2-risk kritik">KRİTİK</td><td class="p-date">06.08 16:09</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr class="kritik"><td class="p-id">#1552</td><td class="p-domain"><span class="v2-dot kritik"></span>rovbet.casino</td><td class="p-brand">rovbet</td><td>95</td><td class="v2-risk kritik">KRİTİK</td><td class="p-date">06.08 16:04</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr class="yuksek"><td class="p-id">#1541</td><td class="p-domain"><span class="v2-dot yuksek"></span>vegasslot-giris.bet</td><td class="p-brand">vegasslot</td><td>78</td><td class="v2-risk yuksek">YÜKSEK</td><td class="p-date">06.08 15:58</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr class="orta"><td class="p-id">#1539</td><td class="p-domain"><span class="v2-dot orta"></span>mariobet-guncel.cam</td><td class="p-brand">mariobet</td><td>64</td><td class="v2-risk orta">ORTA</td><td class="p-date">06.08 15:52</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+          </tbody>
+        </table>
+        <div class="p-pager">
+          <span>sayfa 1/312 · 1556 kayıt</span>
+          <div class="btns">
+            <button disabled>&lt; önceki</button>
+            <div class="pages"><span class="on">1</span><span>2</span><span>3</span><span>…</span><span>312</span></div>
+            <button>sonraki &gt;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V3 ================= -->
+  <section>
+    <div class="variant-label">V3 — Skor Barlı <span>· risk rozeti + skor mini bar</span></div>
+    <div class="variant-desc"># skor görsel bar olarak; risk kutucuk rozet; en "dashboard" hissi</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fb923c"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/phishguard</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f alerts.log</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="p-strip">
+          <span class="p-chip">toplam: 1556</span>
+          <span class="p-chip gray">24s: 62</span>
+          <span class="p-filters">
+            <button class="on">tümü</button>
+            <button><span class="d" style="background:#ff2d2d"></span>kritik</button>
+            <button><span class="d" style="background:#fb923c"></span>yüksek</button>
+            <button><span class="d" style="background:#00d4ff"></span>orta</button>
+          </span>
+        </div>
+        <table class="p-table">
+          <thead><tr><th>#id</th><th>domain</th><th>marka</th><th>skor</th><th>risk</th><th>tarih</th><th style="text-align:right">aksiyon</th></tr></thead>
+          <tbody>
+            <tr><td class="p-id">#1556</td><td class="p-domain">casivera-buradan.cam</td><td class="p-brand">casivera</td><td><span class="v3-scorebar"><span style="width:90%;background:#ff2d2d;box-shadow:0 0 6px #ff2d2d"></span></span>90</td><td><span class="v3-risk kritik">KRİTİK</span></td><td class="p-date">06.08 16:10</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1555</td><td class="p-domain">casivera-takgiris.cam</td><td class="p-brand">casivera</td><td><span class="v3-scorebar"><span style="width:100%;background:#ff2d2d;box-shadow:0 0 6px #ff2d2d"></span></span>100</td><td><span class="v3-risk kritik">KRİTİK</span></td><td class="p-date">06.08 16:09</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1552</td><td class="p-domain">rovbet.casino</td><td class="p-brand">rovbet</td><td><span class="v3-scorebar"><span style="width:95%;background:#ff2d2d;box-shadow:0 0 6px #ff2d2d"></span></span>95</td><td><span class="v3-risk kritik">KRİTİK</span></td><td class="p-date">06.08 16:04</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1541</td><td class="p-domain">vegasslot-giris.bet</td><td class="p-brand">vegasslot</td><td><span class="v3-scorebar"><span style="width:78%;background:#fb923c"></span></span>78</td><td><span class="v3-risk yuksek">YÜKSEK</span></td><td class="p-date">06.08 15:58</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            <tr><td class="p-id">#1539</td><td class="p-domain">mariobet-guncel.cam</td><td class="p-brand">mariobet</td><td><span class="v3-scorebar"><span style="width:64%;background:#00d4ff"></span></span>64</td><td><span class="v3-risk orta">ORTA</span></td><td class="p-date">06.08 15:52</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+          </tbody>
+        </table>
+        <div class="p-pager">
+          <span>sayfa 1/312 · 1556 kayıt</span>
+          <div class="btns">
+            <button disabled>&lt; önceki</button>
+            <div class="pages"><span class="on">1</span><span>2</span><span>3</span><span>…</span><span>312</span></div>
+            <button>sonraki &gt;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

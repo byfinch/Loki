@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Araçlar + PhishGuard — Terminal Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  /* ===== Ortak terminal ===== */
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 16px 18px; }
+
+  /* ===== Tools ===== */
+  .tl-tabs { display: inline-flex; overflow: hidden; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; margin-bottom: 14px; }
+  .tl-tabs button { font-family: inherit; font-size: 11px; padding: 6px 14px; background: transparent; border: none; color: rgba(0,255,65,.5); cursor: pointer; }
+  .tl-tabs button.on { background: rgba(0,255,65,.15); color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.6); }
+  .tl-desc { font-size: 10px; color: #4b5563; margin-bottom: 12px; }
+  .tl-desc::before { content: '# '; }
+  .tl-label { display: block; color: rgba(0,255,65,.55); font-size: 10px; letter-spacing: 1px; margin-bottom: 5px; }
+  .tl-label::before { content: '> '; color: rgba(0,255,65,.3); }
+  .tl-input { width: 100%; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 13px; outline: none; }
+  .tl-input:focus { box-shadow: 0 0 12px rgba(0,255,65,.2); }
+  .tl-input::placeholder { color: rgba(0,255,65,.3); }
+  .tl-row { display: grid; grid-template-columns: 1fr 130px; gap: 10px; margin-bottom: 12px; }
+  .tl-select { background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 12px; outline: none; }
+  .tl-exec { width: 100%; font-family: inherit; font-size: 12px; font-weight: bold; letter-spacing: 2px; padding: 10px; background: rgba(0,255,65,.14); border: 1px solid rgba(0,255,65,.5); color: #00ff41; border-radius: 2px; cursor: pointer; text-shadow: 0 0 10px rgba(0,255,65,.5); transition: all .2s; }
+  .tl-exec:hover { background: rgba(0,255,65,.22); box-shadow: 0 0 20px rgba(0,255,65,.25); }
+  .tl-exec::before { content: '$ ./check --run'; display: block; font-size: 9px; font-weight: normal; letter-spacing: 0; color: rgba(0,255,65,.5); margin-bottom: 2px; }
+
+  /* ===== Phish table (V1) ===== */
+  .p-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 10px; }
+  .p-chip { border: 1px solid rgba(0,255,65,.3); background: rgba(0,255,65,.06); color: #00ff41; padding: 3px 9px; border-radius: 2px; }
+  .p-chip.red { border-color: rgba(255,45,45,.4); background: rgba(255,45,45,.07); color: #ff5c5c; }
+  .p-chip.amber { border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.06); color: #fbbf24; }
+  .p-chip.gray { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.03); color: #9ca3af; }
+  .p-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .p-table th { text-align: left; color: rgba(0,255,65,.5); font-weight: normal; font-size: 10px; padding: 8px 10px; border-bottom: 1px solid rgba(0,255,65,.25); white-space: nowrap; }
+  .p-table td { padding: 8px 10px; border-bottom: 1px dashed rgba(0,255,65,.1); color: #c9d1d9; white-space: nowrap; }
+  .p-table tr:hover td { background: rgba(0,255,65,.04); }
+  .p-id { color: #3f3f46; font-size: 10px; }
+  .p-domain { color: #bbf7d0; }
+  .p-brand { color: #9ca3af; }
+  .p-score { color: #e5e5e5; }
+  .p-risk { font-weight: bold; font-size: 11px; }
+  .p-risk.kritik { color: #ff2d2d; text-shadow: 0 0 8px rgba(255,45,45,.6); }
+  .p-risk.yuksek { color: #fbbf24; }
+  .p-date { color: #4b5563; font-size: 10px; }
+  .p-act { font-family: inherit; font-size: 10px; padding: 4px 12px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.35); color: #f87171; border-radius: 2px; cursor: pointer; transition: all .2s; }
+  .p-act:hover { background: rgba(248,113,113,.15); box-shadow: 0 0 12px rgba(248,113,113,.2); }
+  .p-act::before { content: '>> '; }
+
+  /* ===== Phish rows (V2 lite) ===== */
+  .p2-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px dashed rgba(0,255,65,.1); font-size: 12px; }
+  .p2-row .st { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .p2-row .st.kritik { background: #ff2d2d; box-shadow: 0 0 8px #ff2d2d; animation: pulse2 1.4s ease-in-out infinite; }
+  .p2-row .st.yuksek { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,.6); }
+  @keyframes pulse2 { 50% { opacity: .35; } }
+  .p2-id { color: #3f3f46; font-size: 10px; width: 44px; flex-shrink: 0; }
+  .p2-domain { color: #bbf7d0; font-weight: bold; }
+  .p2-meta { color: #4b5563; font-size: 10px; }
+  .p2-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .p2-score { color: #9ca3af; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1 ================= -->
+  <section>
+    <div class="variant-label">V1 — Full Terminal <span>· araçlar prompt-form + phishguard tam terminal tablo</span></div>
+    <div class="variant-desc"># geçmiş/loop/form kartlarıyla aynı dil</div>
+    <div class="pair">
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/araclar</span>
+          <span style="color:rgba(0,255,65,.6)">$ ./tools</span>
+          <span class="t-cursor">▊</span>
+        </div>
+        <div class="t-body">
+          <div class="tl-tabs"><button class="on">[check-host]</button><button>[ping.pe]</button></div>
+          <div class="tl-desc">hedefi check-host.net üzerinden uluslararası nodelarla kontrol edin</div>
+          <div class="tl-row">
+            <div><label class="tl-label">hedef</label><input class="tl-input" placeholder="IP veya domain"></div>
+            <div><label class="tl-label">tip</label><select class="tl-select"><option>HTTP</option><option>Ping</option></select></div>
+          </div>
+          <button class="tl-exec">KONTROL ET</button>
+        </div>
+      </div>
+
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/phishguard</span>
+          <span style="color:rgba(0,255,65,.6)">$ tail -f alerts.log</span>
+          <span class="t-cursor">▊</span>
+        </div>
+        <div class="t-body">
+          <div class="p-stats">
+            <span class="p-chip">toplam: 1556</span>
+            <span class="p-chip gray">24s: 62</span>
+            <span class="p-chip red">kritik: 1350</span>
+            <span class="p-chip amber">yüksek: 146</span>
+          </div>
+          <table class="p-table">
+            <thead><tr><th>#id</th><th>domain</th><th>marka</th><th>skor</th><th>risk</th><th>tarih</th><th style="text-align:right">aksiyon</th></tr></thead>
+            <tbody>
+              <tr><td class="p-id">#1556</td><td class="p-domain">casivera-buradan.cam</td><td class="p-brand">casivera</td><td class="p-score">90</td><td class="p-risk kritik">KRİTİK</td><td class="p-date">06.08 16:10</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+              <tr><td class="p-id">#1555</td><td class="p-domain">casivera-takgiris.cam</td><td class="p-brand">casivera</td><td class="p-score">100</td><td class="p-risk kritik">KRİTİK</td><td class="p-date">06.08 16:09</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+              <tr><td class="p-id">#1552</td><td class="p-domain">rovbet.casino</td><td class="p-brand">rovbet</td><td class="p-score">95</td><td class="p-risk kritik">KRİTİK</td><td class="p-date">06.08 16:04</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+              <tr><td class="p-id">#1541</td><td class="p-domain">vegasslot-giris.bet</td><td class="p-brand">vegasslot</td><td class="p-score">78</td><td class="p-risk yuksek">YÜKSEK</td><td class="p-date">06.08 15:58</td><td style="text-align:right"><button class="p-act">hedef al</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2 ================= -->
+  <section>
+    <div class="variant-label">V2 — Lite <span>· araçlar aynı V1 form, phishguard kompakt satır listesi</span></div>
+    <div class="variant-desc"># phish tarafında tablo yerine nokta + tek satır; daha az yer</div>
+    <div class="pair">
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/araclar</span>
+          <span style="color:rgba(0,255,65,.6)">$ ./tools</span>
+          <span class="t-cursor">▊</span>
+        </div>
+        <div class="t-body">
+          <div class="tl-tabs"><button class="on">[check-host]</button><button>[ping.pe]</button></div>
+          <div class="tl-desc">hedefi check-host.net üzerinden uluslararası nodelarla kontrol edin</div>
+          <div class="tl-row">
+            <div><label class="tl-label">hedef</label><input class="tl-input" placeholder="IP veya domain"></div>
+            <div><label class="tl-label">tip</label><select class="tl-select"><option>HTTP</option><option>Ping</option></select></div>
+          </div>
+          <button class="tl-exec">KONTROL ET</button>
+        </div>
+      </div>
+
+      <div class="t-card">
+        <div class="t-scan"></div>
+        <div class="t-titlebar">
+          <span class="t-dot" style="background:#f87171"></span>
+          <span class="t-dot" style="background:#fbbf24"></span>
+          <span class="t-dot" style="background:#00ff41"></span>
+          <span style="color:#86efac">root@loki:~/phishguard</span>
+          <span style="color:rgba(0,255,65,.6)">$ tail -f alerts.log</span>
+          <span class="t-cursor">▊</span>
+          <span style="margin-left:auto;font-size:10px;color:rgba(0,255,65,.55)">1556 · <b style="color:#ff5c5c">1350 kritik</b></span>
+        </div>
+        <div class="t-body" style="padding:8px 14px">
+          <div class="p2-row">
+            <span class="st kritik"></span>
+            <span class="p2-id">#1556</span>
+            <div><div class="p2-domain">casivera-buradan.cam</div><div class="p2-meta">casivera · 06.08 16:10</div></div>
+            <div class="p2-right"><span class="p2-score">90</span><button class="p-act">hedef al</button></div>
+          </div>
+          <div class="p2-row">
+            <span class="st kritik"></span>
+            <span class="p2-id">#1555</span>
+            <div><div class="p2-domain">casivera-takgiris.cam</div><div class="p2-meta">casivera · 06.08 16:09</div></div>
+            <div class="p2-right"><span class="p2-score">100</span><button class="p-act">hedef al</button></div>
+          </div>
+          <div class="p2-row">
+            <span class="st kritik"></span>
+            <span class="p2-id">#1552</span>
+            <div><div class="p2-domain">rovbet.casino</div><div class="p2-meta">rovbet · 06.08 16:04</div></div>
+            <div class="p2-right"><span class="p2-score">95</span><button class="p-act">hedef al</button></div>
+          </div>
+          <div class="p2-row">
+            <span class="st yuksek"></span>
+            <span class="p2-id">#1541</span>
+            <div><div class="p2-domain">vegasslot-giris.bet</div><div class="p2-meta">vegasslot · 06.08 15:58</div></div>
+            <div class="p2-right"><span class="p2-score">78</span><button class="p-act">hedef al</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
