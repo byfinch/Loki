@@ -416,3 +416,9 @@ body {
     width: 100%;
   }
 }
+
+/* Aktif Saldirilar satir ac/kapa animasyonu: 1fr -> 0fr grid teknigi ile
+   gercek yumusak kapanis/acilis (kutu ziplamadan kuculur/buyur) */
+.rw { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .5s cubic-bezier(.4,0,.2,1), opacity .4s ease; }
+.rw.closed { grid-template-rows: 0fr; opacity: 0; }
+.rw-inner { overflow: hidden; min-height: 0; }

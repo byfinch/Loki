@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aktif Saldırılar — Terminal + Çıkış Animasyonu Varyantları (v2)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  /* ===== Terminal kart (ortak) ===== */
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-badge { border: 1px solid rgba(0,255,65,.4); background: rgba(0,255,65,.08); padding: 2px 8px; font-size: 11px; color: #00ff41; border-radius: 2px; }
+  .t-badge.cyan { border-color: rgba(0,212,255,.4); background: rgba(0,212,255,.08); color: #00d4ff; }
+  .t-stopall { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3); color: #f87171; padding: 4px 12px; font-size: 11px; font-family: inherit; border-radius: 2px; cursor: pointer; }
+  .t-stopall:hover { background: rgba(248,113,113,.15); }
+  .t-body { position: relative; z-index: 1; padding: 12px 16px; }
+
+  /* Kolon başlıkları */
+  .t-head { display: grid; grid-template-columns: 1fr 170px 110px 70px 170px; gap: 8px; padding: 6px 10px 8px; border-bottom: 1px solid rgba(0,255,65,.25); color: rgba(0,255,65,.5); font-size: 10px; white-space: nowrap; }
+  .t-head .c-r { text-align: right; }
+
+  /* Satır wrapper: 1fr -> 0fr ile GERCEK yumusak kapanis/acilis */
+  .rw { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .5s cubic-bezier(.4,0,.2,1), opacity .4s ease; }
+  .rw.closed { grid-template-rows: 0fr; opacity: 0; }
+  .rw-inner { overflow: hidden; min-height: 0; }
+  .row { display: grid; grid-template-columns: 1fr 170px 110px 70px 170px; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px dashed rgba(0,255,65,.1); white-space: nowrap; transition: background .3s ease, opacity .45s ease, transform .45s ease, filter .45s ease; }
+  .row:hover { background: rgba(0,255,65,.04); }
+  .t-host { color: #bbf7d0; overflow: hidden; text-overflow: ellipsis; }
+  .t-method { color: #e5e5e5; }
+  .t-time { color: #00ff41; font-weight: bold; }
+  .t-count { color: #9ca3af; }
+
+  /* İşlem butonları — düzgün terminal butonları */
+  .t-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .t-act { font-family: inherit; font-size: 10px; padding: 3px 10px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.12); color: #9ca3af; border-radius: 2px; cursor: pointer; transition: all .2s; }
+  .t-act::before { content: '■ '; font-size: 7px; vertical-align: 1px; }
+  .t-act:hover { border-color: rgba(248,113,113,.5); color: #f87171; background: rgba(248,113,113,.08); box-shadow: 0 0 10px rgba(248,113,113,.15); }
+
+  /* ============ V1: FADE + COLLAPSE ============ */
+  .v1-exit .row { opacity: .3; filter: grayscale(1); }
+  .v1-exit .row > * { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.35); }
+
+  /* ============ V2: STATUS FLIP + SLIDE ============ */
+  .v2-done .row { background: rgba(255,45,45,.06); box-shadow: inset 2px 0 0 #ff2d2d; }
+  .v2-done .t-time { color: #ff5c5c !important; }
+  .v2-exit .row { opacity: 0; transform: translateX(28px); }
+
+  /* ============ V3: PROGRESS BAR ============ */
+  .v3-progress { height: 2px; background: rgba(255,255,255,.05); margin: 0 10px; }
+  .v3-progress > span { display: block; height: 100%; background: linear-gradient(90deg, rgba(0,255,65,.7), rgba(0,212,255,.5)); box-shadow: 0 0 8px rgba(0,255,65,.4); transition: width 1s linear; }
+  .v3-exit .row { opacity: 0; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1 ================= -->
+  <section>
+    <div class="variant-label">V1 — Fade &amp; Collapse <span>· terminal dilinde</span></div>
+    <div class="variant-desc"># biten satır soluklaşıp üstü çizilir, sonra 1fr→0fr grid kapanışıyla YUMUŞAKça kaybolur — kutu zıplamaz; yeni satır aynı yumuşaklıkta açılır</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/aktif-saldirilar</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f attacks.live</span>
+        <span class="t-cursor">▊</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="t-badge cyan">Aktif <b class="js-count">4</b></span>
+          <span class="t-badge">Toplam <b class="js-total">4</b></span>
+          <button class="t-stopall">Tümünü Durdur</button>
+        </span>
+      </div>
+      <div class="t-body">
+        <div class="t-head"><span>&gt; Hedef</span><span>&gt; Yöntem</span><span>&gt; Kalan Süre</span><span>&gt; Adet</span><span class="c-r">&gt; İşlem</span></div>
+        <div id="v1-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2 ================= -->
+  <section>
+    <div class="variant-label">V2 — Status Flip <span>· "bitti" görünür, sonra kayar · SEÇİLEN (uygulandı)</span></div>
+    <div class="variant-desc"># süre bitince satır hemen gitmez: [--] bitti + kırmızı şerit ~1sn kalır, sonra sağa kayarak yumuşakça kapanır</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/aktif-saldirilar</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f attacks.live</span>
+        <span class="t-cursor">▊</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="t-badge cyan">Aktif <b class="js-count">4</b></span>
+          <span class="t-badge">Toplam <b class="js-total">4</b></span>
+          <button class="t-stopall">Tümünü Durdur</button>
+        </span>
+      </div>
+      <div class="t-body">
+        <div class="t-head"><span>&gt; Hedef</span><span>&gt; Yöntem</span><span>&gt; Kalan Süre</span><span>&gt; Adet</span><span class="c-r">&gt; İşlem</span></div>
+        <div id="v2-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V3 ================= -->
+  <section>
+    <div class="variant-label">V3 — Depleting Bar <span>· bitiş önceden görülür</span></div>
+    <div class="variant-desc"># satır altındaki ince bar süreyle erir — bitiş sürpriz olmaz; bitince hızlı fade + yumuşak kapanış</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/aktif-saldirilar</span>
+        <span style="color:rgba(0,255,65,.6)">$ tail -f attacks.live</span>
+        <span class="t-cursor">▊</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="t-badge cyan">Aktif <b class="js-count">4</b></span>
+          <span class="t-badge">Toplam <b class="js-total">4</b></span>
+          <button class="t-stopall">Tümünü Durdur</button>
+        </span>
+      </div>
+      <div class="t-body">
+        <div class="t-head"><span>&gt; Hedef</span><span>&gt; Yöntem</span><span>&gt; Kalan Süre</span><span>&gt; Adet</span><span class="c-r">&gt; İşlem</span></div>
+        <div id="v3-body"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const POOL = [
+  { host: 'vegasslot26.top', method: 'CLOUDFLARE', count: 15 },
+  { host: '65.98.19.42', method: 'ACK', count: 10 },
+  { host: 'secantoutreach.com', method: 'GO-NEBULA', count: 25 },
+  { host: '194.39.149.94', method: 'SYN', count: 10 },
+  { host: 'mandala.mk', method: 'CLOUDFLARE', count: 15 },
+  { host: 'crownroyalecashpro…', method: 'HTTP-TEMPESTA', count: 10 }
+];
+
+function makeRow(a, v) {
+  const rw = document.createElement('div');
+  rw.className = 'rw';
+  rw.innerHTML = `<div class="rw-inner">
+    <div class="row">
+      <span class="t-host">${a.host}</span>
+      <span class="t-method">${a.method}</span>
+      <span class="t-time">${a.left}s</span>
+      <span class="t-count">x${a.count}</span>
+      <span class="t-actions"><button class="t-act">durdur</button><button class="t-act">x${a.count}</button></span>
+    </div>
+    ${v === 'v3' ? `<div class="v3-progress"><span style="width:${(a.left / a.total) * 100}%"></span></div>` : ''}
+  </div>`;
+  return rw;
+}
+
+function updateBadges(body) {
+  const card = body.closest('.t-card');
+  card.querySelector('.js-count').textContent = body.children.length;
+  card.querySelector('.js-total').textContent = body.children.length;
+}
+
+function addAttack(body, attacks, a, v, animate = true) {
+  a.tr = makeRow(a, v);
+  if (animate) {
+    a.tr.classList.add('closed');
+    body.appendChild(a.tr);
+    requestAnimationFrame(() => requestAnimationFrame(() => a.tr.classList.remove('closed')));
+  } else {
+    body.appendChild(a.tr);
+  }
+  attacks.push(a);
+  updateBadges(body);
+}
+
+function removeAttack(body, attacks, a) {
+  const idx = attacks.indexOf(a);
+  if (idx > -1) attacks.splice(idx, 1);
+  setTimeout(() => { a.tr.remove(); updateBadges(body); }, 560);
+  updateBadges(body);
+}
+
+function initVariant(v, respawnMs, holdMs) {
+  const body = document.getElementById(v + '-body');
+  const attacks = [];
+  for (let i = 0; i < 4; i++) {
+    const a = { ...POOL[i], total: 12 + i * 6, left: 6 + i * 7 };
+    addAttack(body, attacks, a, v, false);
+  }
+
+  setInterval(() => {
+    [...attacks].forEach((a) => {
+      if (a.dying) return;
+      a.left -= 1;
+      const timeCell = a.tr.querySelector('.t-time');
+      if (a.left > 0) {
+        timeCell.textContent = a.left + 's';
+        const bar = a.tr.querySelector('.v3-progress > span');
+        if (bar) bar.style.width = (a.left / a.total) * 100 + '%';
+        return;
+      }
+      a.dying = true;
+      if (v === 'v1') {
+        timeCell.textContent = '0s';
+        a.tr.classList.add('v1-exit');
+        setTimeout(() => { a.tr.classList.add('closed'); removeAttack(body, attacks, a); }, 600);
+      } else if (v === 'v2') {
+        timeCell.textContent = '[--] bitti';
+        a.tr.classList.add('v2-done');
+        setTimeout(() => {
+          a.tr.classList.add('v2-exit');
+          setTimeout(() => { a.tr.classList.add('closed'); removeAttack(body, attacks, a); }, 420);
+        }, holdMs);
+      } else {
+        timeCell.textContent = '0s';
+        a.tr.classList.add('v3-exit');
+        setTimeout(() => { a.tr.classList.add('closed'); removeAttack(body, attacks, a); }, 380);
+      }
+      updateBadges(body);
+      setTimeout(() => {
+        const src = POOL[Math.floor(Math.random() * POOL.length)];
+        const na = { ...src, total: 14 + Math.floor(Math.random() * 8), left: 0 };
+        na.left = na.total;
+        addAttack(body, attacks, na, v, true);
+      }, respawnMs);
+    });
+  }, 1000);
+}
+
+initVariant('v1', 2400);
+initVariant('v2', 2400, 1100);
+initVariant('v3', 2200);
+</script>
+</body>
+</html>
