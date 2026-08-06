@@ -38,7 +38,7 @@ const RrtMonitor = () => {
       return { cls: 'text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.5)]', text: `[OK] ${(r.items || []).length} öğe · ${valid} geçerli` };
     }
     if (r.verdict === 'none') return { cls: 'text-gray-500', text: '[--] no items' };
-    if (r.verdict === 'crawl_error') return { cls: 'text-[#ff5c5c]', text: `[X] taranamadı${r.crawlError ? `: ${r.crawlError}` : ''}` };
+    if (r.verdict === 'crawl_error') return { cls: 'text-[#ff5c5c]', text: '[X] taranamadı' };
     return { cls: 'text-[#ff5c5c]', text: '[X] hata' };
   };
 
@@ -93,8 +93,13 @@ const RrtMonitor = () => {
           const v = verdictView(r);
           return (
             <div key={r.host} className="flex items-center gap-2.5 border-b border-dashed border-green-500/10 px-2 py-2.5 text-[12px] last:border-b-0">
-              <span className="truncate font-bold text-green-100" title={r.host}>{r.host}</span>
-              <span className={`whitespace-nowrap text-[11px] font-bold ${v.cls}`}>{v.text}</span>
+              <span className="w-[150px] flex-shrink-0 truncate font-bold text-green-100" title={r.host}>{r.host}</span>
+              <span
+                className={`min-w-0 truncate text-[11px] font-bold ${v.cls}`}
+                title={r.crawlError || (r.verdict === 'items' ? (r.items || []).map((i) => i.name).join(', ') : '')}
+              >
+                {v.text}
+              </span>
               {r.partialLoad > 0 && (
                 <span className="whitespace-nowrap text-[10px] text-[#fb923c]">[!] {r.partialLoad} kaynak</span>
               )}

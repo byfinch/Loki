@@ -31,8 +31,8 @@ const CACHE_MS = 24 * 60 * 60 * 1000;   // ayni host 24 saatte bir
 // kisa cache sonrasi tekrar denenebilsin.
 const ERROR_CACHE_MS = 10 * 60 * 1000;
 const TEST_TIMEOUT_MS = 3 * 60 * 1000;  // test basina toplam ust sinir
-const NAV_WAIT_MS = 20 * 1000;          // tek tiklamada sonuc sayfasina gecis bekleme
-const MAX_CLICK_ATTEMPTS = 4;
+const NAV_WAIT_MS = 12 * 1000;          // tek tiklamada sonuc sayfasina gecis bekleme
+const MAX_CLICK_ATTEMPTS = 2;           // hizli basarisizlik: hata cache'i (10dk) zaten tekrar deniyor
 const POLL_INTERVAL_MS = 5000;
 const MAX_KEPT_HOSTS = 200;
 
@@ -189,20 +189,41 @@ async function getBrowser() {
   if (browserLaunching) return browserLaunching;
 
   browserLaunching = (async () => {
-    const puppeteer = require('puppeteer-core');
+    // puppeteer-extra + stealth: BotGuard'in automation tespit vektorlerini
+    // (navigator.webdriver, chrome.runtime, permissions vb.) kapatir.
+    const puppeteer = require('puppeteer-extra');
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteer.use(StealthPlugin());
+
     const executablePath = resolveChromePath();
-    log(`Chrome baslatiliyor (headed): ${executablePath}`);
+    const args = [
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--window-size=1280,900',
+      '--disable-blink-features=AutomationControlled'
+    ];
+    // Opsiyonel proxy (or. http://user:pass@host:port): VPS/datacenter IP
+    // skorunu yukseltmek icin residential proxy takilabilir.
+    const proxyUrl = process.env.LOKI_RRT_PROXY_URL || null;
+    if (proxyUrl) {
+      try {
+        const p = new URL(proxyUrl);
+        args.push(`--proxy-server=${p.protocol}//${p.host}`);
+      } catch (e) {
+        warn('LOKI_RRT_PROXY_URL parse edilemedi, proxysuz devam:', e.message);
+      }
+    }
+
+    // Kalici profil: cerez/gecmis birikimi BotGuard skorunu yukseltir.
+    const userDataDir = path.join(DATA_DIR, 'rrt-chrome-profile');
+    log(`Chrome baslatiliyor (headed): ${executablePath}${proxyUrl ? ' +proxy' : ''}`);
     const b = await puppeteer.launch({
       executablePath,
       // BotGuard headless'i reddediyor; headed + (Linux'ta) xvfb DISPLAY'i sart.
       headless: false,
-      args: [
-        '--no-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--window-size=1280,900',
-        '--disable-blink-features=AutomationControlled'
-      ]
+      userDataDir,
+      args
     });
     b.on('disconnected', () => { browser = null; });
     browser = b;
@@ -272,6 +293,37 @@ function extractItems(z) {
 
 // --- Tek test akisi ---------------------------------------------------------
 
+// BotGuard input pipeline'ini beslemek icin JS el.click() YERINE gercek
+// mouse olaylari: butona insan gibi yaklas, kisa bekle, down/up.
+// Buton bulunamazsa URL input'una odaklanip Enter (fallback).
+async function clickTestButtonHuman(page) {
+  const handle = await page.evaluateHandle(() => {
+    const els = [...document.querySelectorAll('button, [role="button"]')];
+    return els.find((e) => /test url/i.test(e.innerText || '')) || null;
+  });
+  const el = handle.asElement();
+  if (el) {
+    const box = await el.boundingBox();
+    if (box) {
+      const x = box.x + box.width / 2 + (Math.random() * 8 - 4);
+      const y = box.y + box.height / 2 + (Math.random() * 4 - 2);
+      await page.mouse.move(x, y, { steps: 20 + Math.floor(Math.random() * 15) });
+      await new Promise((r) => setTimeout(r, 150 + Math.random() * 300));
+      await page.mouse.down();
+      await new Promise((r) => setTimeout(r, 50 + Math.random() * 90));
+      await page.mouse.up();
+      return true;
+    }
+  }
+  // Fallback: input alanina odaklan + Enter
+  await page.evaluate(() => {
+    const input = document.querySelector('input[type="url"], input[placeholder*="URL" i], form input');
+    if (input) input.focus();
+  });
+  await page.keyboard.press('Enter');
+  return false;
+}
+
 async function runTest(key, url) {
   const startedAt = Date.now();
   const record = {
@@ -316,6 +368,16 @@ async function runTestInner(url, record) {
   const b = await getBrowser();
   const page = await b.newPage();
   try {
+    // Proxy kimlik dogrulamasi (LOKI_RRT_PROXY_URL icindeki user:pass)
+    const proxyUrl = process.env.LOKI_RRT_PROXY_URL || null;
+    if (proxyUrl) {
+      try {
+        const p = new URL(proxyUrl);
+        if (p.username) {
+          await page.authenticate({ username: decodeURIComponent(p.username), password: decodeURIComponent(p.password) });
+        }
+      } catch (e) { /* getBrowser'da zaten loglandi */ }
+    }
     await page.setViewport({ width: 1280, height: 900 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36');
     await page.evaluateOnNewDocument(() => {
@@ -331,11 +393,8 @@ async function runTestInner(url, record) {
     let navigated = false;
     for (let attempt = 0; attempt < MAX_CLICK_ATTEMPTS && !navigated; attempt++) {
       await new Promise((r) => setTimeout(r, 2500));
-      await page.evaluate(() => {
-        const el = [...document.querySelectorAll('button, [role="button"]')]
-          .find((e) => /test url/i.test(e.innerText || ''));
-        if (el) el.click();
-      });
+      const realClick = await clickTestButtonHuman(page);
+      if (!realClick) warn(`TEST URL butonu bulunamadi, Enter fallback kullanildi: ${url}`);
       const deadline = Date.now() + NAV_WAIT_MS;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 1000));
