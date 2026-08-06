@@ -31,9 +31,26 @@ const CACHE_MS = 24 * 60 * 60 * 1000;   // ayni host 24 saatte bir
 const ERROR_CACHE_MS = 10 * 60 * 1000;
 const MAX_KEPT_HOSTS = 200;
 
-// Uzak worker delegasyonu (opsiyonel)
-const WORKER_URL = (process.env.LOKI_RRT_WORKER_URL || '').replace(/\/+$/, '') || null;
-const WORKER_SECRET = process.env.LOKI_RRT_SECRET || '';
+// Uzak worker delegasyonu (opsiyonel). Env yoksa backend/data/rrt-worker.json
+// dosyasina duser (VPS'te editorle ugrasmamak icin): {"url":"http://...","secret":"..."}
+function loadWorkerConfig() {
+  let url = (process.env.LOKI_RRT_WORKER_URL || '').replace(/\/+$/, '');
+  let secret = process.env.LOKI_RRT_SECRET || '';
+  if (!url) {
+    try {
+      const cfgPath = path.join(__dirname, 'data', 'rrt-worker.json');
+      if (fs.existsSync(cfgPath)) {
+        const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+        url = String(cfg.url || '').replace(/\/+$/, '');
+        if (!secret) secret = String(cfg.secret || '');
+      }
+    } catch (err) {
+      console.warn('[rrt] worker config okunamadi:', err.message);
+    }
+  }
+  return { url: url || null, secret };
+}
+const { url: WORKER_URL, secret: WORKER_SECRET } = loadWorkerConfig();
 const WORKER_TIMEOUT_MS = 4 * 60 * 1000; // worker cagrisi ust siniri (test 3dk + pay)
 
 // Kuyruk ve durum
