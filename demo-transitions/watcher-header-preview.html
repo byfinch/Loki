@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etki Monitörü — Watcher Başlık Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 12px 14px; color: #4b5563; font-size: 11px; }
+
+  /* ortak titlebar tabanı */
+  .tbar { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 9px 12px; font-size: 12px; color: #00ff41; min-width: 0; }
+  .tbar .cmd { color: rgba(0,255,65,.65); white-space: nowrap; }
+  .tbar .path { color: #86efac; white-space: nowrap; }
+  .cnt { margin-left: auto; font-size: 10px; color: rgba(0,255,65,.55); white-space: nowrap; }
+  .cnt b { color: #ff5c5c; font-weight: bold; }
+
+  /* V2: alt durum satırı */
+  .statusline { position: relative; z-index: 1; border-bottom: 1px solid rgba(0,255,65,.12); padding: 5px 12px; font-size: 10px; color: #4b5563; display: flex; gap: 12px; flex-wrap: wrap; }
+  .statusline .k { color: rgba(0,255,65,.5); }
+
+  /* V3: footer */
+  .tfoot { position: relative; z-index: 1; border-top: 1px solid rgba(0,255,65,.12); padding: 5px 12px; font-size: 9px; color: #374151; }
+
+  /* V4: mini istatistik hücreleri */
+  .statgrid { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid rgba(0,255,65,.12); }
+  .statgrid .cell { padding: 6px 10px; font-size: 10px; color: #6b7280; border-right: 1px dashed rgba(0,255,65,.1); }
+  .statgrid .cell:last-child { border-right: none; }
+  .statgrid .cell b { display: block; color: #00ff41; font-size: 11px; }
+  .statgrid .cell b.red { color: #ff5c5c; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- V1: kısa komut -->
+  <section>
+    <div class="variant-label">V1 — Kısa komut <span>· tek satır, sığar</span></div>
+    <div class="variant-desc"># komut kısaltıldı: -i 30s; kaynak footer'a veya hiç</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="tbar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span class="path">root@loki:~</span>
+        <span class="cmd">$ watcher -i 30s</span>
+        <span class="t-cursor">▊</span>
+        <span class="cnt">5 hedef · <b>2 kritik</b></span>
+      </div>
+      <div class="t-body">… hedef satırları …</div>
+    </div>
+  </section>
+
+  <!-- V2: iki satır — komut + durum satırı -->
+  <section>
+    <div class="variant-label">V2 — Komut + durum satırı <span>· meta alt satırda</span></div>
+    <div class="variant-desc"># titlebar sadece $ watcher; interval/kaynak/sayaçlar alt satırda</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="tbar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span class="path">root@loki:~</span>
+        <span class="cmd">$ watcher</span>
+        <span class="t-cursor">▊</span>
+        <span class="cnt">5 hedef · <b>2 kritik</b></span>
+      </div>
+      <div class="statusline">
+        <span><span class="k">interval:</span> 30s</span>
+        <span><span class="k">source:</span> check-host.net</span>
+        <span><span class="k">son:</span> 18:23:06</span>
+      </div>
+      <div class="t-body">… hedef satırları …</div>
+    </div>
+  </section>
+
+  <!-- V3: minimal başlık + footer -->
+  <section>
+    <div class="variant-label">V3 — Minimal başlık + footer <span>· kaynak altta</span></div>
+    <div class="variant-desc"># en temiz; teknik meta kartın altında</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="tbar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span class="path">root@loki:~</span>
+        <span class="cmd">$ watcher</span>
+        <span class="t-cursor">▊</span>
+        <span class="cnt">5 hedef · <b>2 kritik</b></span>
+      </div>
+      <div class="t-body">… hedef satırları …</div>
+      <div class="tfoot"># check-host.net · 30s aralık</div>
+    </div>
+  </section>
+
+  <!-- V4: istatistik hücreli -->
+  <section>
+    <div class="variant-label">V4 — Başlık + istatistik hücreleri <span>· dashboard hissi</span></div>
+    <div class="variant-desc"># başlık minimal; altında 3 hücreli özet şeridi</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="tbar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span class="path">root@loki:~</span>
+        <span class="cmd">$ watcher</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="statgrid">
+        <div class="cell">hedef<b>5</b></div>
+        <div class="cell">kritik<b class="red">2</b></div>
+        <div class="cell">aralık<b>30s</b></div>
+      </div>
+      <div class="t-body">… hedef satırları …</div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
