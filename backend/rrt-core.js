@@ -24,7 +24,7 @@ const path = require('path');
 
 const DATA_DIR = path.join(__dirname, 'data');
 
-const TEST_TIMEOUT_MS = 3 * 60 * 1000;  // test basina toplam ust sinir
+const TEST_TIMEOUT_MS = 5 * 60 * 1000;  // test basina toplam ust sinir
 const NAV_WAIT_MS = 12 * 1000;          // tek tiklamada sonuc sayfasina gecis bekleme
 const MAX_CLICK_ATTEMPTS = 2;           // hizli basarisizlik: hata cache'i (10dk) zaten tekrar deniyor
 const POLL_INTERVAL_MS = 5000;
@@ -291,15 +291,20 @@ async function runTestInner(url, record) {
       const st = frames.MrNfbc;
       if (Array.isArray(st) && st[1]) state = st[1];
       if (state === 2) break;
-      // Bazi sonuclarda (ozellikle crawl hatasi) durum kodu 2'ye DONMUYOR;
-      // sonuc sayfasinin metnindeki terminal isaretleri de bitis say.
-      const txt = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
-      if (/Crawl failed|not available to Google|No rich results detected|valid items? detected/i.test(txt)) {
-        terminalText = txt;
-        break;
-      }
+      // Bazi sonuclarda (ozellikle crawl hatasi) durum kodu 2'ye DONMUYOR.
+      // Sonuc sayfasi server-rendered: result URL'sini dogrudan cekip terminal
+      // isaret tara (SPA metni gec/guvenilmez guncellenir).
+      try {
+        const res = await fetch(record.resultUrl, { timeout: 20000 });
+        const html = await res.text();
+        const m = html.match(/Crawl failed|not available to Google|No rich results detected|\d+\s+valid items? detected/i);
+        if (m) {
+          terminalText = m[0];
+          break;
+        }
+      } catch (e) { /* sonraki turda tekrar */ }
     }
-    if (state !== 2 && !terminalText) throw new Error('Test durumu 3 dakikada tamamlanmadi');
+    if (state !== 2 && !terminalText) throw new Error('Test durumu 5 dakikada tamamlanmadi');
 
     // Crawl hatasi kontrolu (sayfa metni uzerinden)
     const pageText = terminalText || await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
