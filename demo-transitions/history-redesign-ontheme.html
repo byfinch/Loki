@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saldırı Geçmişi — Tema Uyumlu Varyantlar</title>
+<style>
+  /* Tema kuralları: zemin #000, yüzey #0f0f0f / rgba(255,255,255,.03),
+     metin beyaz-gri, yeşil #00ff41 SADECE aksan (%3-25 alpha),
+     cyan #00d4ff ikincil aksan, kırmızı sadece yıkıcı aksiyon. */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+
+  .host { color: #e5e5e5; font-family: 'Courier New', monospace; font-size: 12px; }
+  .note-link { color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.4); font-family: 'Courier New', monospace; }
+  .note-link:hover { text-shadow: 0 0 8px rgba(0,255,65,.5); }
+  .date { color: #6b7280; font-size: 11px; font-family: 'Courier New', monospace; }
+  .num { font-family: 'Courier New', monospace; text-align: center; color: #9ca3af; }
+  .empty { color: #3f3f46; }
+  .method { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 11px; color: #fff; }
+  .loop-tag { display: inline-block; padding: 3px 10px; background: rgba(0,212,255,.06); border: 1px solid rgba(0,212,255,.25); border-radius: 999px; font-size: 10px; color: #00d4ff; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #00ff41; }
+  .status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 6px rgba(0,255,65,.7); }
+  .status.done { color: #6b7280; }
+  .status.done::before { background: #4b5563; box-shadow: none; }
+  .count-badge { padding: 2px 8px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 4px; font-size: 12px; color: #00d4ff; font-family: 'Courier New', monospace; }
+  .search { flex: 1; min-width: 200px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 12px; outline: none; transition: border-color .2s, box-shadow .2s; }
+  .search:focus { border-color: rgba(0,255,65,.4); box-shadow: 0 0 12px rgba(0,255,65,.08); }
+  .clear-btn { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); color: #f87171; padding: 7px 14px; font-size: 11px; border-radius: 999px; cursor: pointer; }
+
+  /* ============ V7: GHOST GRID (V4'ün tema hali) ============ */
+  .v7-card { background: #0f0f0f; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; overflow: hidden; }
+  .v7-topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .v7-topbar h2 { font-size: 16px; font-weight: 600; color: #fff; display: flex; gap: 10px; align-items: center; }
+  .v7-meta { font-family: 'Courier New', monospace; font-size: 10px; color: #4b5563; }
+  .v7-meta b { color: #9ca3af; font-weight: normal; }
+  .v7-toolbar { display: flex; gap: 8px; padding: 14px 18px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .v7-tab { background: transparent; border: 1px solid rgba(255,255,255,.1); color: #9ca3af; padding: 6px 12px; font-size: 11px; border-radius: 6px; cursor: pointer; }
+  .v7-tab .cnt { color: #4b5563; margin-left: 5px; font-family: 'Courier New', monospace; }
+  .v7-tab.on { border-color: rgba(0,255,65,.35); color: #00ff41; background: rgba(0,255,65,.05); }
+  .v7-tab.on .cnt { color: rgba(0,255,65,.6); }
+  .v7-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v7-table th { text-align: left; color: #4b5563; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; cursor: pointer; }
+  .v7-table th .sort { color: #00d4ff; }
+  .v7-table td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.04); color: #d1d5db; white-space: nowrap; }
+  .v7-table tbody tr { border-left: 2px solid transparent; }
+  .v7-table tbody tr.st-active { border-left-color: rgba(0,255,65,.6); }
+  .v7-table tbody tr:hover { background: rgba(0,255,65,.02); }
+  .v7-id { color: #3f3f46; font-size: 10px; font-family: 'Courier New', monospace; }
+  .v7-note { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+
+  /* ============ V8: ACCENT LINE (cam + ince yeşil çizgi) ============ */
+  .v8-card { position: relative; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 24px; overflow: hidden; }
+  .v8-card::before { content: ''; position: absolute; inset: 0; border-radius: 12px; padding: 1px; background: linear-gradient(120deg, rgba(0,255,65,.22), rgba(0,212,255,.12), rgba(0,255,65,.04)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+  .v8-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .v8-head h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; gap: 10px; align-items: center; }
+  .v8-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .v8-tabs { display: flex; gap: 2px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 3px; }
+  .v8-tab { position: relative; background: transparent; border: none; color: #9ca3af; padding: 6px 14px; font-size: 11px; cursor: pointer; border-radius: 999px; }
+  .v8-tab.on { color: #00ff41; }
+  .v8-tab.on::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 2px; height: 1px; background: #00ff41; box-shadow: 0 0 8px rgba(0,255,65,.8); }
+  .v8-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v8-table th { text-align: left; color: #6b7280; font-weight: 500; font-size: 11px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+  .v8-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.04); color: #d1d5db; white-space: nowrap; }
+  .v8-table tbody tr:hover { background: rgba(0,255,65,.025); }
+  .v8-note { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+
+  /* ============ V9: KART (tema hali) ============ */
+  .v9-card { background: #0f0f0f; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 24px; }
+  .v9-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .v9-head h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; gap: 10px; align-items: center; }
+  .v9-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .v9-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .v9-item { position: relative; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 14px 14px 14px 18px; transition: border-color .15s, box-shadow .15s; }
+  .v9-item:hover { border-color: rgba(0,255,65,.3); box-shadow: 0 0 18px rgba(0,255,65,.06); }
+  .v9-item::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: rgba(0,255,65,.6); border-radius: 2px; }
+  .v9-item.done::before { background: rgba(255,255,255,.1); }
+  .v9-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .v9-host { font-family: 'Courier New', monospace; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; }
+  .v9-note { font-size: 11px; font-family: 'Courier New', monospace; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; color: #9ca3af; }
+  .v9-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v9-chip { font-size: 10px; font-family: 'Courier New', monospace; color: #9ca3af; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.08); border-radius: 5px; padding: 3px 8px; }
+  .v9-chip b { color: #e5e5e5; font-weight: normal; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V7: GHOST GRID ================= -->
+  <section>
+    <div class="variant-label">V7 — Ghost Grid <span>· SOC yoğunluğu ama monokrom; yeşil sadece durum/aktif filtre/sol şeritte</span></div>
+    <div class="v7-card">
+      <div class="v7-topbar">
+        <h2>Saldırı Geçmişi <span class="count-badge">227</span></h2>
+        <span class="v7-meta">session: <b>live</b> · refresh: <b>3s</b></span>
+      </div>
+      <div class="v7-toolbar">
+        <input class="search" placeholder="Hedef, yöntem, port veya durum ara...">
+        <button class="v7-tab">Tümü<span class="cnt">227</span></button>
+        <button class="v7-tab on">Aktif<span class="cnt">12</span></button>
+        <button class="v7-tab">Tamamlandı<span class="cnt">198</span></button>
+        <button class="v7-tab">Durduruldu<span class="cnt">17</span></button>
+        <button class="clear-btn">Temizle</button>
+      </div>
+      <table class="v7-table">
+        <thead><tr><th>#</th><th>Hedef <span class="sort">▲</span></th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç <span class="sort">▼</span></th><th>Bitiş</th></tr></thead>
+        <tbody>
+          <tr class="st-active">
+            <td class="v7-id">0227</td>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v7-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="method">HTTP-TEMPESTA</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status">Aktif</span></td>
+            <td class="date">06.08 14:26:59</td><td class="date">-</td>
+          </tr>
+          <tr class="st-active">
+            <td class="v7-id">0226</td>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v7-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="method">CLOUDFLARE</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status">Aktif</span></td>
+            <td class="date">06.08 14:26:29</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="v7-id">0225</td>
+            <td class="host">65.98.19.42</td>
+            <td class="v7-note empty">—</td>
+            <td class="num">53</td><td><span class="method">ACK</span></td><td class="num">60s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status done">Tamamlandı</span></td>
+            <td class="date">06.08 14:20:10</td><td class="date">06.08 14:21:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= V8: ACCENT LINE ================= -->
+  <section>
+    <div class="variant-label">V8 — Accent Line <span>· mevcut kart diline en yakın; fark: aktif filtrede yeşil alt çizgi + nokta durum</span></div>
+    <div class="v8-card">
+      <div class="v8-head"><h2>Saldırı Geçmişi <span class="count-badge">227</span></h2></div>
+      <div class="v8-toolbar">
+        <input class="search" placeholder="Hedef, yöntem, port veya durum ara...">
+        <div class="v8-tabs">
+          <button class="v8-tab">Tümü</button>
+          <button class="v8-tab on">Aktif</button>
+          <button class="v8-tab">Tamamlandı</button>
+          <button class="v8-tab">Durduruldu</button>
+        </div>
+        <button class="clear-btn">Temizle</button>
+      </div>
+      <table class="v8-table">
+        <thead><tr><th>Hedef</th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v8-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="method">HTTP-TEMPESTA</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v8-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td><span class="method">CLOUDFLARE</span></td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:29</td><td class="date">-</td>
+          </tr>
+          <tr>
+            <td class="host">65.98.19.42</td>
+            <td class="v8-note empty">—</td>
+            <td class="num">53</td><td><span class="method">ACK</span></td><td class="num">60s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td><td><span class="status done">Tamamlandı</span></td>
+            <td class="date">06.08.2026 14:20:10</td><td class="date">06.08.2026 14:21:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= V9: KART (tema hali) ================= -->
+  <section>
+    <div class="variant-label">V9 — Kart (tema hali) <span>· tablo yerine kartlar; yeşil sadece hover glow + sol şerit + durum</span></div>
+    <div class="v9-card">
+      <div class="v9-head"><h2>Saldırı Geçmişi <span class="count-badge">227</span></h2></div>
+      <div class="v9-toolbar">
+        <input class="search" placeholder="Hedef, yöntem, port veya durum ara...">
+        <div class="v8-tabs">
+          <button class="v8-tab">Tümü</button>
+          <button class="v8-tab on">Aktif</button>
+          <button class="v8-tab">Tamamlandı</button>
+          <button class="v8-tab">Durduruldu</button>
+        </div>
+        <button class="clear-btn">Temizle</button>
+      </div>
+      <div class="v9-grid">
+        <div class="v9-item">
+          <div class="v9-top"><span class="v9-host">crownroyalecashpro…</span><span class="status">Aktif</span></div>
+          <div class="v9-note">📝 <a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></div>
+          <div class="v9-meta">
+            <span class="v9-chip"><b>HTTP-TEMPESTA</b></span>
+            <span class="v9-chip">443</span>
+            <span class="v9-chip">200s</span>
+            <span class="v9-chip">x10</span>
+            <span class="v9-chip">Loop</span>
+            <span class="v9-chip">06.08 14:26:59</span>
+          </div>
+        </div>
+        <div class="v9-item">
+          <div class="v9-top"><span class="v9-host">crownroyalecashpro…</span><span class="status">Aktif</span></div>
+          <div class="v9-note">📝 <a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></div>
+          <div class="v9-meta">
+            <span class="v9-chip"><b>CLOUDFLARE</b></span>
+            <span class="v9-chip">443</span>
+            <span class="v9-chip">200s</span>
+            <span class="v9-chip">x10</span>
+            <span class="v9-chip">Loop</span>
+            <span class="v9-chip">06.08 14:26:29</span>
+          </div>
+        </div>
+        <div class="v9-item done">
+          <div class="v9-top"><span class="v9-host">65.98.19.42</span><span class="status done">Tamamlandı</span></div>
+          <div class="v9-meta">
+            <span class="v9-chip"><b>ACK</b></span>
+            <span class="v9-chip">53</span>
+            <span class="v9-chip">60s</span>
+            <span class="v9-chip">x10</span>
+            <span class="v9-chip">Loop</span>
+            <span class="v9-chip">14:20:10 → 14:21:10</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
