@@ -283,6 +283,14 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // RRT (rich results) otomasyon sonuclari + kuyruk
+  async getRrt() {
+    const res = await apiFetch(`${API_BASE}/rrt`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // Live SSE
   // EventSource constructor header desteklemez, sessionId'yi kisa query anahtari ile gonderiyoruz.
   connectLiveStream(username, onData, onError) {

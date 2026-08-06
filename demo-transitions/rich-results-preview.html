@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rich Results Test — Panel Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .variant-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+  .variant-label span { color: #555; letter-spacing: 0; text-transform: none; }
+  .variant-desc { color: #6b7280; font-size: 12px; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+
+  .t-card { position: relative; overflow: hidden; border: 1px solid rgba(0,255,65,.25); background: rgba(2,10,4,.8); border-radius: 4px; font-family: 'Courier New', monospace; box-shadow: 0 0 40px rgba(0,255,65,.06); }
+  .t-scan { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .t-titlebar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0,255,65,.2); background: rgba(0,255,65,.05); padding: 10px 16px; font-size: 12px; color: #00ff41; }
+  .t-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .t-cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .t-body { position: relative; z-index: 1; padding: 16px 18px; }
+
+  .tl-tabs { display: inline-flex; overflow: hidden; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; }
+  .tl-tabs button { font-family: inherit; font-size: 11px; padding: 6px 14px; background: transparent; border: none; color: rgba(0,255,65,.5); cursor: pointer; }
+  .tl-tabs button.on { background: rgba(0,255,65,.15); color: #00ff41; text-shadow: 0 0 8px rgba(0,255,65,.6); }
+  .tl-label { display: block; color: rgba(0,255,65,.55); font-size: 10px; letter-spacing: 1px; margin-bottom: 5px; }
+  .tl-label::before { content: '> '; color: rgba(0,255,65,.3); }
+  .tl-input { width: 100%; background: #000; border: 1px solid rgba(0,255,65,.3); border-radius: 2px; padding: 9px 12px; color: #00ff41; font-family: inherit; font-size: 13px; outline: none; }
+  .tl-input::placeholder { color: rgba(0,255,65,.3); }
+  .tl-exec { width: 100%; font-family: inherit; font-size: 12px; font-weight: bold; letter-spacing: 2px; padding: 10px; background: rgba(0,255,65,.14); border: 1px solid rgba(0,255,65,.5); color: #00ff41; border-radius: 2px; cursor: pointer; text-shadow: 0 0 10px rgba(0,255,65,.5); }
+  .tl-exec::before { content: '$ ./rrt --run'; display: block; font-size: 9px; font-weight: normal; letter-spacing: 0; color: rgba(0,255,65,.5); margin-bottom: 2px; }
+
+  /* çalışıyor durumu */
+  .rrt-running { margin-top: 14px; border: 1px solid rgba(0,255,65,.15); background: #000; border-radius: 2px; padding: 10px 12px; font-size: 11px; }
+  .rrt-running .step { padding: 2px 0; color: #6b7280; }
+  .rrt-running .step.done { color: #00ff41; }
+  .rrt-running .step.done::before { content: '[OK] '; }
+  .rrt-running .step.now { color: #00d4ff; }
+  .rrt-running .step.now::before { content: '[..] '; }
+  .rrt-running .step.now::after { content: ' ▊'; animation: blink 1s steps(1) infinite; }
+  .rrt-running .step.wait { color: #3f3f46; }
+  .rrt-running .step.wait::before { content: '[  ] '; }
+
+  /* sonuç öğeleri */
+  .rrt-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px dashed rgba(0,255,65,.1); font-size: 12px; }
+  .rrt-item:last-child { border-bottom: none; }
+  .rrt-item .nm { color: #bbf7d0; font-weight: bold; }
+  .rrt-item .dt { color: #4b5563; font-size: 10px; }
+  .rrt-badge { margin-left: auto; font-size: 10px; font-weight: bold; }
+  .rrt-badge.ok { color: #00ff41; }
+  .rrt-badge.warn { color: #fb923c; }
+  .rrt-badge.err { color: #ff5c5c; }
+
+  /* V2: büyük verdict banner */
+  .rrt-verdict { margin-top: 14px; border-radius: 2px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+  .rrt-verdict.ok { border: 1px solid rgba(0,255,65,.45); background: rgba(0,255,65,.07); }
+  .rrt-verdict.bad { border: 1px solid rgba(255,45,45,.45); background: rgba(255,45,45,.07); }
+  .rrt-verdict .big { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+  .rrt-verdict.ok .big { color: #00ff41; text-shadow: 0 0 10px rgba(0,255,65,.6); }
+  .rrt-verdict.bad .big { color: #ff2d2d; text-shadow: 0 0 10px rgba(255,45,45,.6); }
+  .rrt-verdict .sub { font-size: 10px; color: #6b7280; }
+  .rrt-meta { margin-top: 8px; font-size: 9px; color: #374151; }
+  .rrt-meta::before { content: '# '; }
+
+  .rrt-section { margin-top: 14px; }
+  .rrt-section .hd { font-size: 10px; color: rgba(0,255,65,.5); margin-bottom: 6px; }
+  .rrt-section .hd::before { content: '$ '; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- ================= V1 ================= -->
+  <section>
+    <div class="variant-label">V1 — Terminal Çıktı Akışı <span>· çalışma adımları + öğe listesi</span></div>
+    <div class="variant-desc"># test ilerlemesi terminal logu gibi akar; sonuç öğe listesi [OK]/uyarı/hata rozetli</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools --rich-results</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="tl-tabs" style="margin-bottom:12px"><button>[check-host]</button><button>[ping.pe]</button><button class="on">[rich-results]</button></div>
+        <div style="margin-bottom:12px"><label class="tl-label">hedef_url</label><input class="tl-input" value="https://vegasslot.com/" readonly></div>
+        <button class="tl-exec">TEST ET</button>
+
+        <!-- çalışıyor durumu -->
+        <div class="rrt-running">
+          <div class="step done">botguard token alındı</div>
+          <div class="step done">test başlatıldı · id: 8tzHE-H-4wnHY</div>
+          <div class="step now">sayfa render ediliyor (googlebot)</div>
+          <div class="step wait">yapısal veri analizi</div>
+          <div class="step wait">sonuç alınıyor</div>
+        </div>
+      </div>
+    </div>
+    <div class="t-card" style="margin-top:16px">
+      <div class="t-scan"></div>
+      <div class="t-body">
+        <div style="font-size:10px;color:rgba(0,255,65,.5);margin-bottom:8px">$ sonuç — vegasslot.com · 42sn</div>
+        <div class="rrt-item"><span class="nm">Breadcrumbs</span><span class="dt">2 öğe</span><span class="rrt-badge ok">[OK] geçerli</span></div>
+        <div class="rrt-item"><span class="nm">FAQ</span><span class="dt">6 soru</span><span class="rrt-badge ok">[OK] geçerli</span></div>
+        <div class="rrt-item"><span class="nm">Product</span><span class="dt">1 öğe</span><span class="rrt-badge warn">[!] 2 uyarı</span></div>
+        <div class="rrt-item"><span class="nm">Review Snippet</span><span class="dt">—</span><span class="rrt-badge err">[X] 1 hata</span></div>
+        <div class="rrt-item"><span class="nm" style="color:#fb923c">kaynak yüklemesi</span><span class="dt">2 js, 1 css</span><span class="rrt-badge warn">[!] 3 kaynak yüklenemedi</span></div>
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+          <span class="rrt-meta" style="margin:0">googlebot-smartphone · 06.08.2026 18:44</span>
+          <a href="#" onclick="return false" style="font-size:10px;color:#00ff41;text-decoration:none;border-bottom:1px dotted rgba(0,255,65,.5)">>> google'da aç</a>
+        </div>
+      </div>
+    </div>
+    <div class="t-card" style="margin-top:16px">
+      <div class="t-scan"></div>
+      <div class="t-body">
+        <div style="font-size:10px;color:rgba(0,255,65,.5);margin-bottom:8px">$ sonuç — ornek-site.xyz · 39sn</div>
+        <div class="rrt-item" style="justify-content:center;padding:18px 10px">
+          <span style="color:#6b7280;font-size:12px">[--] No items detected — bu URL'de rich result tespit edilmedi</span>
+        </div>
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+          <span class="rrt-meta" style="margin:0">googlebot-smartphone · 06.08.2026 18:52</span>
+          <a href="#" onclick="return false" style="font-size:10px;color:#00ff41;text-decoration:none;border-bottom:1px dotted rgba(0,255,65,.5)">>> google'da aç</a>
+        </div>
+      </div>
+    </div>
+    <div class="t-card" style="margin-top:16px">
+      <div class="t-scan"></div>
+      <div class="t-body">
+        <div style="font-size:10px;color:rgba(0,255,65,.5);margin-bottom:8px">$ sonuç — ulasilamayan.site · 12sn</div>
+        <div class="rrt-item" style="justify-content:center;padding:18px 10px">
+          <span style="color:#ff5c5c;font-size:12px">[X] Sayfa taranamadı — robots.txt engeli</span>
+        </div>
+        <div class="rrt-meta" style="margin-top:10px">diğer ihtimaller: 404 · timeout · DNS hatası · erişim engeli</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V2 ================= -->
+  <section>
+    <div class="variant-label">V2 — Verdict Banner <span>· büyük sonuç kartı + detay altında</span></div>
+    <div class="variant-desc"># ilk bakışta "uygun mu değil mi"; öğeler altta kompakt</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools --rich-results</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="tl-tabs" style="margin-bottom:12px"><button>[check-host]</button><button>[ping.pe]</button><button class="on">[rich-results]</button></div>
+        <div style="margin-bottom:12px"><label class="tl-label">hedef_url</label><input class="tl-input" value="https://vegasslot.com/" readonly></div>
+        <button class="tl-exec">TEST ET</button>
+
+        <div class="rrt-verdict ok">
+          <span style="font-size:22px">✓</span>
+          <div>
+            <div class="big">RICH RESULT UYGUN</div>
+            <div class="sub">3 öğe tespit edildi · 2 geçerli · 1 uyarılı</div>
+          </div>
+          <span style="margin-left:auto;font-size:10px;color:rgba(0,255,65,.5)">42sn</span>
+        </div>
+        <div class="rrt-section">
+          <div class="hd">öğeler</div>
+          <div class="rrt-item"><span class="nm">Breadcrumbs</span><span class="rrt-badge ok">[OK]</span></div>
+          <div class="rrt-item"><span class="nm">FAQ</span><span class="rrt-badge ok">[OK]</span></div>
+          <div class="rrt-item"><span class="nm">Product</span><span class="rrt-badge warn">[!] 2 uyarı</span></div>
+        </div>
+        <div class="rrt-meta">googlebot-smartphone · 06.08.2026 18:44 · <a href="#" onclick="return false" style="color:#00ff41;text-decoration:none;border-bottom:1px dotted rgba(0,255,65,.5)">>> google'da aç</a></div>
+      </div>
+    </div>
+    <div class="t-card" style="margin-top:16px">
+      <div class="t-scan"></div>
+      <div class="t-body">
+        <div class="rrt-verdict bad">
+          <span style="font-size:22px">ⓘ</span>
+          <div>
+            <div class="big">NO ITEMS DETECTED</div>
+            <div class="sub">bu URL'de rich result tespit edilmedi</div>
+          </div>
+          <span style="margin-left:auto;font-size:10px;color:rgba(255,45,45,.5)">39sn</span>
+        </div>
+        <div class="rrt-meta">googlebot-smartphone · 06.08.2026 18:52 · <a href="#" onclick="return false" style="color:#00ff41;text-decoration:none;border-bottom:1px dotted rgba(0,255,65,.5)">>> google'da aç</a></div>
+      </div>
+    </div>
+    <div class="t-card" style="margin-top:16px">
+      <div class="t-scan"></div>
+      <div class="t-body">
+        <div class="rrt-verdict bad">
+          <span style="font-size:22px">⚠</span>
+          <div>
+            <div class="big">SAYFA TARANAMADI</div>
+            <div class="sub">robots.txt engeli · 404 · timeout · DNS hatası</div>
+          </div>
+          <span style="margin-left:auto;font-size:10px;color:rgba(255,45,45,.5)">12sn</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V3 ================= -->
+  <section>
+    <div class="variant-label">V3 — Saf Log <span>· her şey tek terminal akışında</span></div>
+    <div class="variant-desc"># en minimal: sonuç da log satırı; hızlı tarama</div>
+    <div class="t-card">
+      <div class="t-scan"></div>
+      <div class="t-titlebar">
+        <span class="t-dot" style="background:#f87171"></span>
+        <span class="t-dot" style="background:#fbbf24"></span>
+        <span class="t-dot" style="background:#00ff41"></span>
+        <span style="color:#86efac">root@loki:~/araclar</span>
+        <span style="color:rgba(0,255,65,.6)">$ ./tools --rich-results</span>
+        <span class="t-cursor">▊</span>
+      </div>
+      <div class="t-body">
+        <div class="tl-tabs" style="margin-bottom:12px"><button>[check-host]</button><button>[ping.pe]</button><button class="on">[rich-results]</button></div>
+        <div style="margin-bottom:12px"><label class="tl-label">hedef_url</label><input class="tl-input" value="https://vegasslot.com/" readonly></div>
+        <button class="tl-exec">TEST ET</button>
+
+        <div class="rrt-running">
+          <div class="step done">botguard token alındı</div>
+          <div class="step done">test başlatıldı · id: 8tzHE-H-4wnHY</div>
+          <div class="step done">render tamam (googlebot) · 31sn</div>
+          <div class="step done">analiz tamam · toplam 42sn</div>
+          <div class="step" style="color:#00ff41">[OK] Breadcrumbs — geçerli (2 öğe)</div>
+          <div class="step" style="color:#00ff41">[OK] FAQ — geçerli (6 soru)</div>
+          <div class="step" style="color:#fb923c">[!&nbsp;] Product — 2 uyarı</div>
+          <div class="step" style="color:#ff5c5c">[X&nbsp;] Review Snippet — 1 hata</div>
+          <div class="step" style="color:#fb923c">[!&nbsp;] 3 kaynak yüklenemedi (2 js, 1 css)</div>
+          <div class="step" style="color:#374151"># googlebot-smartphone · 06.08.2026 18:44 · >> google'da aç</div>
+        </div>
+        <div class="rrt-running" style="margin-top:10px">
+          <div class="step" style="color:#6b7280">[--] No items detected — bu URL'de rich result tespit edilmedi (ornek-site.xyz · 39sn)</div>
+        </div>
+        <div class="rrt-running" style="margin-top:10px">
+          <div class="step" style="color:#ff5c5c">[X&nbsp;] Sayfa taranamadı — robots.txt engeli (ulasilamayan.site · 12sn)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

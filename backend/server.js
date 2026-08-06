@@ -16,6 +16,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
+const rrt = require('./rrt');
 
 initTelegram();
 
@@ -1545,6 +1546,8 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
         concurrents: count,
         attackIds
       });
+      // Saldiri basladi: hedefin Rich Results durumunu arka planda olc (24s cache tekillestirir)
+      rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     }
 
     res.json({
@@ -2067,6 +2070,8 @@ app.post('/api/stresse/loop', async (req, res) => {
     }
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
+    // Loop basladi: hedefin Rich Results durumunu arka planda olc (bir kez; cache tekillestirir)
+    rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     saveState();
   } catch (error) {
     handleEndpointError(res, error, 'Loop error');
@@ -2470,6 +2475,19 @@ app.get('/api/method-congestion', (req, res) => {
     return res.status(401).json({ status: 'error', message: 'Session required' });
   }
   res.json(getMethodCongestionSnapshot());
+});
+
+/**
+ * GET /api/rrt
+ * Google Rich Results Test sonuclari (testedAt desc) + kuyrukta bekleyen/calisan hostlar.
+ */
+app.get('/api/rrt', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId || !sessions[sessionId]) {
+    return res.status(401).json({ status: 'error', message: 'Session required' });
+  }
+  const state = rrt.getRrtState();
+  res.json({ status: 'success', ...state });
 });
 
 /**
