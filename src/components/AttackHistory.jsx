@@ -216,21 +216,21 @@ const AttackHistory = () => {
           </div>
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
-            {/* table-fixed: sutun genislikleri sayfa iceriginden bagimsiz sabit;
-                aksi halde uzun not/hedef iceren sayfalar tabloyu genisletip
-                diger sutunlari sikistiriyordu (sayfa bazli kutu boyutu degisimi) */}
+            {/* table-fixed + yuzde genislikler: tablo her zaman konteynere
+                oturur (yatay scroll olmaz) ve her sayfa ayni boyutta kalir;
+                satirlar sabit yukseklikte (bos dolgu satirlari dahil) */}
             <table className="w-full table-fixed text-xs">
               <colgroup>
-                <col className="w-[230px]" />
-                <col className="w-[200px]" />
-                <col className="w-[55px]" />
-                <col className="w-[135px]" />
-                <col className="w-[60px]" />
-                <col className="w-[60px]" />
-                <col className="w-[60px]" />
-                <col className="w-[95px]" />
-                <col className="w-[150px]" />
-                <col className="w-[150px]" />
+                <col className="w-[20%]" />
+                <col className="w-[15%]" />
+                <col className="w-[5%]" />
+                <col className="w-[11%]" />
+                <col className="w-[6%]" />
+                <col className="w-[6%]" />
+                <col className="w-[6%]" />
+                <col className="w-[9%]" />
+                <col className="w-[11%]" />
+                <col className="w-[11%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
@@ -250,7 +250,7 @@ const AttackHistory = () => {
                 {paginatedRecords.map((record) => (
                   <tr
                     key={record.historyId}
-                    className="border-b border-dashed border-green-500/10 transition-colors hover:bg-green-500/5"
+                    className="h-10 border-b border-dashed border-green-500/10 transition-colors hover:bg-green-500/5"
                   >
                     <td className="px-3 py-2.5 align-middle">
                       <div className="flex items-center gap-2">
@@ -298,14 +298,14 @@ const AttackHistory = () => {
                       {record.loop ? <span className="text-cyan-400">loop</span> : <span className="text-gray-500">tek</span>}
                     </td>
                     <td className="px-3 py-2.5">{statusText(record.status)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">{formatDate(record.startedAt)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">
+                    <td className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">{formatDate(record.startedAt)}</td>
+                    <td className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">
                       {record.status === 'active' ? '-' : formatDate(record.endedAt)}
                     </td>
                   </tr>
                 ))}
                 {Array.from({ length: Math.max(0, itemsPerPage - paginatedRecords.length) }).map((_, idx) => (
-                  <tr key={`empty-${idx}`} className="h-9 border-b border-dashed border-green-500/10">
+                  <tr key={`empty-${idx}`} className="h-10 border-b border-dashed border-green-500/10">
                     <td className="px-3 py-2.5" colSpan={10}></td>
                   </tr>
                 ))}
