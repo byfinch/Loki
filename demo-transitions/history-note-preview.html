@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saldırı Geçmişi — Not Görünüm Varyantları</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050505; color: #e5e5e5; font-family: system-ui, -apple-system, sans-serif; padding: 40px 20px; }
+  .demo-wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  .section-label { color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .section-label span { color: #555; letter-spacing: 0; text-transform: none; }
+
+  .card { position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 24px; overflow: hidden; }
+  .card::before { content: ''; position: absolute; inset: 0; border-radius: 12px; padding: 1px; background: linear-gradient(120deg, rgba(0,255,65,.25), rgba(0,212,255,.15), rgba(0,255,65,.05)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .header h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .count-badge { padding: 2px 8px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 4px; font-size: 12px; color: #00d4ff; font-family: 'Courier New', monospace; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #6b7280; font-weight: 500; font-size: 12px; padding: 0 12px 12px; border-bottom: 1px solid rgba(255,255,255,.1); white-space: nowrap; }
+  td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; white-space: nowrap; }
+  .host { color: #e5e5e5; font-family: 'Courier New', monospace; font-size: 12px; }
+  .copy-btn { display: inline-block; width: 24px; height: 24px; margin-left: 8px; vertical-align: middle; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 5px; color: #6b7280; font-size: 10px; cursor: pointer; }
+  .method { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font-size: 11px; font-family: 'Courier New', monospace; }
+  .num { color: #d1d5db; font-family: 'Courier New', monospace; font-size: 12px; text-align: center; }
+  .loop-tag { display: inline-block; padding: 3px 10px; background: rgba(0,212,255,.08); border: 1px solid rgba(0,212,255,.3); border-radius: 6px; font-size: 11px; color: #00d4ff; }
+  .status { display: inline-block; padding: 5px 14px; background: rgba(0,255,65,.1); border: 1px solid rgba(0,255,65,.35); border-radius: 8px; font-size: 11px; color: #00ff41; }
+  .date { color: #9ca3af; font-size: 11px; font-family: 'Courier New', monospace; }
+
+  /* Not linki ortak */
+  .note-link { color: #00ff41; text-decoration: none; border-bottom: 1px dotted rgba(0,255,65,.5); font-family: 'Courier New', monospace; }
+  .note-link:hover { text-shadow: 0 0 8px rgba(0,255,65,.6); }
+
+  /* Varyant A: ayrı Not sütunu */
+  .note-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: #00d4ff; font-family: 'Courier New', monospace; }
+  .note-cell .empty { color: #3f3f46; }
+
+  /* Varyant B: hedefin altında tek satır, düzgün hizalı */
+  .host-stack { display: flex; flex-direction: column; gap: 3px; }
+  .host-line { display: flex; align-items: center; }
+  .note-line { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #00d4ff; font-family: 'Courier New', monospace; max-width: 260px; }
+  .note-line .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-line .tag { color: #4b5563; flex-shrink: 0; }
+
+  /* Varyant C: ikon + tooltip */
+  .note-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: 6px; vertical-align: middle; background: rgba(0,212,255,.08); border: 1px solid rgba(0,212,255,.3); border-radius: 5px; font-size: 10px; cursor: default; }
+  .note-icon .tip { visibility: hidden; opacity: 0; position: absolute; top: 130%; left: 0; background: #0a0a0a; border: 1px solid rgba(0,212,255,.4); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #e5e5e5; width: max-content; max-width: 280px; white-space: normal; transition: opacity .15s; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,.6); }
+  .note-icon:hover .tip { visibility: visible; opacity: 1; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+
+  <!-- VARYANT A: ayrı Not sütunu -->
+  <section>
+    <div class="section-label">Varyant A <span>· ayrı "Not" sütunu — tablo yapısı bozulmaz, hepsi hizalı</span></div>
+    <div class="card">
+      <div class="header"><h2>Saldırı Geçmişi <span class="count-badge">227</span></h2></div>
+      <table>
+        <thead><tr><th>Hedef</th><th>Not</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="host">https://crownroyalecashpro…</span><button class="copy-btn">⧉</button></td>
+            <td><div class="note-cell" title="tr.casiveragirisyolu.store/"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store/</a></div></td>
+            <td><span class="method">HTTP-TEMPESTA</span></td>
+            <td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td>
+          </tr>
+          <tr>
+            <td><span class="host">https://crownroyalecashpro…</span><button class="copy-btn">⧉</button></td>
+            <td><div class="note-cell" title="tr.casiveragirisyolu.store/"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store/</a></div></td>
+            <td><span class="method">CLOUDFLARE</span></td>
+            <td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:29</td>
+          </tr>
+          <tr>
+            <td><span class="host">65.98.19.42</span><button class="copy-btn">⧉</button></td>
+            <td><div class="note-cell"><span class="empty">—</span></div></td>
+            <td><span class="method">ACK</span></td>
+            <td class="num">60s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- VARYANT B: hedefin altında düzgün hizalı tek satır -->
+  <section>
+    <div class="section-label">Varyant B <span>· hedefin altında tek satır (mevcut yaklaşımın düzeltilmiş hali) — sütun eklenmez</span></div>
+    <div class="card">
+      <div class="header"><h2>Saldırı Geçmişi <span class="count-badge">227</span></h2></div>
+      <table>
+        <thead><tr><th>Hedef</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="host-stack">
+                <div class="host-line"><span class="host">https://crownroyalecashpro…</span><button class="copy-btn">⧉</button></div>
+                <div class="note-line" title="tr.casiveragirisyolu.store/"><span class="tag">📝</span><span class="txt"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store/</a></span></div>
+              </div>
+            </td>
+            <td><span class="method">HTTP-TEMPESTA</span></td>
+            <td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="host-stack">
+                <div class="host-line"><span class="host">65.98.19.42</span><button class="copy-btn">⧉</button></div>
+              </div>
+            </td>
+            <td><span class="method">ACK</span></td>
+            <td class="num">60s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- VARYANT C: ikon + tooltip -->
+  <section>
+    <div class="section-label">Varyant C <span>· 📝 ikonu, üzerine gelince tooltip — satır yüksekliği hiç değişmez, en kompakt</span></div>
+    <div class="card">
+      <div class="header"><h2>Saldırı Geçmişi <span class="count-badge">227</span></h2></div>
+      <table>
+        <thead><tr><th>Hedef</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>
+              <span class="host">https://crownroyalecashpro…</span><button class="copy-btn">⧉</button><span class="note-icon">📝<span class="tip"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store/</a></span></span>
+            </td>
+            <td><span class="method">HTTP-TEMPESTA</span></td>
+            <td class="num">200s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:59</td>
+          </tr>
+          <tr>
+            <td><span class="host">65.98.19.42</span><button class="copy-btn">⧉</button></td>
+            <td><span class="method">ACK</span></td>
+            <td class="num">60s</td><td class="num">x10</td>
+            <td><span class="loop-tag">Loop</span></td>
+            <td><span class="status">Aktif</span></td>
+            <td class="date">06.08.2026 14:26:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
