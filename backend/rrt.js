@@ -165,7 +165,22 @@ function resolveChromePath() {
     }
     return 'chrome';
   }
-  // Linux: xvfb-run altinda PATH'ten cozulur
+  // Linux: puppeteer PATH cozumlemez; bilinen yollari dene, yoksa `which`
+  const candidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium'
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  try {
+    const { execSync } = require('child_process');
+    const found = execSync('which google-chrome || which chromium || which chromium-browser', { encoding: 'utf8' }).trim().split('\n')[0];
+    if (found) return found;
+  } catch { /* asagida fallback */ }
   return 'google-chrome';
 }
 
