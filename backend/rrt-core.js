@@ -92,7 +92,11 @@ async function getBrowser() {
       '--disable-gpu',
       '--disable-dev-shm-usage',
       '--window-size=1280,900',
-      '--disable-blink-features=AutomationControlled'
+      '--disable-blink-features=AutomationControlled',
+      // Crash sonrasi "sayfalari geri yukle" davranisini kapat (sekme birikimi)
+      '--hide-crash-restore-bubble',
+      '--no-first-run',
+      '--no-default-browser-check'
     ];
     // Opsiyonel proxy (or. http://user:pass@host:port): datacenter IP
     // skorunu yukseltmek icin residential proxy takilabilir.
@@ -117,6 +121,15 @@ async function getBrowser() {
       args
     });
     b.on('disconnected', () => { browser = null; });
+    // Onceki oturumdan restore edilen sekmeleri supur: Chrome crash/kill
+    // sonrasi yeniden acilirken eski test sekmelerini geri yukler ve
+    // bunlar birikir (kaynak tuketimi). Ilk (bos) sayfa haric hepsini kapat.
+    try {
+      const pages = await b.pages();
+      for (const p of pages.slice(1)) {
+        try { await p.close(); } catch (e) { /* sessiz */ }
+      }
+    } catch (e) { /* sessiz */ }
     browser = b;
     browserLaunching = null;
     return b;
