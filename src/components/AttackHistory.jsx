@@ -298,8 +298,11 @@ const AttackHistory = () => {
                       {record.loop ? <span className="text-cyan-400">loop</span> : <span className="text-gray-500">tek</span>}
                     </td>
                     <td className="px-3 py-2.5">{statusText(record.status)}</td>
-                    <td className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">{formatDate(record.startedAt)}</td>
-                    <td className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500">
+                    <td className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500" title={formatDate(record.startedAt)}>{formatDate(record.startedAt)}</td>
+                    <td
+                      className="truncate whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-500"
+                      title={record.status === 'active' ? 'Henüz bitmedi' : formatDate(record.endedAt)}
+                    >
                       {record.status === 'active' ? '-' : formatDate(record.endedAt)}
                     </td>
                   </tr>
