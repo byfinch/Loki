@@ -3,7 +3,6 @@ import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
-import CyberCard from './CyberCard';
 
 const LoopManager = () => {
   const { state, setLoops, addLog, showToast } = useStressTest();
@@ -147,22 +146,29 @@ const LoopManager = () => {
   const loops = Object.entries(state.activeLoops);
 
   return (
-    <CyberCard className="p-6 sm:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          Aktif Looplar
-          <span className="ml-2 px-2 py-0.5 bg-black/60 border border-white/10 rounded text-xs text-cyan-400 font-mono">
-            {loops.length}
-          </span>
-        </h2>
+    <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
+      {/* CRT scanline dokusu */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,65,0.015) 0 1px, transparent 1px 3px)' }}
+      />
+
+      {/* Title bar */}
+      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+        <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
+        <span className="text-green-300/90">root@loki:~/aktif-looplar</span>
+        <span className="text-green-500/60">$ watch -n3 loopctl list --count={loops.length}</span>
+        <span className="animate-pulse">▊</span>
         {loops.length > 0 && (
           <button
             onClick={handleStopAll}
             disabled={loading === '__ALL__'}
-            className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] disabled:opacity-50 flex items-center justify-center h-7 w-28"
+            className="ml-auto inline-flex h-7 items-center justify-center rounded-sm border border-red-500/30 px-3 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading === '__ALL__' ? (
-              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -171,172 +177,193 @@ const LoopManager = () => {
         )}
       </div>
 
-      {loops.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p>Bu hesapta aktif loop yok.</p>
-          <p className="text-xs mt-2">Saldırı formundan loop başlatabilirsiniz.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto -mx-2 px-2">
-          <table className="cyber-table w-full min-w-[800px] text-sm border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-gray-500 border-b border-white/10 text-left">
-                <th className="px-5 py-4 font-medium min-w-[260px]">Hedef</th>
-                <th className="px-5 py-4 font-medium">Yöntem</th>
-                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Süre (sn)</th>
-                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Bekleme (sn)</th>
-                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Set</th>
-                <th className="px-5 py-4 font-medium text-center whitespace-nowrap">Hata</th>
-                <th className="px-5 py-4 font-medium text-right">İşlem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loops.map(([loopId, loop]) => (
-                <React.Fragment key={loopId}>
-                <tr className="border-b border-white/5 hover:bg-white/[0.03] transition-all duration-300">
-                  <td className="px-5 py-4 pr-4">
-                    <button
-                      onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
-                      title="URL'yi kopyala"
-                      className="relative block text-left w-[220px] h-5 cursor-pointer"
-                    >
-                      <span
-                        className={`absolute inset-0 text-left text-gray-200 font-mono text-[13px] truncate hover:text-green-400 transition-opacity duration-200 ${
-                          copiedKey === loopId ? 'opacity-0' : 'opacity-100'
-                        }`}
-                      >
-                        {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
-                      </span>
-                      <span
-                        className={`absolute inset-0 flex items-center text-left text-green-400 text-xs font-bold transition-opacity duration-200 ${
-                          copiedKey === loopId ? 'opacity-100' : 'opacity-0'
-                        }`}
-                      >
-                        Kopyalandı!
-                      </span>
-                    </button>
-                    {loop.note && (
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] font-mono text-cyan-400">
-                        <span className="text-gray-600">📝</span>
-                        <span className="truncate max-w-[240px]" title={loop.note}>{renderNoteWithLinks(loop.note)}</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white whitespace-nowrap">
-                      {loop.params?.method?.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.time}s</td>
-                  <td className="px-5 py-4 text-gray-300 font-mono text-center whitespace-nowrap">{loop.params?.interval}s</td>
-                  <td className="px-5 py-4 text-cyan-400 font-mono font-bold text-center whitespace-nowrap">{loop.roundCount || 0}</td>
-                  <td className="px-5 py-4 text-red-400 font-mono text-center whitespace-nowrap">{loop.errors || 0}</td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => (editingLoopId === loopId ? setEditingLoopId(null) : startEdit(loopId, loop))}
-                        title="Not / saldırı ayarlarını düzenle"
-                        className={`text-xs border rounded-full transition-all duration-300 flex items-center justify-center h-8 w-8 ${
-                          editingLoopId === loopId
-                            ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400'
-                            : 'bg-white/5 hover:bg-cyan-500/10 border-white/10 hover:border-cyan-500/30 text-gray-400 hover:text-cyan-400'
-                        }`}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        onClick={() => handleStop(loopId)}
-                        disabled={loading === loopId}
-                        className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] disabled:opacity-50 whitespace-nowrap flex items-center justify-center h-8 w-20"
-                      >
-                        {loading === loopId ? (
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                        ) : 'Çıkar'}
-                      </button>
-                    </div>
-                  </td>
+      <div className="relative z-10 p-4 sm:p-5">
+        {loops.length === 0 ? (
+          <div className="py-12 text-center text-green-500/50">
+            <p>aktif loop yok.</p>
+            <p className="mt-2 text-[11px] text-green-500/30"># saldiri formundan loop baslatabilirsiniz</p>
+          </div>
+        ) : (
+          <div className="-mx-2 overflow-x-auto px-2">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Yöntem</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Süre</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Bekleme</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Set</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Hata</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-normal">&gt; İşlem</th>
                 </tr>
-                {editingLoopId === loopId && (
-                  <tr className="border-b border-white/5">
-                    <td colSpan={7} className="px-5 pb-4 pt-1">
-                      <div className="flex flex-wrap items-end gap-3 bg-black/40 border border-cyan-500/20 rounded-lg p-3">
-                        <div className="flex-1 min-w-[220px]">
-                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Not</label>
-                          <input
-                            type="text"
-                            value={editDraft.note}
-                            maxLength={120}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
-                            placeholder="Marka / asıl site linki"
-                            className="w-full bg-black/60 border border-dashed border-cyan-500/35 rounded px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-gray-600 focus:outline-none focus:border-cyan-400/60"
-                          />
+              </thead>
+              <tbody>
+                {loops.map(([loopId, loop]) => (
+                  <React.Fragment key={loopId}>
+                    <tr className="border-b border-dashed border-green-500/10 transition-colors hover:bg-green-500/5">
+                      <td className="px-3 py-2.5 align-middle">
+                        <div className="flex items-center gap-2">
+                          <span
+                            title="URL'yi kopyala"
+                            onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                            className="inline-block w-[210px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
+                          >
+                            {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
+                          </span>
+                          <button
+                            onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                            title="URL'yi kopyala"
+                            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
+                              copiedKey === loopId
+                                ? 'border-green-500/40 bg-green-500/20 text-green-400'
+                                : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                            }`}
+                          >
+                            {copiedKey === loopId ? (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            ) : (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                              </svg>
+                            )}
+                          </button>
                         </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Süre (sn)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.time}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, time: e.target.value }))}
-                            className="w-20 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
-                          />
+                        {loop.note && (
+                          <div className="mt-1 flex max-w-[240px] items-center gap-1.5 truncate text-[10px] text-cyan-400/90">
+                            <span className="text-gray-600">📝</span>
+                            <span className="truncate" title={loop.note}>{renderNoteWithLinks(loop.note)}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">{loop.params?.method?.toUpperCase()}</td>
+                      <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
+                      <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.interval}s</td>
+                      <td className="px-3 py-2.5 text-center font-bold text-cyan-400">{loop.roundCount || 0}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        {(loop.errors || 0) > 0 ? (
+                          <span className="font-bold text-[#ff2d2d] [text-shadow:0_0_8px_rgba(255,45,45,0.7)]">{loop.errors}</span>
+                        ) : (
+                          <span className="text-gray-600">0</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => (editingLoopId === loopId ? setEditingLoopId(null) : startEdit(loopId, loop))}
+                            title="Not / saldırı ayarlarını düzenle"
+                            className={`flex h-7 w-7 items-center justify-center rounded-sm border text-[11px] transition-all ${
+                              editingLoopId === loopId
+                                ? 'border-green-500/50 bg-green-500/15 text-green-400 shadow-[0_0_8px_rgba(0,255,65,0.3)]'
+                                : 'border-green-500/20 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                            }`}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => handleStop(loopId)}
+                            disabled={loading === loopId}
+                            className="inline-flex h-7 w-16 items-center justify-center rounded-sm border border-red-500/30 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            {loading === loopId ? (
+                              <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : 'Çıkar'}
+                          </button>
                         </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Bekleme (sn)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.interval}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, interval: e.target.value }))}
-                            className="w-20 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Adet</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={editDraft.concurrents}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
-                            className="w-16 bg-black/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-green-400/50"
-                          />
-                        </div>
-                        <button
-                          onClick={() => handleSaveEdit(loopId)}
-                          disabled={savingEdit}
-                          className="text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-full px-4 h-8 transition-all duration-300 hover:shadow-[0_0_15px_rgba(0,255,65,0.25)] disabled:opacity-50"
-                        >
-                          {savingEdit ? 'Kaydediliyor...' : 'Kaydet'}
-                        </button>
-                        <button
-                          onClick={() => setEditingLoopId(null)}
-                          disabled={savingEdit}
-                          className="text-xs bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 rounded-full px-4 h-8 transition-colors disabled:opacity-50"
-                        >
-                          İptal
-                        </button>
-                        <span className="w-full text-[10px] text-gray-600 font-mono">Yeni ayarlar bir sonraki turdan itibaren geçerli olur; çalışan tur etkilenmez.</span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {loop.lastError && (
-                  <tr className="border-b border-white/5">
-                    <td colSpan={7} className="px-5 pb-3 pt-0 text-[11px] text-red-400/90 font-mono truncate" title={loop.lastError}>
-                      Son hata: {loop.lastError}
-                    </td>
-                  </tr>
-                )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </CyberCard>
+                      </td>
+                    </tr>
+                    {editingLoopId === loopId && (
+                      <tr className="border-b border-dashed border-green-500/10">
+                        <td colSpan={7} className="px-3 pb-3 pt-1">
+                          <div className="rounded-sm border border-green-500/20 bg-black/50 p-3">
+                            <div className="mb-2.5 text-[10px] text-green-500/50">
+                              loopctl edit --target {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))} --next-round
+                            </div>
+                            <div className="flex flex-wrap items-end gap-3">
+                              <div className="min-w-[220px] flex-1">
+                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Not</label>
+                                <input
+                                  type="text"
+                                  value={editDraft.note}
+                                  maxLength={120}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
+                                  placeholder="Marka / asıl site linki"
+                                  className="w-full rounded-sm border border-dashed border-cyan-500/40 bg-black px-2.5 py-1.5 text-[11px] text-cyan-300 placeholder-gray-700 focus:outline-none focus:shadow-[0_0_10px_rgba(0,212,255,0.15)]"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Süre (sn)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.time}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, time: e.target.value }))}
+                                  className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Bekleme (sn)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.interval}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, interval: e.target.value }))}
+                                  className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Adet</label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={editDraft.concurrents}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
+                                  className="w-[55px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                />
+                              </div>
+                              <button
+                                onClick={() => handleSaveEdit(loopId)}
+                                disabled={savingEdit}
+                                className="h-8 rounded-sm border border-green-500/40 bg-green-500/10 px-4 text-[11px] text-green-400 transition-all hover:bg-green-500/20 disabled:opacity-50"
+                              >
+                                {savingEdit ? 'kaydediliyor...' : 'Kaydet'}
+                              </button>
+                              <button
+                                onClick={() => setEditingLoopId(null)}
+                                disabled={savingEdit}
+                                className="h-8 rounded-sm border border-white/10 px-4 text-[11px] text-gray-500 transition-colors hover:border-white/20 hover:text-gray-300 disabled:opacity-50"
+                              >
+                                İptal
+                              </button>
+                              <span className="w-full text-[10px] text-gray-700"># yeni ayarlar bir sonraki turdan itibaren geçerli olur</span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {loop.lastError && (
+                      <tr className="border-b border-dashed border-green-500/10">
+                        <td colSpan={7} className="px-3 pb-3 pt-1">
+                          <div className="flex items-center gap-2 rounded-sm border border-[#ff2d2d]/45 border-l-[3px] border-l-[#ff2d2d] bg-[#ff2d2d]/10 px-3 py-2 text-[11px] text-[#ff5c5c] [text-shadow:0_0_6px_rgba(255,45,45,0.4)]">
+                            <span className="flex-shrink-0 font-bold text-[#ff2d2d]">[ERR]</span>
+                            <span className="truncate" title={loop.lastError}>son hata: {loop.lastError}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
