@@ -15,6 +15,14 @@ const persistedTimeLefts = {};
 // Satir anahtari: grup kimligi (target + method + ilk attack id)
 const rowKeyOf = (g) => `${g.target}::${g.method}::${g.ids[0]}`;
 
+// Normalize imza: ham target farklari (protokol, sondaki /, buyuk-kucuk harf)
+// ve method buyuklugu ayni mantiksal satiri eslesir kilar.
+const targetKeyNorm = (t) => String(t || '')
+  .toLowerCase()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/+$/, '');
+const sigOf = (target, method) => `${targetKeyNorm(target)}::${String(method || '').toLowerCase()}`;
+
 // V2 "Status Flip" satir kapsayicisi:
 //  - Yeni satir kapali baslar, ilk frame'de yumusakca acilir (kutu ziplamaz).
 //  - phase 'done'  : kirmizi serit + "[--] bitti" (~1.1sn gorunur kalir)
@@ -54,6 +62,7 @@ const LiveAttacks = () => {
   // Kullanici tarafindan durdurulan satirlar: cikis animasyonunda
   // "[--] bitti" yerine "[!!] durd." gosterilsin diye isaretlenir
   const stoppedKeysRef = useRef(new Set());
+  const stoppedSigsRef = useRef(new Set());
   const [serverTimeLefts, setServerTimeLeftsState] = useState(() => ({ ...persistedTimeLefts }));
 
   // State guncellemelerini modul seviyesindeki depoya da yansit (remount korumasi)
@@ -180,9 +189,10 @@ const LiveAttacks = () => {
     return groups;
   }, [state.liveAttacks, serverTimeLefts]);
 
-  const handleStopSingle = async (attackId, rowKey = null) => {
+  const handleStopSingle = async (attackId, rowKey = null, sig = null) => {
     if (!attackId) return;
     if (rowKey) stoppedKeysRef.current.add(rowKey);
+    if (sig) stoppedSigsRef.current.add(sig);
     setStopping((prev) => new Set(prev).add(attackId));
     try {
       const data = await apiClient.stopAttack(attackId);
@@ -282,9 +292,10 @@ const LiveAttacks = () => {
     return { cancelled: false, successCount, failCount };
   };
 
-  const handleStopRow = async (attackIds, rowKey = null) => {
+  const handleStopRow = async (attackIds, rowKey = null, sig = null) => {
     if (!attackIds || attackIds.length === 0) return;
     if (rowKey) stoppedKeysRef.current.add(rowKey);
+    if (sig) stoppedSigsRef.current.add(sig);
     const key = attackIds.join(',');
     setStopping((prev) => new Set(prev).add(key));
     setActiveStopKey(key);
@@ -316,7 +327,10 @@ const LiveAttacks = () => {
   const handleStopAll = async () => {
     const allIds = state.liveAttacks.map((a) => a.attack_id).filter(Boolean);
     if (allIds.length === 0) return;
-    groupedAttacks.forEach((g) => stoppedKeysRef.current.add(rowKeyOf(g)));
+    groupedAttacks.forEach((g) => {
+      stoppedKeysRef.current.add(rowKeyOf(g));
+      stoppedSigsRef.current.add(sigOf(g.target, g.method));
+    });
     setStopping((prev) => new Set(prev).add('__ALL__'));
     setActiveStopKey('__ALL__');
     setStopCancelled(false);
@@ -490,16 +504,38 @@ const LiveAttacks = () => {
   useEffect(() => {
     const current = new Map(groupedAttacks.map((g) => [rowKeyOf(g), g]));
     const prev = prevGroupsRef.current;
+
+    // Calisan loop'larin imzalari: loop tur rotasyonunda eski tur kaybolur
+    // ama yeni tur ayni imzayla zaten listededir; bitti animasyonu YAPILMAZ
+    // (yoksa ayni saldiri hem aktif hem "bitti" olarak cift gorunur).
+    const loopSigs = new Set(
+      Object.values(state.activeLoops || {})
+        .filter((l) => l && l.running !== false)
+        .map((l) => sigOf(l.params?.host, l.params?.method))
+    );
+
     const vanished = [];
     prev.forEach((g, key) => {
-      if (!current.has(key)) vanished.push([key, g]);
+      if (current.has(key)) return;
+      const sig = sigOf(g.target, g.method);
+      const isStopped = stoppedKeysRef.current.has(key) || stoppedSigsRef.current.has(sig);
+      const isNaturalEnd = (parseInt(g.timeLeft, 10) || 0) <= 2;
+      // Loop rotasyonu veya ID kaynakli anahtar degisimi (sahte kaybolma):
+      // gercek bitis (sure <=2) veya kullanici durdurmasi degilse atla.
+      if (!isStopped && (loopSigs.has(sig) || !isNaturalEnd)) return;
+      if (isStopped) {
+        stoppedKeysRef.current.delete(key);
+        stoppedSigsRef.current.delete(sig);
+      }
+      vanished.push([key, g, isStopped]);
     });
+
     if (vanished.length > 0) {
       setDyingRows((d) => {
         const existing = new Set(d.map((r) => r.key));
         const fresh = vanished
           .filter(([key]) => !existing.has(key))
-          .map(([key, g]) => ({ key, group: g, phase: 'done', stopped: stoppedKeysRef.current.has(key) }));
+          .map(([key, g, isStopped]) => ({ key, group: g, phase: 'done', stopped: isStopped }));
         return fresh.length > 0 ? [...d, ...fresh] : d;
       });
       vanished.forEach(([key]) => {
@@ -509,7 +545,7 @@ const LiveAttacks = () => {
       });
     }
     prevGroupsRef.current = current;
-  }, [groupedAttacks]);
+  }, [groupedAttacks, state.activeLoops]);
 
   // Hesaba ozel sayaclar (aktif/toplam kapasite) — canli listeyle beraber tazelenir
   const [stats, setStats] = useState(null);
@@ -673,7 +709,7 @@ const LiveAttacks = () => {
                     <span className="text-gray-400">x{attack.count}</span>
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => handleStopSingle(firstId, rowKey)}
+                        onClick={() => handleStopSingle(firstId, rowKey, sigOf(attack.target, attack.method))}
                         disabled={isFirstStopping}
                         title="Tek durdur"
                         className="inline-flex h-7 items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2.5 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
@@ -681,7 +717,7 @@ const LiveAttacks = () => {
                         {isFirstStopping ? '…' : '■ durdur'}
                       </button>
                       <button
-                        onClick={() => attack.count > 1 && handleStopRow(attack.ids, rowKey)}
+                        onClick={() => attack.count > 1 && handleStopRow(attack.ids, rowKey, sigOf(attack.target, attack.method))}
                         disabled={attack.count <= 1 || rowKeyStopping}
                         title={attack.count > 1 ? `Bu satırdaki ${attack.count} saldırıyı durdur` : 'Tek saldırı - satır durdurma kullanılamaz'}
                         className="inline-flex h-7 items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2.5 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
