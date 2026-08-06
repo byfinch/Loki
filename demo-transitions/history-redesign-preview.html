@@ -92,6 +92,77 @@
   .v3-empty { color: #3f3f46; }
   .date { color: #9ca3af; font-size: 11px; font-family: 'Courier New', monospace; }
   .num { font-family: 'Courier New', monospace; text-align: center; }
+
+  /* ============ V4: SOC DATA GRID ============ */
+  .v4-card { background: #07090c; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; }
+  .v4-topbar { display: flex; align-items: center; gap: 14px; background: #0b0e13; border-bottom: 1px solid rgba(255,255,255,.08); padding: 10px 16px; }
+  .v4-logo { font-family: 'Courier New', monospace; font-size: 12px; font-weight: bold; color: #00ff41; letter-spacing: 2px; }
+  .v4-logo em { color: #6b7280; font-style: normal; }
+  .v4-meta { margin-left: auto; font-family: 'Courier New', monospace; font-size: 10px; color: #4b5563; }
+  .v4-meta b { color: #00d4ff; font-weight: normal; }
+  .v4-toolbar { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.06); flex-wrap: wrap; align-items: center; background: #090c10; }
+  .v4-search { flex: 1; min-width: 180px; background: #05070a; border: 1px solid rgba(255,255,255,.1); border-radius: 4px; padding: 7px 10px; color: #e5e5e5; font-size: 12px; font-family: 'Courier New', monospace; outline: none; }
+  .v4-search:focus { border-color: rgba(0,212,255,.5); }
+  .v4-tab { background: #05070a; border: 1px solid rgba(255,255,255,.1); color: #9ca3af; padding: 6px 12px; font-size: 11px; border-radius: 4px; cursor: pointer; font-family: 'Courier New', monospace; }
+  .v4-tab.on { border-color: rgba(0,255,65,.6); color: #00ff41; background: rgba(0,255,65,.06); }
+  .v4-tab .cnt { color: #4b5563; margin-left: 5px; }
+  .v4-tab.on .cnt { color: #00ff41; }
+  .v4-clear { border-color: rgba(248,113,113,.35); color: #f87171; }
+  .v4-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'Courier New', monospace; }
+  .v4-table th { text-align: left; color: #4b5563; font-size: 10px; letter-spacing: 1px; padding: 8px 12px; background: #0b0e13; border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; cursor: pointer; }
+  .v4-table th .sort { color: #00d4ff; }
+  .v4-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.04); color: #c9d1d9; white-space: nowrap; }
+  .v4-table tbody tr { border-left: 2px solid transparent; }
+  .v4-table tbody tr.st-active { border-left-color: #00ff41; }
+  .v4-table tbody tr.st-done { border-left-color: #374151; }
+  .v4-table tbody tr:hover { background: rgba(0,212,255,.03); }
+  .v4-id { color: #3f3f46; font-size: 10px; }
+  .v4-status { font-size: 10px; letter-spacing: 1px; color: #00ff41; }
+  .v4-status::before { content: '● '; }
+  .v4-status.done { color: #6b7280; }
+  .v4-loop { color: #00d4ff; font-size: 10px; border: 1px solid rgba(0,212,255,.3); padding: 1px 6px; border-radius: 3px; }
+  .v4-note { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+
+  /* ============ V5: AMBER CRT ============ */
+  .v5-wrap { background: #1a1408; border-radius: 24px; padding: 18px; box-shadow: inset 0 0 40px rgba(0,0,0,.8), 0 20px 60px rgba(0,0,0,.6); }
+  .v5-screen { position: relative; background: #0d0a03; border-radius: 14px; padding: 22px; overflow: hidden; box-shadow: inset 0 0 60px rgba(255,176,0,.06); }
+  .v5-screen::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,176,0,.03) 0 2px, transparent 2px 4px); }
+  .v5-screen::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.5) 100%); }
+  .v5-inner { position: relative; z-index: 1; font-family: 'Courier New', monospace; color: #ffb000; text-shadow: 0 0 8px rgba(255,176,0,.45); }
+  .v5-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid rgba(255,176,0,.4); padding-bottom: 8px; margin-bottom: 14px; }
+  .v5-head h2 { font-size: 16px; letter-spacing: 4px; font-weight: bold; }
+  .v5-head .cnt { font-size: 12px; }
+  .v5-toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .v5-search { flex: 1; min-width: 180px; background: rgba(255,176,0,.05); border: 1px solid rgba(255,176,0,.4); color: #ffb000; padding: 7px 12px; font-family: inherit; font-size: 12px; outline: none; text-shadow: inherit; }
+  .v5-search::placeholder { color: rgba(255,176,0,.35); }
+  .v5-tab { background: transparent; border: 1px solid rgba(255,176,0,.35); color: rgba(255,176,0,.6); padding: 6px 12px; font-family: inherit; font-size: 11px; cursor: pointer; }
+  .v5-tab.on { background: rgba(255,176,0,.18); color: #ffb000; }
+  .v5-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .v5-table th { text-align: left; font-size: 10px; letter-spacing: 2px; color: rgba(255,176,0,.6); padding: 8px 10px; border-bottom: 1px solid rgba(255,176,0,.35); white-space: nowrap; }
+  .v5-table td { padding: 9px 10px; border-bottom: 1px dotted rgba(255,176,0,.15); white-space: nowrap; }
+  .v5-table tr:hover td { background: rgba(255,176,0,.05); }
+  .v5-link { color: #ffd97a; text-decoration: underline; }
+  .v5-note { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+  .v5-dim { color: rgba(255,176,0,.4); }
+
+  /* ============ V6: KART GÖRÜNÜMÜ ============ */
+  .v6-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .v6-head h2 { font-size: 18px; font-weight: 600; color: #fff; display: flex; gap: 10px; align-items: center; }
+  .v6-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .v6-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .v6-item { position: relative; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 14px 14px 14px 18px; overflow: hidden; transition: transform .15s, border-color .15s; }
+  .v6-item:hover { transform: translateY(-2px); border-color: rgba(0,255,65,.35); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .v6-item::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.6); }
+  .v6-item.done::before { background: #374151; box-shadow: none; }
+  .v6-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .v6-host { font-family: 'Courier New', monospace; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; }
+  .v6-status { font-size: 10px; color: #00ff41; border: 1px solid rgba(0,255,65,.35); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .v6-status.done { color: #6b7280; border-color: rgba(255,255,255,.12); }
+  .v6-note { font-size: 11px; color: #67e8f9; font-family: 'Courier New', monospace; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; }
+  .v6-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v6-chip { font-size: 10px; font-family: 'Courier New', monospace; color: #9ca3af; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.08); border-radius: 5px; padding: 3px 8px; }
+  .v6-chip b { color: #e5e5e5; font-weight: normal; }
+  .v6-chip.loop { color: #00d4ff; border-color: rgba(0,212,255,.3); }
 </style>
 </head>
 <body>
@@ -116,7 +187,7 @@
           <button class="v1-tab on">Aktif</button>
           <button class="v1-tab">Tamamlandı</button>
           <button class="v1-tab">Durduruldu</button>
-          <button class="v1-tab v1-clear">rm -rf</button>
+          <button class="v1-tab v1-clear">Temizle</button>
         </div>
         <table class="v1-table">
           <thead><tr><th>Hedef</th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
@@ -233,6 +304,153 @@
           </tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ================= V4: SOC DATA GRID ================= -->
+  <section>
+    <div class="variant-label">V4 — SOC Grid <span>· operasyon konsolu: yoğun monospace grid, durum sol şerit, sıralanabilir başlıklar · en "analist"</span></div>
+    <div class="v4-card">
+      <div class="v4-topbar">
+        <span class="v4-logo">LOKI<em>/soc</em></span>
+        <span class="v4-meta">session: <b>live</b> · kayıt: <b>227</b> · refresh: <b>3s</b></span>
+      </div>
+      <div class="v4-toolbar">
+        <input class="v4-search" placeholder="filtre: hedef / yöntem / port / durum">
+        <button class="v4-tab">Tümü<span class="cnt">227</span></button>
+        <button class="v4-tab on">Aktif<span class="cnt">12</span></button>
+        <button class="v4-tab">Tamamlandı<span class="cnt">198</span></button>
+        <button class="v4-tab">Durduruldu<span class="cnt">17</span></button>
+        <button class="v4-tab v4-clear">Temizle</button>
+      </div>
+      <table class="v4-table">
+        <thead><tr><th>#</th><th>Hedef <span class="sort">▲</span></th><th>Not</th><th>Port</th><th>Yöntem</th><th>Süre</th><th>Conc.</th><th>Tür</th><th>Durum</th><th>Başlangıç <span class="sort">▼</span></th><th>Bitiş</th></tr></thead>
+        <tbody>
+          <tr class="st-active">
+            <td class="v4-id">0227</td>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v4-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td>HTTP-TEMPESTA</td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v4-loop">LOOP</span></td><td class="v4-status">AKTİF</td>
+            <td class="date">06.08 14:26:59</td><td class="date">-</td>
+          </tr>
+          <tr class="st-active">
+            <td class="v4-id">0226</td>
+            <td class="host">crownroyalecashpro…</td>
+            <td class="v4-note"><a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+            <td class="num">443</td><td>CLOUDFLARE</td><td class="num">200s</td><td class="num">x10</td>
+            <td><span class="v4-loop">LOOP</span></td><td class="v4-status">AKTİF</td>
+            <td class="date">06.08 14:26:29</td><td class="date">-</td>
+          </tr>
+          <tr class="st-done">
+            <td class="v4-id">0225</td>
+            <td class="host">65.98.19.42</td>
+            <td class="v4-note v3-empty">—</td>
+            <td class="num">53</td><td>ACK</td><td class="num">60s</td><td class="num">x10</td>
+            <td><span class="v4-loop">LOOP</span></td><td class="v4-status done">TAMAM</td>
+            <td class="date">06.08 14:20:10</td><td class="date">06.08 14:21:10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= V5: AMBER CRT ================= -->
+  <section>
+    <div class="variant-label">V5 — Amber CRT <span>· fosfor ekran, kasa çerçevesi, vignette · en "retro"</span></div>
+    <div class="v5-wrap">
+      <div class="v5-screen">
+        <div class="v5-inner">
+          <div class="v5-head"><h2>SALDIRI GEÇMİŞİ</h2><span class="cnt">227 KAYIT · TTY1</span></div>
+          <div class="v5-toolbar">
+            <input class="v5-search" placeholder="ara...">
+            <button class="v5-tab">TÜMÜ</button>
+            <button class="v5-tab on">AKTİF</button>
+            <button class="v5-tab">TAMAM</button>
+            <button class="v5-tab">DURDURULDU</button>
+            <button class="v5-tab">TEMİZLE</button>
+          </div>
+          <table class="v5-table">
+            <thead><tr><th>HEDEF</th><th>NOT</th><th>PORT</th><th>YÖNTEM</th><th>SÜRE</th><th>CONC.</th><th>TÜR</th><th>DURUM</th><th>BAŞLANGIÇ</th><th>BİTİŞ</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>crownroyalecashpro…</td>
+                <td class="v5-note"><a class="v5-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+                <td class="num">443</td><td>HTTP-TEMPESTA</td><td class="num">200s</td><td class="num">x10</td>
+                <td>LOOP</td><td>AKTİF</td>
+                <td class="v5-dim">06.08 14:26:59</td><td class="v5-dim">-</td>
+              </tr>
+              <tr>
+                <td>crownroyalecashpro…</td>
+                <td class="v5-note"><a class="v5-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></td>
+                <td class="num">443</td><td>CLOUDFLARE</td><td class="num">200s</td><td class="num">x10</td>
+                <td>LOOP</td><td>AKTİF</td>
+                <td class="v5-dim">06.08 14:26:29</td><td class="v5-dim">-</td>
+              </tr>
+              <tr>
+                <td>65.98.19.42</td>
+                <td class="v5-note v5-dim">—</td>
+                <td class="num">53</td><td>ACK</td><td class="num">60s</td><td class="num">x10</td>
+                <td>LOOP</td><td class="v5-dim">TAMAM</td>
+                <td class="v5-dim">06.08 14:20:10</td><td class="v5-dim">06.08 14:21:10</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= V6: KART GÖRÜNÜMÜ ================= -->
+  <section>
+    <div class="variant-label">V6 — Kart Görünümü <span>· tablo yerine kayıt kartları, durum şeridi, chip meta · en "modern", mobilde en rahat</span></div>
+    <div class="card" style="position:relative;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:24px;">
+      <div class="v6-head"><h2>Saldırı Geçmişi <span class="count-badge" style="padding:2px 8px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.1);border-radius:4px;font-size:12px;color:#00d4ff;font-family:'Courier New',monospace">227</span></h2></div>
+      <div class="v6-toolbar">
+        <input class="v4-search" style="flex:1;min-width:180px" placeholder="Hedef, yöntem, port veya durum ara...">
+        <button class="v4-tab">Tümü</button>
+        <button class="v4-tab on">Aktif</button>
+        <button class="v4-tab">Tamamlandı</button>
+        <button class="v4-tab">Durduruldu</button>
+        <button class="v4-tab v4-clear">Temizle</button>
+      </div>
+      <div class="v6-grid">
+        <div class="v6-item">
+          <div class="v6-top"><span class="v6-host">crownroyalecashpro…</span><span class="v6-status">Aktif</span></div>
+          <div class="v6-note">📝 <a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></div>
+          <div class="v6-meta">
+            <span class="v6-chip"><b>HTTP-TEMPESTA</b></span>
+            <span class="v6-chip">443</span>
+            <span class="v6-chip">200s</span>
+            <span class="v6-chip">x10</span>
+            <span class="v6-chip loop">Loop</span>
+            <span class="v6-chip">06.08 14:26:59</span>
+          </div>
+        </div>
+        <div class="v6-item">
+          <div class="v6-top"><span class="v6-host">crownroyalecashpro…</span><span class="v6-status">Aktif</span></div>
+          <div class="v6-note">📝 <a class="note-link" href="#" onclick="return false">tr.casiveragirisyolu.store</a></div>
+          <div class="v6-meta">
+            <span class="v6-chip"><b>CLOUDFLARE</b></span>
+            <span class="v6-chip">443</span>
+            <span class="v6-chip">200s</span>
+            <span class="v6-chip">x10</span>
+            <span class="v6-chip loop">Loop</span>
+            <span class="v6-chip">06.08 14:26:29</span>
+          </div>
+        </div>
+        <div class="v6-item done">
+          <div class="v6-top"><span class="v6-host">65.98.19.42</span><span class="v6-status done">Tamamlandı</span></div>
+          <div class="v6-meta">
+            <span class="v6-chip"><b>ACK</b></span>
+            <span class="v6-chip">53</span>
+            <span class="v6-chip">60s</span>
+            <span class="v6-chip">x10</span>
+            <span class="v6-chip loop">Loop</span>
+            <span class="v6-chip">14:20:10 → 14:21:10</span>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
