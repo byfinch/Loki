@@ -65,6 +65,8 @@ const LiveAttacks = () => {
   // "[--] bitti" yerine "[!!] durd." gosterilsin diye isaretlenir
   const stoppedKeysRef = useRef(new Set());
   const stoppedSigsRef = useRef(new Set());
+  // dying satirlarin key takibi (zamanlayici tekrarini onlemek icin)
+  const dyingKeysRef = useRef(new Set());
   const [serverTimeLefts, setServerTimeLeftsState] = useState(() => ({ ...persistedTimeLefts }));
 
   // State guncellemelerini modul seviyesindeki depoya da yansit (remount korumasi)
@@ -533,18 +535,28 @@ const LiveAttacks = () => {
     });
 
     if (vanished.length > 0) {
-      setDyingRows((d) => {
-        const existing = new Set(d.map((r) => r.key));
-        const fresh = vanished
-          .filter(([key]) => !existing.has(key))
-          .map(([key, g, isStopped]) => ({ key, group: g, phase: 'done', stopped: isStopped }));
-        return fresh.length > 0 ? [...d, ...fresh] : d;
-      });
-      vanished.forEach(([key]) => {
-        setTimeout(() => setDyingRows((d) => d.map((r) => (r.key === key ? { ...r, phase: 'exit' } : r))), 1100);
-        setTimeout(() => setDyingRows((d) => d.map((r) => (r.key === key ? { ...r, phase: 'closed' } : r))), 1530);
-        setTimeout(() => setDyingRows((d) => d.filter((r) => r.key !== key)), 2100);
-      });
+      // Faz zamanlayicilari SADECE gercekten yeni eklenen satirlar icin kur;
+      // aksi halde ayni imza 2.1sn icinde tekrar duserse yeni zamanlayici
+      // seti eski dying kaydini erken kapatir/siler.
+      const freshKeys = vanished.filter(([key]) => !dyingKeysRef.current.has(key)).map(([key]) => key);
+      freshKeys.forEach((key) => dyingKeysRef.current.add(key));
+      if (freshKeys.length > 0) {
+        setDyingRows((d) => {
+          const existing = new Set(d.map((r) => r.key));
+          const fresh = vanished
+            .filter(([key]) => freshKeys.includes(key) && !existing.has(key))
+            .map(([key, g, isStopped]) => ({ key, group: g, phase: 'done', stopped: isStopped }));
+          return fresh.length > 0 ? [...d, ...fresh] : d;
+        });
+        freshKeys.forEach((key) => {
+          setTimeout(() => setDyingRows((d) => d.map((r) => (r.key === key ? { ...r, phase: 'exit' } : r))), 1100);
+          setTimeout(() => setDyingRows((d) => d.map((r) => (r.key === key ? { ...r, phase: 'closed' } : r))), 1530);
+          setTimeout(() => {
+            dyingKeysRef.current.delete(key);
+            setDyingRows((d) => d.filter((r) => r.key !== key));
+          }, 2100);
+        });
+      }
     }
 
     // Bekleme satirlarini guncelle: yeni turu baslayan (sig artik listede)
@@ -620,11 +632,17 @@ const LiveAttacks = () => {
       key: rowKeyOf(g), type: 'active', group: g,
       sortTarget: targetKeyNorm(g.target), sortMethod: String(g.method || '').toLowerCase(), sortTime: g.timeLeft || 0
     }));
-    waitingRows.forEach((r) => rows.push({
-      // Aktif satirla ayni anahtar: tur baslayinca satir yerinde guncellenir
-      key: r.sig, type: 'wait', group: r.group,
-      sortTarget: targetKeyNorm(r.group.target), sortMethod: String(r.group.method || '').toLowerCase(), sortTime: r.group.timeLeft || 0
-    }));
+    // Aktif sig'lerle cakisan bekleme satirlarini burada ele: efektin
+    // temizlemesini beklemeden ayni key'in iki kez render edilmesini onler.
+    const activeSigs = new Set(groupedAttacks.map((g) => sigOf(g.target, g.method)));
+    waitingRows.forEach((r) => {
+      if (activeSigs.has(r.sig)) return;
+      rows.push({
+        // Aktif satirla ayni anahtar: tur baslayinca satir yerinde guncellenir
+        key: r.sig, type: 'wait', group: r.group,
+        sortTarget: targetKeyNorm(r.group.target), sortMethod: String(r.group.method || '').toLowerCase(), sortTime: r.group.timeLeft || 0
+      });
+    });
     dyingRows.forEach((r) => rows.push({
       key: `dying::${r.key}`, type: 'dying', row: r, group: r.group,
       sortTarget: targetKeyNorm(r.group.target), sortMethod: String(r.group.method || '').toLowerCase(), sortTime: r.group.timeLeft || 0
