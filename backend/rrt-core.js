@@ -111,7 +111,9 @@ async function getBrowser() {
     }
 
     // Kalici profil: cerez/gecmis birikimi BotGuard skorunu yukseltir.
-    const userDataDir = path.join(DATA_DIR, 'rrt-chrome-profile');
+    // LOKI_RRT_PROFILE_DIR verilirse o kullanilir (orn. gercek Chrome
+    // profilinin kopyasi — acik Google oturumu BotGuard guvenini artirir).
+    const userDataDir = process.env.LOKI_RRT_PROFILE_DIR || path.join(DATA_DIR, 'rrt-chrome-profile');
     log(`Chrome baslatiliyor (headed): ${executablePath}${proxyUrl ? ' +proxy' : ''}`);
     const b = await puppeteer.launch({
       executablePath,
