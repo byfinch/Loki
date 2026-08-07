@@ -379,6 +379,10 @@ const LiveAttacks = () => {
           const isNew = lastServer === undefined;
           // Sadece gercekten yeni bir saldiri veya sunucu degeri DEGISMISSE
           // sayaci guncelle; ayni degeri tekrar eden (bayat) veri yoksayilir.
+          // Ayni id icin sunucu degerinin YUKARI sicramasi upstream
+          // glitch'idir (kuyruk/yeniden sayma); gercek yeni tur yeni id ile
+          // gelir. Yukari sicramalari yoksay, client geri sayimi sursun.
+          if (!isNew && t > lastServer + 2) return;
           if (isNew || t !== lastServer) {
             next[a.attack_id] = t;
           }

@@ -1359,7 +1359,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       // sureciyle biter.
       const upstreamLeft = parseInt(item.timeLeft, 10);
       if (Number.isFinite(upstreamLeft) && upstreamLeft > 0) {
-        const newExpires = new Date(now + upstreamLeft * 1000).toISOString();
+        // Upstream bazen gercek surenin ustunde timeLeft dondurur (kuyruk/
+        // yeniden sayma): kaydin kendi suresi + toleransin uzerine cikma,
+        // yoksa 60s'lik saldiri panelde 155s gibi gorunur.
+        const maxLeft = (parseInt(localAttack.time, 10) || 0) + 30;
+        const clampedLeft = maxLeft > 30 ? Math.min(upstreamLeft, maxLeft) : upstreamLeft;
+        const newExpires = new Date(now + clampedLeft * 1000).toISOString();
         if (newExpires > (localAttack.expiresAt || '')) {
           localAttack.expiresAt = newExpires;
         }
