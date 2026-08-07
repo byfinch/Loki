@@ -6,8 +6,6 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
-        // RRT worker (headed Chrome) icin sanal ekran; Xvfb :99 servisi gerekli
-        DISPLAY: ':99',
         LOKI_ALLOWED_ORIGINS: 'http://localhost:4173,http://127.0.0.1:4173',
         LOKI_TELEGRAM_BOT_TOKEN: '',
         LOKI_TELEGRAM_CHAT_ID: '',
@@ -16,7 +14,6 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
-        DISPLAY: ':99',
         LOKI_ALLOWED_ORIGINS: 'http://localhost:4173,http://127.0.0.1:4173',
         LOKI_TELEGRAM_BOT_TOKEN: '',
         LOKI_TELEGRAM_CHAT_ID: '',

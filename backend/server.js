@@ -1959,10 +1959,18 @@ function cleanupLoop(loopId) {
       updateAttackHistoryStatus(finishedLoop.historyId, 'completed');
     }
   }
-  // Bu loop'a ait pending/active attack kayitlarini temizle
+  // Bu loop'a ait SURESİ DOLMUS attack kayitlarini temizle. Hala calisan
+  // saldirilara dokunma: loop "Cikar" ile durduruldugunda turu ucusda olan
+  // saldirilar upstream'te surmeye devam eder; kayitlari erken silinirse
+  // panelden/Etki Monitoru'nden duser, history zinciri bozulur. Calisan
+  // kayitlar dogal bitiste cleanupExpiredAttacks tarafindan temizlenir.
+  const now = Date.now();
   let removed = 0;
   Object.keys(activeAttacks).forEach((attackId) => {
-    if (activeAttacks[attackId].loopId === loopId) {
+    const a = activeAttacks[attackId];
+    if (a.loopId !== loopId) return;
+    const exp = new Date(a.expiresAt || 0).getTime();
+    if (exp <= now) {
       delete activeAttacks[attackId];
       removed++;
     }
