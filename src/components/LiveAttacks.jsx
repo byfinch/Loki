@@ -149,7 +149,12 @@ const LiveAttacks = () => {
       .map((attack) => {
         const attackId = attack.attack_id;
         const serverTime = parseInt(attack.timeLeft, 10);
-        const currentTime = serverTimeLefts[attackId] ?? serverTime;
+        // attack_id NULL gelen satirlar ortak sayaca dusmesin: id'siz
+        // satirda geri sayim deposuna bakma, sunucu degerini dogrudan kullan.
+        // (id'siz tum satirlar ayni anahtara yazilip ayni sureyi gosteriyordu)
+        const currentTime = attackId
+          ? (serverTimeLefts[attackId] ?? serverTime)
+          : serverTime;
         return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
       })
       .filter((attack) => attack.timeLeft > 0)
@@ -377,6 +382,7 @@ const LiveAttacks = () => {
         (attacks || []).forEach((a) => {
           const t = parseInt(a.timeLeft, 10);
           if (!Number.isFinite(t)) return;
+          if (!a.attack_id) return; // id'siz satirlar ortak sayaca dusurulmez
           const lastServer = lastServerValues[a.attack_id];
           const isNew = lastServer === undefined;
           // Sadece gercekten yeni bir saldiri veya sunucu degeri DEGISMISSE
@@ -394,6 +400,7 @@ const LiveAttacks = () => {
       // Raporlanan tum degerleri kaydet (degisim tespiti icin)
       const freshRef = {};
       (attacks || []).forEach((a) => {
+        if (!a.attack_id) return;
         const t = parseInt(a.timeLeft, 10);
         if (Number.isFinite(t)) freshRef[a.attack_id] = t;
       });
