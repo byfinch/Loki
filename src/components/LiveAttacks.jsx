@@ -149,12 +149,10 @@ const LiveAttacks = () => {
       .map((attack) => {
         const attackId = attack.attack_id;
         const serverTime = parseInt(attack.timeLeft, 10);
-        // attack_id NULL gelen satirlar ortak sayaca dusmesin: id'siz
-        // satirda geri sayim deposuna bakma, sunucu degerini dogrudan kullan.
-        // (id'siz tum satirlar ayni anahtara yazilip ayni sureyi gosteriyordu)
-        const currentTime = attackId
-          ? (serverTimeLefts[attackId] ?? serverTime)
-          : serverTime;
+        // id'siz satirlar imza ile anahtarlanir: ortak "null" sepetime dusmez,
+        // yine de akici geri sayimdan yararlanir.
+        const key = attackId || sigOf(attack.target, attack.method);
+        const currentTime = serverTimeLefts[key] ?? serverTime;
         return { ...attack, timeLeft: Number.isFinite(currentTime) ? currentTime : 0 };
       })
       .filter((attack) => attack.timeLeft > 0)
@@ -382,8 +380,9 @@ const LiveAttacks = () => {
         (attacks || []).forEach((a) => {
           const t = parseInt(a.timeLeft, 10);
           if (!Number.isFinite(t)) return;
-          if (!a.attack_id) return; // id'siz satirlar ortak sayaca dusurulmez
-          const lastServer = lastServerValues[a.attack_id];
+          // id'siz satirlar imza ile anahtarlanir (ortak null sepeti yok)
+          const key = a.attack_id || sigOf(a.target, a.method);
+          const lastServer = lastServerValues[key];
           const isNew = lastServer === undefined;
           // Sadece gercekten yeni bir saldiri veya sunucu degeri DEGISMISSE
           // sayaci guncelle; ayni degeri tekrar eden (bayat) veri yoksayilir.
@@ -392,7 +391,7 @@ const LiveAttacks = () => {
           // gelir. Yukari sicramalari yoksay, client geri sayimi sursun.
           if (!isNew && t > lastServer + 2) return;
           if (isNew || t !== lastServer) {
-            next[a.attack_id] = t;
+            next[key] = t;
           }
         });
         return next;
@@ -400,9 +399,8 @@ const LiveAttacks = () => {
       // Raporlanan tum degerleri kaydet (degisim tespiti icin)
       const freshRef = {};
       (attacks || []).forEach((a) => {
-        if (!a.attack_id) return;
         const t = parseInt(a.timeLeft, 10);
-        if (Number.isFinite(t)) freshRef[a.attack_id] = t;
+        if (Number.isFinite(t)) freshRef[a.attack_id || sigOf(a.target, a.method)] = t;
       });
       Object.keys(lastServerValues).forEach((k) => delete lastServerValues[k]);
       Object.assign(lastServerValues, freshRef);
