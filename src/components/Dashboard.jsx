@@ -10,7 +10,6 @@ import LoopManager from './LoopManager';
 import AttackHistory from './AttackHistory';
 import PhishPanel from './PhishPanel';
 import ImpactMonitor from './ImpactMonitor';
-import RrtMonitor from './RrtMonitor';
 import ToastContainer from './ToastContainer';
 
 const Dashboard = () => {
@@ -159,9 +158,6 @@ const Dashboard = () => {
                 </div>
                 <div className="hidden lg:block flex-1 min-w-0">
                   <ImpactMonitor />
-                  <div className="mt-8">
-                    <RrtMonitor />
-                  </div>
                 </div>
               </div>
               <LiveAttacks />
