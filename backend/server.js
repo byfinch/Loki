@@ -1357,6 +1357,13 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       // fallback'i expiresAt'i her poll'da ileri itip kaydi olumsuzlastiriyordu
       // (hayalet birikim). timeLeft yoksa/0 ise uzatma YOK; kayit dogal
       // sureciyle biter.
+      // Upstream L4'te timeLeft'e kuyruk/bekleme payi katabilir (60s'lik
+      // saldiri 85s gosterir). Kaydaki gercek sureyi asma.
+      const configuredTime = parseInt(localAttack.time, 10) || 0;
+      const rawLeft = parseInt(item.timeLeft, 10);
+      if (Number.isFinite(rawLeft) && configuredTime > 0 && rawLeft > configuredTime) {
+        item.timeLeft = configuredTime;
+      }
       const upstreamLeft = parseInt(item.timeLeft, 10);
       if (Number.isFinite(upstreamLeft) && upstreamLeft > 0) {
         // Upstream bazen gercek surenin ustunde timeLeft dondurur (kuyruk/
@@ -2864,8 +2871,18 @@ async function liveHubTick(hub, username) {
     let ongoingData = ongoing.data;
     if (Array.isArray(ongoingData)) {
       ongoingData = ongoingData.map((item) => {
+        const local = activeAttacks[item.attack_id || item.id];
+        let next = item;
+        // Upstream kuyruk payini gosterme: gercek sureyi asma
+        if (local) {
+          const t = parseInt(local.time, 10) || 0;
+          const tl = parseInt(item.timeLeft, 10);
+          if (t > 0 && Number.isFinite(tl) && tl > t) {
+            next = { ...next, timeLeft: t };
+          }
+        }
         const note = resolveNoteForRow(username, item.target || item.host, item.method);
-        return note ? { ...item, note } : item;
+        return note ? { ...next, note } : next;
       });
     }
     hub.lastOngoing = ongoingData;
