@@ -647,8 +647,11 @@ function resolveNoteForRow(username, rawTarget, method) {
 // Bir hesabin aktif saldiri sayisi (activeAttacks uzerinden).
 function countAttacksForUser(username) {
   if (!username) return 0;
+  // Suresi dolmus kayitlar sayilmasin (bitis~cleanup arasi 30-90sn pencere)
+  const now = Date.now();
   return Object.values(activeAttacks).filter(
-    (a) => (a.username || sessions[a.sessionId]?.username) === username
+    (a) => (a.username || sessions[a.sessionId]?.username) === username &&
+      new Date(a.expiresAt || 0).getTime() > now
   ).length;
 }
 
@@ -975,9 +978,12 @@ function checkPlanLimits(sessionId, time, concurrents) {
   }
 
   // Mevcut aktif saldirilarin toplam concurrents'ini hesapla.
-  // ID'siz saldirilar icin pending kayitlar da dahil.
+  // Suresi dolmus ama henuz cleanup'lanmamis kayitlar SAYILMAZ; aksi halde
+  // biten saldiri 30-90sn daha slot isgal ediyor gorunur ve yeni launch
+  // yanlislikla reddedilir.
+  const now = Date.now();
   const currentConcurrents = Object.values(activeAttacks)
-    .filter((a) => a.sessionId === sessionId)
+    .filter((a) => a.sessionId === sessionId && new Date(a.expiresAt || 0).getTime() > now)
     .reduce((sum, a) => sum + (parseInt(a.concurrents) || 1), 0);
 
   if (currentConcurrents + parseInt(concurrents) > parseInt(maxConcurrents)) {
@@ -2543,9 +2549,10 @@ app.get('/api/stresse/stats', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Session user not found' });
     }
 
-    // Aktif saldirilar (bu hesaba ait)
+    // Aktif saldirilar (bu hesaba ait, suresi dolmamis kayitlar)
+    const now = Date.now();
     const activeCount = Object.values(activeAttacks).filter(
-      (a) => a.username === sessionUser
+      (a) => a.username === sessionUser && new Date(a.expiresAt || 0).getTime() > now
     ).length;
 
     // Calisan loop'larin kapasitesi: loop ayakta oldugu surece sabit;
@@ -2558,7 +2565,6 @@ app.get('/api/stresse/stats', async (req, res) => {
     });
 
     // Loopsuz (tek seferlik) ve suresi henuz dolmamis saldirilar.
-    const now = Date.now();
     const nonLoopActive = Object.values(activeAttacks)
       .filter(
         (a) => a.username === sessionUser && !a.loopId &&
