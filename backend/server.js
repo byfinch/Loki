@@ -17,6 +17,21 @@ const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
 
+// stresse.st istekleri icin opsiyonel cikis proxy'si (or. SOCKS5 SSH tuneli:
+// socks5://127.0.0.1:1080). stresse.st bazi sunucu IP'lerine anti-bot
+// dogrulamasi uyguluyor; proxy ile istekler temiz IP'den cikar.
+const { SocksProxyAgent } = require('socks-proxy-agent');
+const STRESSE_PROXY = process.env.LOKI_STRESSE_PROXY || '';
+const stresseProxyAgent = STRESSE_PROXY ? new SocksProxyAgent(STRESSE_PROXY) : null;
+if (stresseProxyAgent) {
+  console.log(`[proxy] stresse.st trafigi proxy uzerinden: ${STRESSE_PROXY}`);
+}
+function stresseProxyConfig() {
+  if (!stresseProxyAgent) return {};
+  // axios'un kendi proxy mantigini kapatip agent'i veriyoruz.
+  return { proxy: false, httpAgent: stresseProxyAgent, httpsAgent: stresseProxyAgent };
+}
+
 initTelegram();
 
 // Node 20'nin "Happy Eyeballs" (autoSelectFamily) ozelligi, IPv6'si bozuk/eksik
@@ -1081,6 +1096,7 @@ function getClient(sessionId) {
     withCredentials: true,
     family: 4,
     maxRedirects: 5,
+    ...stresseProxyConfig(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*',
@@ -1104,6 +1120,7 @@ function getApiClient(sessionId) {
     family: 4,
     maxRedirects: 5,
     timeout: 45000,
+    ...stresseProxyConfig(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*'
