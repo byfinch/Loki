@@ -44,11 +44,20 @@ async function solveChallenge(timeoutMs = 45000) {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1366,768',
+      '--lang=en-US,en'
     ]
   });
   try {
     const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    });
+    await page.setViewport({ width: 1366, height: 768 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
     );
@@ -87,6 +96,15 @@ async function solveChallenge(timeoutMs = 45000) {
           body: (document.body ? document.body.innerText : '').slice(0, 500),
           html: document.documentElement.outerHTML.slice(0, 1500)
         }));
+        // Dogrulama iframe'inin icerigi ne diyor (cogu zaman asil ipucu oradadir).
+        for (const frame of page.frames()) {
+          if (frame === page.mainFrame()) continue;
+          try {
+            state.frameUrl = frame.url();
+            state.frameBody = (await frame.evaluate(() => document.body ? document.body.innerText : '')).slice(0, 500);
+            state.frameHtml = (await frame.evaluate(() => document.documentElement.outerHTML)).slice(0, 1200);
+          } catch {}
+        }
         const shot = '/root/diamwall-fail.png';
         await page.screenshot({ path: shot }).catch(() => {});
         console.error('[diamwall] Cozulemedi. Sayfa durumu:', JSON.stringify(state, null, 2));
