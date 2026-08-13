@@ -74,6 +74,19 @@ async function solveChallenge(timeoutMs = 45000) {
       }
     }
     if (!cleared) {
+      // Teshis: Chrome'un gordugu sayfayi kaydet (baslik + body + ekran goruntusu).
+      try {
+        const state = await page.evaluate(() => ({
+          title: document.title || '',
+          url: location.href,
+          body: (document.body ? document.body.innerText : '').slice(0, 500),
+          html: document.documentElement.outerHTML.slice(0, 1500)
+        }));
+        const shot = '/root/diamwall-fail.png';
+        await page.screenshot({ path: shot }).catch(() => {});
+        console.error('[diamwall] Cozulemedi. Sayfa durumu:', JSON.stringify(state, null, 2));
+        console.error('[diamwall] Ekran goruntusu:', shot);
+      } catch {}
       throw new Error('DiamWall dogrulamasi zaman asimina ugradi');
     }
 
