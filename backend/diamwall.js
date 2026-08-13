@@ -54,24 +54,29 @@ async function solveChallenge(timeoutMs = 45000) {
     );
     await page.goto(`${TARGET}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Duvar dogrulamasi bitene kadar bekle: baslik DiamWall olmaktan cikar,
-    // dogrulama iframe'i kaybolur.
+    // Duvar dogrulamasi bitene kadar bekle. Basari isareti: _dwa cookie'sinin
+    // 1'e donmesi (duvar 5s.html iframe'i icinde dogrulamayi bitirince mesajla
+    // title'i gunceller; title basarida da "DiamWall" icerir, o yuzden title'a
+    // guvenilmez).
     const deadline = Date.now() + timeoutMs;
     let cleared = false;
     while (Date.now() < deadline) {
+      const cookies = await page.cookies(TARGET).catch(() => []);
+      const dwa = cookies.find((c) => c.name === '_dwa');
+      if (dwa && dwa.value !== '0') {
+        cleared = true;
+        break;
+      }
+      // Yedek tespit: dogrulama iframe'i kaybolduysa ve baslik degistiysa.
       const state = await page.evaluate(() => ({
         title: document.title || '',
         hasIframe: !!document.querySelector('iframe#verification')
       })).catch(() => ({ title: '', hasIframe: true }));
-      if (!state.title.includes('DiamWall') && !state.hasIframe) {
+      if (!state.hasIframe && state.title && !state.title.startsWith('Verifying')) {
         cleared = true;
         break;
       }
       await new Promise((r) => setTimeout(r, 1500));
-      // Bazi challenge'lar sayfayi yeniden yukler; body bos kaldiysa reload dene.
-      if (!cleared && !state.hasIframe && state.title === '') {
-        await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-      }
     }
     if (!cleared) {
       // Teshis: Chrome'un gordugu sayfayi kaydet (baslik + body + ekran goruntusu).
