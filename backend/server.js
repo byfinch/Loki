@@ -1158,6 +1158,120 @@ function getApiClient(sessionId) {
 // =====================
 
 /**
+ * stresse.st login akisini calistirir (GET /login -> POST /w/login ->
+ * GET /vcookie -> GET /plan -> GET /getApiToken) ve session'i doldurur.
+ * Hata durumunda gecici session'i temizleyip err.step bilgisiyle firlatir.
+ * Hem /api/stresse/login hem /api/accounts/ensure kullanir.
+ */
+async function performStresseLogin(sessionId, username, password) {
+  sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };
+  const client = getClient(sessionId);
+
+  let step = 'GET /login';
+  try {
+    // 1. Get login page to collect cookies (retry ile)
+    let loginPageOk = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await client.get('/login');
+        loginPageOk = true;
+        break;
+      } catch (retryErr) {
+        console.warn(`[login] GET /login deneme ${attempt}/3 hata: ${retryErr.message}`);
+        if (attempt === 3) throw retryErr;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    if (!loginPageOk) throw new Error('Login sayfasi alinamadi');
+
+    // 2. Submit login credentials (retry ile)
+    // Not: stresse.st login endpoint'ini /login -> /w/login tasidi (eski yol
+    // artik HTML login sayfasi donduruyor).
+    step = 'POST /w/login';
+    let loginRes;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        loginRes = await client.post('/w/login', { username, password });
+        break;
+      } catch (retryErr) {
+        console.warn(`[login] POST /w/login deneme ${attempt}/3 hata: ${retryErr.message}`);
+        if (attempt === 3) throw retryErr;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    // 3. Verify session (retry ile)
+    step = 'GET /vcookie';
+    let vcookieRes;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        vcookieRes = await client.get('/vcookie');
+        break;
+      } catch (retryErr) {
+        console.warn(`[login] GET /vcookie deneme ${attempt}/3 hata: ${retryErr.message}`);
+        if (attempt === 3) throw retryErr;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    if (!vcookieRes.data || !vcookieRes.data.username) {
+      const err = new Error('Invalid credentials');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    // 4. Fetch user plan for backend-side limit enforcement
+    step = 'GET /plan';
+    let planData = {};
+    try {
+      const planRes = await client.get(`/plan/${vcookieRes.data.username}`);
+      planData = planRes.data || {};
+    } catch (planErr) {
+      console.warn(`[login] Plan alinamadi: ${planErr.message}`);
+    }
+
+    // 5. Fetch API token for direct API usage
+    step = 'GET /getApiToken';
+    let apiToken = null;
+    try {
+      const tokenRes = await client.get('/getApiToken');
+      apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
+      if (apiToken) {
+        console.log(`[login] API token alindi: ${apiToken.slice(0, 8)}...`);
+      } else {
+        console.warn('[login] /getApiToken bos dondu, fallback token kullanilacak');
+      }
+    } catch (tokenErr) {
+      console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
+    }
+    if (!apiToken) {
+      apiToken = getFallbackApiToken(vcookieRes.data.username || username);
+      if (apiToken) {
+        console.log(`[login] Fallback API token kullaniliyor: ${apiToken.slice(0, 8)}...`);
+      }
+    }
+
+    sessions[sessionId].username = vcookieRes.data.username || username;
+    sessions[sessionId].user = vcookieRes.data;
+    sessions[sessionId].plan = planData;
+    sessions[sessionId].apiToken = apiToken;
+    // Basarili loginde guncel key'i hesap bazli token dosyasina yaz;
+    // ileride token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
+    if (apiToken) {
+      writeApiToken(sessions[sessionId].username, apiToken);
+    }
+    saveState();
+
+    return { user: vcookieRes.data, plan: planData };
+  } catch (stepErr) {
+    // Basarisiz login durumunda olusturulan gecici session'i temizle
+    delete sessions[sessionId];
+    saveState();
+    stepErr.step = step;
+    throw stepErr;
+  }
+}
+
+/**
  * POST /api/stresse/login
  * Body: { username, password }
  */
@@ -1168,122 +1282,28 @@ app.post('/api/stresse/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Username and password required' });
     }
 
-      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };
-      const client = getClient(sessionId);
-
-      let step = 'GET /login';
+    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-      // 1. Get login page to collect cookies (retry ile)
-      let loginPageOk = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await client.get('/login');
-          loginPageOk = true;
-          break;
-        } catch (retryErr) {
-          console.warn(`[login] GET /login deneme ${attempt}/3 hata: ${retryErr.message}`);
-          if (attempt === 3) throw retryErr;
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-      if (!loginPageOk) throw new Error('Login sayfasi alinamadi');
-
-      // 2. Submit login credentials (retry ile)
-      // Not: stresse.st login endpoint'ini /login -> /w/login tasidi (eski yol
-      // artik HTML login sayfasi donduruyor).
-      step = 'POST /w/login';
-      let loginRes;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          loginRes = await client.post('/w/login', { username, password });
-          break;
-        } catch (retryErr) {
-          console.warn(`[login] POST /w/login deneme ${attempt}/3 hata: ${retryErr.message}`);
-          if (attempt === 3) throw retryErr;
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-
-      // 3. Verify session (retry ile)
-      step = 'GET /vcookie';
-      let vcookieRes;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          vcookieRes = await client.get('/vcookie');
-          break;
-        } catch (retryErr) {
-          console.warn(`[login] GET /vcookie deneme ${attempt}/3 hata: ${retryErr.message}`);
-          if (attempt === 3) throw retryErr;
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-      if (!vcookieRes.data || !vcookieRes.data.username) {
-        return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
-      }
-
-      // 4. Fetch user plan for backend-side limit enforcement
-      step = 'GET /plan';
-      let planData = {};
-      try {
-        const planRes = await client.get(`/plan/${vcookieRes.data.username}`);
-        planData = planRes.data || {};
-      } catch (planErr) {
-        console.warn(`[login] Plan alinamadi: ${planErr.message}`);
-      }
-
-      // 5. Fetch API token for direct API usage
-      step = 'GET /getApiToken';
-      let apiToken = null;
-      try {
-        const tokenRes = await client.get('/getApiToken');
-        apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
-        if (apiToken) {
-          console.log(`[login] API token alindi: ${apiToken.slice(0, 8)}...`);
-        } else {
-          console.warn('[login] /getApiToken bos dondu, fallback token kullanilacak');
-        }
-      } catch (tokenErr) {
-        console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
-      }
-      if (!apiToken) {
-        apiToken = getFallbackApiToken(vcookieRes.data.username || username);
-        if (apiToken) {
-          console.log(`[login] Fallback API token kullaniliyor: ${apiToken.slice(0, 8)}...`);
-        }
-      }
-
-      sessions[sessionId].username = vcookieRes.data.username || username;
-      sessions[sessionId].user = vcookieRes.data;
-      sessions[sessionId].plan = planData;
-      sessions[sessionId].apiToken = apiToken;
-      // Basarili loginde guncel key'i hesap bazli token dosyasina yaz;
-      // ileride token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
-      if (apiToken) {
-        writeApiToken(sessions[sessionId].username, apiToken);
-      }
-      saveState();
-
+      const { user, plan } = await performStresseLogin(sessionId, username, password);
       res.json({
         status: 'success',
         sessionId,
-        user: vcookieRes.data,
-        plan: planData
+        user,
+        plan
       });
     } catch (stepErr) {
-      // Basarisiz login durumunda olusturulan gecici session'i temizle
-      delete sessions[sessionId];
-      saveState();
-
+      if (stepErr.statusCode === 401) {
+        return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+      }
       // Hangi adimda patladigini ve stresse.st'in dondugu govdeyi acikca gorelim
       const status = stepErr.response?.status;
       const body = stepErr.response?.data;
-      console.error(`Login error @ ${step}: ${stepErr.message}`);
+      console.error(`Login error @ ${stepErr.step}: ${stepErr.message}`);
       console.error(`  upstream status: ${status}`);
       console.error(`  upstream body:`, typeof body === 'string' ? body.slice(0, 500) : JSON.stringify(body)?.slice(0, 500));
       return res.status(502).json({
         status: 'error',
-        message: `stresse.st ${step} -> ${status || 'no-response'}: ${stepErr.message}`,
+        message: `stresse.st ${stepErr.step} -> ${status || 'no-response'}: ${stepErr.message}`,
         upstreamStatus: status,
         upstreamBody: typeof body === 'string' ? body.slice(0, 300) : body
       });
@@ -2541,9 +2561,35 @@ app.get('/api/method-congestion', (req, res) => {
   res.json(getMethodCongestionSnapshot());
 });
 
+// Bilinen hesaplar: LOKI_KNOWN_ACCOUNTS="user1:pass1,user2:pass2".
+// Ortak panelde bu hesaplar giris yapilmamis olsa bile /api/accounts
+// listesinde gorunur; secildiklerinde arka planda otomatik login yapilir.
+const KNOWN_ACCOUNTS = new Map();
+(process.env.LOKI_KNOWN_ACCOUNTS || '').split(',').forEach((entry) => {
+  const idx = entry.indexOf(':');
+  if (idx <= 0) return;
+  const u = entry.slice(0, idx).trim();
+  const p = entry.slice(idx + 1).trim();
+  if (u && p) KNOWN_ACCOUNTS.set(u, p);
+});
+if (KNOWN_ACCOUNTS.size) {
+  console.log(`[accounts] Bilinen hesaplar: ${[...KNOWN_ACCOUNTS.keys()].join(', ')}`);
+}
+
+// Canli, token'i olan en taze session'i bul
+function findLiveSessionForUser(username) {
+  let best = null;
+  Object.entries(sessions).forEach(([sid, session]) => {
+    if (session?.username !== username || !session.apiToken) return;
+    const created = new Date(session.createdAt || 0).getTime();
+    if (!best || created > best.created) best = { sessionId: sid, created };
+  });
+  return best ? best.sessionId : null;
+}
+
 /**
  * GET /api/accounts
- * Backend'de yasayan tum oturumlari (hesaplari) dondurur.
+ * Canli oturumu olan hesaplar + bilinen (env tanimli) hesaplarin birlesimi.
  * Ortak panel: herhangi bir gecerli oturum, listedeki diger hesaplara
  * sifresiz gecebilir (sessionId'ler paylasilir).
  */
@@ -2565,6 +2611,12 @@ app.get('/api/accounts', async (req, res) => {
       }
     });
 
+    // Bilinen (env tanimli) ama canli oturumu olmayan hesaplari da ekle;
+    // sessionId'siz gelirler, secilirken /api/accounts/ensure ile login olurlar.
+    KNOWN_ACCOUNTS.forEach((_, username) => {
+      if (!byUser.has(username)) byUser.set(username, { username, sessionId: null });
+    });
+
     const accounts = [...byUser.values()]
       .map(({ username, sessionId: sid }) => ({ username, sessionId: sid }))
       .sort((a, b) => a.username.localeCompare(b.username));
@@ -2572,6 +2624,38 @@ app.get('/api/accounts', async (req, res) => {
     res.json({ status: 'success', accounts });
   } catch (error) {
     handleEndpointError(res, error, 'Accounts error');
+  }
+});
+
+/**
+ * POST /api/accounts/ensure
+ * Body: { username }
+ * Bilinen bir hesap icin canli session garanti eder: varsa mevcut sessionId
+ * doner, yoksa sakli kimlik bilgisiyle arka planda login yapip yeni session
+ * acar. Boylece hesap secimi o hesaba hic girilmemis olsa da calisir.
+ */
+app.post('/api/accounts/ensure', async (req, res) => {
+  try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId || !sessions[sessionId]) {
+      return res.status(401).json({ status: 'error', message: 'Session required' });
+    }
+    const { username } = req.body || {};
+    if (!username || !KNOWN_ACCOUNTS.has(username)) {
+      return res.status(404).json({ status: 'error', message: 'Bilinmeyen hesap' });
+    }
+
+    const live = findLiveSessionForUser(username);
+    if (live) {
+      return res.json({ status: 'success', username, sessionId: live });
+    }
+
+    const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    await performStresseLogin(newSessionId, username, KNOWN_ACCOUNTS.get(username));
+    console.log(`[accounts] Arka planda login: ${username}`);
+    res.json({ status: 'success', username, sessionId: newSessionId });
+  } catch (error) {
+    handleEndpointError(res, error, 'Account ensure error');
   }
 });
 

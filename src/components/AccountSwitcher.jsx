@@ -58,7 +58,12 @@ const AccountSwitcher = ({ activeUsername, onSwitch }) => {
     }
     setSwitchingTo(account.username);
     try {
-      await onSwitch(account);
+      // Canli oturumu olmayan hesap: backend arka planda login yapar.
+      let sessionId = account.sessionId;
+      if (!sessionId) {
+        sessionId = await apiClient.ensureAccountSession(account.username);
+      }
+      await onSwitch({ ...account, sessionId });
     } finally {
       setSwitchingTo(null);
       close();

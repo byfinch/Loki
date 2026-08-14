@@ -93,11 +93,24 @@ export const apiClient = {
   },
 
   // Backend'de yasayan tum hesaplari getirir (onceden giris sarti olmadan
-  // listede gorunurler; ortak panelde herkes her hesaba gecebilir).
+  // listede gorunurler; ortak panelde herkes her hesapa gecebilir).
   async getServerAccounts() {
     const res = await apiFetch(`${API_BASE}/accounts`, { headers: getHeaders() });
     const data = await handleResponse(res);
     return Array.isArray(data.accounts) ? data.accounts : [];
+  },
+
+  // Bilinen ama canli oturumu olmayan hesap icin backend'de session acar
+  // (arka planda login); sessionId dondurur.
+  async ensureAccountSession(username) {
+    const res = await apiFetch(`${API_BASE}/accounts/ensure`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ username })
+    });
+    const data = await handleResponse(res);
+    if (!data.sessionId) throw new Error('Oturum açılamadı');
+    return data.sessionId;
   },
 
   // Hesaba ozel sayaclar: aktif, toplam baslatilan, bugun baslatilan.
