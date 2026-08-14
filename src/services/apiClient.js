@@ -255,9 +255,10 @@ export const apiClient = {
   },
 
   // Calisan loop'un notunu / gelecek tur ayarlarini guncelle
+  // Not: POST kullaniliyor; sunucudaki LiteSpeed ModSecurity PUT'u engelliyor.
   async editLoop(loopId, fields) {
     const res = await apiFetch(`${API_BASE}/stresse/loop/edit`, {
-      method: 'PUT',
+      method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ loopId, ...fields })
     });
