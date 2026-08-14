@@ -17,14 +17,19 @@ const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
 
-// stresse.st istekleri icin opsiyonel cikis proxy'si (or. SOCKS5 SSH tuneli:
-// socks5://127.0.0.1:1080). stresse.st bazi sunucu IP'lerine anti-bot
-// dogrulamasi uyguluyor; proxy ile istekler temiz IP'den cikar.
+// stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
+// or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
+// stresse.st bazi sunucu IP'lerine anti-bot dogrulamasi uyguluyor;
+// proxy ile istekler temiz IP'den cikar.
 const { SocksProxyAgent } = require('socks-proxy-agent');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const STRESSE_PROXY = process.env.LOKI_STRESSE_PROXY || '';
-const stresseProxyAgent = STRESSE_PROXY ? new SocksProxyAgent(STRESSE_PROXY) : null;
-if (stresseProxyAgent) {
-  console.log(`[proxy] stresse.st trafigi proxy uzerinden: ${STRESSE_PROXY}`);
+let stresseProxyAgent = null;
+if (STRESSE_PROXY) {
+  stresseProxyAgent = STRESSE_PROXY.startsWith('socks')
+    ? new SocksProxyAgent(STRESSE_PROXY)
+    : new HttpsProxyAgent(STRESSE_PROXY);
+  console.log(`[proxy] stresse.st trafigi proxy uzerinden: ${STRESSE_PROXY.replace(/\/\/.*@/, '//***@')}`);
 }
 function stresseProxyConfig() {
   if (!stresseProxyAgent) return {};
