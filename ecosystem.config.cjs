@@ -10,7 +10,8 @@ module.exports = {
         LOKI_TELEGRAM_BOT_TOKEN: '',
         LOKI_TELEGRAM_CHAT_ID: '',
         LOKI_PHISH_DB_PATH: '/opt/phishguard/data/phishguard.db',
-        LOKI_STRESSE_PROXY: ''
+        LOKI_STRESSE_PROXY: '',
+        LOKI_KNOWN_ACCOUNTS: ''
       },
       env_production: {
         NODE_ENV: 'production',
@@ -19,7 +20,8 @@ module.exports = {
         LOKI_TELEGRAM_BOT_TOKEN: '',
         LOKI_TELEGRAM_CHAT_ID: '',
         LOKI_PHISH_DB_PATH: '/opt/phishguard/data/phishguard.db',
-        LOKI_STRESSE_PROXY: ''
+        LOKI_STRESSE_PROXY: '',
+        LOKI_KNOWN_ACCOUNTS: ''
       }
     }
   ]
