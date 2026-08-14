@@ -7,7 +7,6 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
-const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 const net = require('net');
 const dns = require('dns');
@@ -1095,10 +1094,10 @@ function getClient(sessionId) {
   }
   // Kayar session suresi: aktif kullanim TTL'i yeniler.
   sessions[sessionId].lastActivity = new Date().toISOString();
-  return wrapper(axios.create({
+  // Not: axios-cookiejar-support, ozel http(s).Agent (proxy) ile calismiyor.
+  // Bu yuzden cookie yonetimini interceptor'larla elle yapiyoruz.
+  const client = axios.create({
     baseURL: 'https://stresse.st',
-    jar,
-    withCredentials: true,
     family: 4,
     maxRedirects: 5,
     ...stresseProxyConfig(),
@@ -1110,7 +1109,28 @@ function getClient(sessionId) {
       'Referer': 'https://stresse.st/hub'
     },
     timeout: 15000
-  }));
+  });
+  client.interceptors.request.use(async (config) => {
+    const url = new URL(config.url || '', config.baseURL).toString();
+    const cookie = await jar.getCookieString(url);
+    if (cookie) config.headers.Cookie = cookie;
+    return config;
+  });
+  const storeCookies = async (response) => {
+    const setCookies = response.headers['set-cookie'];
+    if (setCookies && setCookies.length) {
+      const url = response.config ? new URL(response.config.url || '', response.config.baseURL).toString() : 'https://stresse.st';
+      for (const c of setCookies) {
+        await jar.setCookie(c, url).catch(() => {});
+      }
+    }
+    return response;
+  };
+  client.interceptors.response.use(storeCookies, async (err) => {
+    if (err.response) await storeCookies(err.response);
+    throw err;
+  });
+  return client;
 }
 
 function getApiClient(sessionId) {
