@@ -1219,29 +1219,30 @@ async function performStresseLogin(sessionId, username, password) {
       throw err;
     }
 
-    // 4. Fetch user plan for backend-side limit enforcement
-    step = 'GET /plan';
+    // 4+5. Plan ve API token birbirinden bagimsiz: paralel istenir (ozellikle
+    // proxy uzerinden gecisleri hizlandirir).
+    step = 'GET /plan + /getApiToken';
     let planData = {};
-    try {
-      const planRes = await client.get(`/plan/${vcookieRes.data.username}`);
-      planData = planRes.data || {};
-    } catch (planErr) {
-      console.warn(`[login] Plan alinamadi: ${planErr.message}`);
-    }
-
-    // 5. Fetch API token for direct API usage
-    step = 'GET /getApiToken';
     let apiToken = null;
-    try {
-      const tokenRes = await client.get('/getApiToken');
+    const [planResult, tokenResult] = await Promise.allSettled([
+      client.get(`/plan/${vcookieRes.data.username}`),
+      client.get('/getApiToken')
+    ]);
+    if (planResult.status === 'fulfilled') {
+      planData = planResult.value.data || {};
+    } else {
+      console.warn(`[login] Plan alinamadi: ${planResult.reason?.message}`);
+    }
+    if (tokenResult.status === 'fulfilled') {
+      const tokenRes = tokenResult.value;
       apiToken = tokenRes.data?.apitoken || tokenRes.data?.token || tokenRes.data?.apiToken || null;
       if (apiToken) {
         console.log(`[login] API token alindi: ${apiToken.slice(0, 8)}...`);
       } else {
         console.warn('[login] /getApiToken bos dondu, fallback token kullanilacak');
       }
-    } catch (tokenErr) {
-      console.warn(`[login] API token alinamadi: ${tokenErr.message}`);
+    } else {
+      console.warn(`[login] API token alinamadi: ${tokenResult.reason?.message}`);
     }
     if (!apiToken) {
       apiToken = getFallbackApiToken(vcookieRes.data.username || username);
