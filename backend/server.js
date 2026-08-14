@@ -2431,7 +2431,8 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
  * Calisan loop'un notunu ve/veya saldiri ayarlarini gunceller. Yeni degerler
  * bir SONRAKI turdan itibaren gecerlidir; o an calisan tur etkilenmez.
  */
-app.put('/api/stresse/loop/edit', async (req, res) => {
+// LiteSpeed ModSecurity PUT/DELETE'i kestigi icin POST da kabul ediyoruz.
+const loopEditHandler = async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
@@ -2492,7 +2493,9 @@ app.put('/api/stresse/loop/edit', async (req, res) => {
   } catch (error) {
     handleEndpointError(res, error, 'Loop edit error');
   }
-});
+};
+app.put('/api/stresse/loop/edit', loopEditHandler);
+app.post('/api/stresse/loop/edit', loopEditHandler);
 
 app.post('/api/stresse/loop/stop', async (req, res) => {
   try {
