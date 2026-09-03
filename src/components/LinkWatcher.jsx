@@ -33,6 +33,10 @@ const LinkWatcher = () => {
   const [newKw, setNewKw] = useState('');
   const [newSite, setNewSite] = useState('');
   const [copiedKey, setCopiedKey] = useState(null);
+  const [kwFilter, setKwFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 10;
 
   const refresh = useCallback(async () => {
     try {
@@ -51,6 +55,19 @@ const LinkWatcher = () => {
 
   const fmt = (ts) => (ts ? new Date(ts).toLocaleString('tr-TR') : '—');
   const live = data.findings.filter((f) => !f.gone);
+
+  // Filtreleme: keyword secimi + link/site serbest arama
+  const filtered = data.findings.filter((f) => {
+    if (kwFilter !== 'all' && f.keyword.toLowerCase() !== kwFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!f.href.toLowerCase().includes(q) && !f.site.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   const addKeyword = async () => {
     const v = newKw.trim();
@@ -163,6 +180,27 @@ const LinkWatcher = () => {
 
       {/* bulgular */}
       <TermCard title="root@loki:~/bulgular" cmd="$ tail -f findings.log" className="w-full">
+        {/* filtre cubugu */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <select
+            value={kwFilter}
+            onChange={(e) => { setKwFilter(e.target.value); setPage(1); }}
+            className="bg-black/60 border border-green-500/20 rounded-sm px-3 py-2 text-xs font-mono text-green-100 focus:outline-none focus:border-green-500/50"
+          >
+            <option value="all">tüm keywordler</option>
+            {data.keywords.map((k) => (
+              <option key={k} value={k.toLowerCase()}>{k}</option>
+            ))}
+          </select>
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="link veya site ara..."
+            className="flex-1 min-w-[180px] bg-black/60 border border-green-500/20 rounded-sm px-3 py-2 text-xs font-mono text-green-100 placeholder-gray-600 focus:outline-none focus:border-green-500/50"
+          />
+          <span className="self-center text-[10px] text-gray-600 font-mono">{filtered.length} kayıt</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -176,11 +214,11 @@ const LinkWatcher = () => {
               </tr>
             </thead>
             <tbody>
-              {data.findings.length === 0 && (
+              {pageRows.length === 0 && (
                 <tr><td colSpan={6} className="text-center text-gray-600 py-10"># bulgu yok — site ve keyword ekle, ilk tarama kısa süre içinde başlar</td></tr>
               )}
-              {data.findings.map((f) => {
-                const isNew = Date.now() - new Date(f.firstSeen).getTime() < 2 * 3600 * 1000;
+              {pageRows.map((f) => {
+                const isNew = data.lastScan && f.firstSeen === data.lastScan;
                 return (
                   <tr key={f.key} className="border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors">
                     <td className="px-2 py-2.5 text-green-400">{f.keyword}</td>
@@ -220,6 +258,27 @@ const LinkWatcher = () => {
             </tbody>
           </table>
         </div>
+
+        {/* sayfalama (AttackHistory kalibi) */}
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between mt-4 text-xs font-mono">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="px-3 py-1.5 rounded-sm border border-green-500/25 text-green-400 hover:bg-green-500/10 transition disabled:opacity-30"
+            >
+              ← önceki
+            </button>
+            <span className="text-gray-500">sayfa {safePage}/{pageCount}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={safePage === pageCount}
+              className="px-3 py-1.5 rounded-sm border border-green-500/25 text-green-400 hover:bg-green-500/10 transition disabled:opacity-30"
+            >
+              sonraki →
+            </button>
+          </div>
+        )}
       </TermCard>
     </div>
   );
