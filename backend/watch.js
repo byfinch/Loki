@@ -143,19 +143,27 @@ async function scanAll() {
       });
       return lines;
     };
-    // null = keyword gruplari arasi ayirac satiri
-    const renderLines = (pairs, icon) => groupByKw(pairs).slice(0, 40).map((p) =>
-      p === null ? '───' : `${icon} <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`
-    );
 
-    if (newPairs.length) {
-      const lines = renderLines(newPairs, '🔗');
-      await tg([`🟢 <b>LOKI — YENİ LİNK${newPairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
-    }
+    // Her tarama sonucu bildirir: aktif ikililer keyword gruplu listelenir,
+    // bu turda ilk kez bulunanlar 🆕 ile isaretlenir.
+    const newKeys = new Set(newPairs.map((p) => `${p.site}|${p.keyword.toLowerCase()}|${p.href}`));
+    const activePairs = findings.filter((f) => !f.gone);
+    const lines = groupByKw(activePairs).slice(0, 60).map((p) => {
+      if (p === null) return '───';
+      const isNew = newKeys.has(p.key);
+      return `${isNew ? '🆕' : '🔗'} <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>${isNew ? ' <b>(YENİ)</b>' : ''}`;
+    });
+    const msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
+    if (lines.length) msg.push(...lines);
+    else msg.push('<i>bulgu yok</i>');
     if (gonePairs.length) {
-      const lines = renderLines(gonePairs, '⛔');
-      await tg([`🔴 <b>LOKI — KALDIRILAN LİNK${gonePairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
+      msg.push('─────────────────', `⛔ <b>Kaldırılan:</b>`);
+      msg.push(...groupByKw(gonePairs).slice(0, 20).map((p) =>
+        p === null ? '───' : `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`
+      ));
     }
+    msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
+    await tg(msg.join('\n'));
   } finally {
     scanning = false;
     // Otomatik tur bekliyorduysa simdi calistir
