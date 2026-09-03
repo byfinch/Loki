@@ -124,24 +124,29 @@ async function scanAll() {
     };
 
     // Bildirim satirlari keyword'e gore gruplanir: bir keyword'un tum
-    // sonuclari arka arkaya gelir, araya baska keyword girmez.
+    // sonuclari arka arkaya gelir; keyword gecislerinde ayirac konur.
     const groupByKw = (pairs) => {
       const order = [...new Set(pairs.map((p) => p.keyword.toLowerCase()))];
       const lines = [];
-      for (const kw of order) {
+      order.forEach((kw, i) => {
+        if (i > 0) lines.push(null); // ayirac
         for (const p of pairs.filter((x) => x.keyword.toLowerCase() === kw)) {
           lines.push(p);
         }
-      }
+      });
       return lines;
     };
+    // null = keyword gruplari arasi ayirac satiri
+    const renderLines = (pairs, icon) => groupByKw(pairs).slice(0, 40).map((p) =>
+      p === null ? '───' : `${icon} <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`
+    );
 
     if (newPairs.length) {
-      const lines = groupByKw(newPairs).slice(0, 20).map((p) => `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
+      const lines = renderLines(newPairs, '🔗');
       await tg([`🟢 <b>LOKI — YENİ LİNK${newPairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
     if (gonePairs.length) {
-      const lines = groupByKw(gonePairs).slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
+      const lines = renderLines(gonePairs, '⛔');
       await tg([`🔴 <b>LOKI — KALDIRILAN LİNK${gonePairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
   } finally {
