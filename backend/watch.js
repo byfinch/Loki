@@ -87,20 +87,23 @@ async function scanAll() {
     const scannedOk = new Set(); // bu turda basariyla taranan siteler
     for (const site of sites) {
       let html = '';
-      try {
-        const r = await axios.get(`https://${site}`, {
-          timeout: 45000, maxRedirects: 5,
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' },
-          validateStatus: () => true
-        });
-        if (r.status >= 400) throw new Error('HTTP ' + r.status);
-        html = typeof r.data === 'string' ? r.data : '';
-        scannedOk.add(site);
-      } catch (e) {
-        // Site acilmadi: bu siteye ait bulgulara dokunma (kayboldu sayilamaz)
-        console.warn(`[watch] ${site} erisilemedi: ${e.message}`);
-        continue;
+      // Yavas siteler icin: 90sn timeout + tur icinde bir kez tekrar dene
+      for (let attempt = 1; attempt <= 2 && !html; attempt++) {
+        try {
+          const r = await axios.get(`https://${site}`, {
+            timeout: 90000, maxRedirects: 5,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' },
+            validateStatus: () => true
+          });
+          if (r.status >= 400) throw new Error('HTTP ' + r.status);
+          html = typeof r.data === 'string' ? r.data : '';
+          scannedOk.add(site);
+        } catch (e) {
+          console.warn(`[watch] ${site} erisilemedi (deneme ${attempt}/2): ${e.message}`);
+          if (attempt < 2) await new Promise((r2) => setTimeout(r2, 3000));
+        }
       }
+      if (!html) continue;
       for (const p of findPairs(html, site)) {
         // Anahtar keyword+href: ayni link baska bir izlenen sitede de cikarsa
         // yeni bulgu SAYILMAZ; bulgunun site listesine eklenir.
