@@ -230,7 +230,17 @@ const LinkWatcher = () => {
                       <a href={f.href} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{f.href}</a>
                       {f.anchor && <div className="text-[10px] text-gray-600 mt-0.5">{f.anchor}</div>}
                     </td>
-                    <td className="px-2 py-2.5 text-green-100/80">{f.site}</td>
+                    <td className="px-2 py-2.5 text-green-100/80">
+                      {f.site}
+                      {Array.isArray(f.sites) && f.sites.length > 1 && (
+                        <span
+                          className="ml-1.5 px-1 py-px rounded-sm text-[9px] bg-green-500/10 text-green-400/80 border border-green-500/20 cursor-help align-middle"
+                          title={`Diğer siteler: ${f.sites.filter((s) => s !== f.site).join(', ')}`}
+                        >
+                          +{f.sites.length - 1}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5 text-[10px] text-gray-500 whitespace-nowrap">{fmt(f.firstSeen)}<br />{fmt(f.lastSeen)}</td>
                     <td className="px-2 py-2.5">
                       {f.gone
