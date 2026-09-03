@@ -2692,6 +2692,11 @@ app.delete('/api/watch/keywords', (req, res) => {
   if (!watchAuth(req, res)) return;
   res.json({ status: 'success', keywords: removeKeyword(req.body?.keyword).keywords });
 });
+// LiteSpeed ModSecurity DELETE'i engelliyor: POST ile kaldirma uclari
+app.post('/api/watch/keywords/remove', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', keywords: removeKeyword(req.body?.keyword).keywords });
+});
 
 app.post('/api/watch/sites', (req, res) => {
   if (!watchAuth(req, res)) return;
@@ -2701,6 +2706,10 @@ app.post('/api/watch/sites', (req, res) => {
 });
 
 app.delete('/api/watch/sites', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', sites: removeSite(req.body?.site).sites });
+});
+app.post('/api/watch/sites/remove', (req, res) => {
   if (!watchAuth(req, res)) return;
   res.json({ status: 'success', sites: removeSite(req.body?.site).sites });
 });
