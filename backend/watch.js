@@ -101,23 +101,31 @@ async function scanAll() {
         continue;
       }
       for (const p of findPairs(html, site)) {
-        const key = `${site}|${p.keyword.toLowerCase()}|${p.href}`;
+        // Anahtar keyword+href: ayni link baska bir izlenen sitede de cikarsa
+        // yeni bulgu SAYILMAZ; bulgunun site listesine eklenir.
+        const key = `${p.keyword.toLowerCase()}|${p.href}`;
         const existing = findings.find((f) => f.key === key);
         if (existing) {
+          if (!existing.sites) existing.sites = [existing.site];
+          if (!existing.sites.includes(site)) existing.sites.push(site);
+          existing.site = site; // son goruldugu site (geriye donuk uyum)
           // Yanlis/gercek kaybolma sonrasi geri geldiyse yeni gibi bildir
           if (existing.gone) newPairs.push(p);
           existing.lastSeen = now; existing.gone = false;
         } else {
-          findings.push({ key, ...p, firstSeen: now, lastSeen: now, gone: false });
+          findings.push({ key, ...p, sites: [site], firstSeen: now, lastSeen: now, gone: false });
           newPairs.push(p);
         }
       }
     }
-    // Kaybolan ikililer: YALNIZCA bu turda basariyla taranan sitelere ait,
-    // o turda gorulmemis bulgular. Site acilmadiysa bulgulari es geç.
+    // Kaybolan ikililer: bulgunun goruldugu sitelerden EN AZ BIRI bu turda
+    // basariyla taranmis olmali VE link hicbir taranan sitede bulunmamis
+    // olmali. Site acilmadiysa bulgulara dokunulmaz.
     const gonePairs = [];
     for (const f of findings) {
-      if (!f.gone && scannedOk.has(f.site) && f.lastSeen !== now) {
+      const fSites = f.sites || [f.site];
+      const scannedSites = fSites.filter((s) => scannedOk.has(s));
+      if (!f.gone && scannedSites.length > 0 && f.lastSeen !== now) {
         f.gone = true;
         gonePairs.push(f);
       }
@@ -146,12 +154,12 @@ async function scanAll() {
 
     // Her tarama sonucu bildirir: aktif ikililer keyword gruplu listelenir,
     // bu turda ilk kez bulunanlar 🆕 ile isaretlenir.
-    const newKeys = new Set(newPairs.map((p) => `${p.site}|${p.keyword.toLowerCase()}|${p.href}`));
+    const newKeys = new Set(newPairs.map((p) => `${p.keyword.toLowerCase()}|${p.href}`));
     const activePairs = findings.filter((f) => !f.gone);
     const lines = groupByKw(activePairs).slice(0, 60).map((p) => {
       if (p === null) return '───';
       const isNew = newKeys.has(p.key);
-      return `${isNew ? '🆕' : '🔗'} <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>${isNew ? ' <b>(YENİ)</b>' : ''}`;
+      return `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>${isNew ? ' <b>(YENİ)</b>' : ''}`;
     });
     const msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
     if (lines.length) msg.push(...lines);
