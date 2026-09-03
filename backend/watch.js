@@ -123,12 +123,25 @@ async function scanAll() {
       new: newPairs.length, gone: gonePairs.length
     };
 
+    // Bildirim satirlari keyword'e gore gruplanir: bir keyword'un tum
+    // sonuclari arka arkaya gelir, araya baska keyword girmez.
+    const groupByKw = (pairs) => {
+      const order = [...new Set(pairs.map((p) => p.keyword.toLowerCase()))];
+      const lines = [];
+      for (const kw of order) {
+        for (const p of pairs.filter((x) => x.keyword.toLowerCase() === kw)) {
+          lines.push(p);
+        }
+      }
+      return lines;
+    };
+
     if (newPairs.length) {
-      const lines = newPairs.slice(0, 20).map((p) => `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
+      const lines = groupByKw(newPairs).slice(0, 20).map((p) => `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
       await tg([`🟢 <b>LOKI — YENİ LİNK${newPairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
     if (gonePairs.length) {
-      const lines = gonePairs.slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
+      const lines = groupByKw(gonePairs).slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
       await tg([`🔴 <b>LOKI — KALDIRILAN LİNK${gonePairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
   } finally {
