@@ -9,6 +9,7 @@ import ToolsPanel from './ToolsPanel';
 import LoopManager from './LoopManager';
 import AttackHistory from './AttackHistory';
 import PhishPanel from './PhishPanel';
+import LinkWatcher from './LinkWatcher';
 import ImpactMonitor from './ImpactMonitor';
 import ToastContainer from './ToastContainer';
 
@@ -76,7 +77,8 @@ const Dashboard = () => {
     { id: 'loops', label: 'Looplar' },
     { id: 'tools', label: 'Araçlar' },
     { id: 'history', label: 'Geçmiş' },
-    { id: 'phish', label: 'Phish' }
+    { id: 'phish', label: 'Phish' },
+    { id: 'watch', label: 'Gözcü' }
   ];
 
   return (
@@ -100,7 +102,8 @@ const Dashboard = () => {
           { id: 'loops', icon: 'ph-repeat' },
           { id: 'tools', icon: 'ph-wrench' },
           { id: 'history', icon: 'ph-clock-counter-clockwise' },
-          { id: 'phish', icon: 'ph-shield-warning' }
+          { id: 'phish', icon: 'ph-shield-warning' },
+          { id: 'watch', icon: 'ph-link' }
         ].map((item) => (
           <button
             key={item.id}
@@ -183,6 +186,10 @@ const Dashboard = () => {
 
           {state.activeTab === 'phish' && (
             <PhishPanel />
+          )}
+
+          {state.activeTab === 'watch' && (
+            <LinkWatcher />
           )}
         </div>
       </main>

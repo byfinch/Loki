@@ -340,5 +340,31 @@ export const apiClient = {
       headers: getHeaders()
     });
     return handleResponse(res);
+  },
+
+  // ---- Link Gozcusu (watch) ----
+  async getWatchState() {
+    const res = await apiFetch(`${API_BASE}/watch/state`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  async addWatchKeyword(keyword) {
+    const res = await apiFetch(`${API_BASE}/watch/keywords`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ keyword }) });
+    return handleResponse(res);
+  },
+  async removeWatchKeyword(keyword) {
+    const res = await apiFetch(`${API_BASE}/watch/keywords`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ keyword }) });
+    return handleResponse(res);
+  },
+  async addWatchSite(site) {
+    const res = await apiFetch(`${API_BASE}/watch/sites`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ site }) });
+    return handleResponse(res);
+  },
+  async removeWatchSite(site) {
+    const res = await apiFetch(`${API_BASE}/watch/sites`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ site }) });
+    return handleResponse(res);
+  },
+  async triggerWatchScan() {
+    const res = await apiFetch(`${API_BASE}/watch/scan`, { method: 'POST', headers: getHeaders() });
+    return handleResponse(res);
   }
 };
