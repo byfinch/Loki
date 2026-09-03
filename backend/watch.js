@@ -83,6 +83,7 @@ async function scanAll() {
   const now = new Date().toISOString();
   const newPairs = [];
   try {
+    const scannedOk = new Set(); // bu turda basariyla taranan siteler
     for (const site of sites) {
       let html = '';
       try {
@@ -93,24 +94,30 @@ async function scanAll() {
         });
         if (r.status >= 400) throw new Error('HTTP ' + r.status);
         html = typeof r.data === 'string' ? r.data : '';
+        scannedOk.add(site);
       } catch (e) {
+        // Site acilmadi: bu siteye ait bulgulara dokunma (kayboldu sayilamaz)
         console.warn(`[watch] ${site} erisilemedi: ${e.message}`);
         continue;
       }
       for (const p of findPairs(html, site)) {
         const key = `${site}|${p.keyword.toLowerCase()}|${p.href}`;
         const existing = findings.find((f) => f.key === key);
-        if (existing) { existing.lastSeen = now; existing.gone = false; }
-        else {
+        if (existing) {
+          // Yanlis/gercek kaybolma sonrasi geri geldiyse yeni gibi bildir
+          if (existing.gone) newPairs.push(p);
+          existing.lastSeen = now; existing.gone = false;
+        } else {
           findings.push({ key, ...p, firstSeen: now, lastSeen: now, gone: false });
           newPairs.push(p);
         }
       }
     }
-    // Kaybolan ikililer: bu turda guncellenmeyen (lastSeen !== now) ve aktif olanlar
+    // Kaybolan ikililer: YALNIZCA bu turda basariyla taranan sitelere ait,
+    // o turda gorulmemis bulgular. Site acilmadiysa bulgulari es geç.
     const gonePairs = [];
     for (const f of findings) {
-      if (!f.gone && f.lastSeen !== now) {
+      if (!f.gone && scannedOk.has(f.site) && f.lastSeen !== now) {
         f.gone = true;
         gonePairs.push(f);
       }
