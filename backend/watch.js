@@ -154,12 +154,17 @@ async function scanAll() {
 
     // Her tarama sonucu bildirir: aktif ikililer keyword gruplu listelenir,
     // bu turda ilk kez bulunanlar 🆕 ile isaretlenir.
+    // Telegram'da goruntude sade domain, tiklaninca tam URL (kopru link).
+    const linkOf = (href) => {
+      const domain = href.replace(/^https?:\/\//i, '').split('/')[0] || href;
+      return `<a href="${esc(href)}">${esc(domain)}</a>`;
+    };
     const newKeys = new Set(newPairs.map((p) => `${p.keyword.toLowerCase()}|${p.href}`));
     const activePairs = findings.filter((f) => !f.gone);
     const lines = groupByKw(activePairs).slice(0, 60).map((p) => {
       if (p === null) return '───';
       const isNew = newKeys.has(p.key);
-      return `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>${isNew ? ' <b>(YENİ)</b>' : ''}`;
+      return `🔗 <code>${esc(p.keyword)}</code> → ${linkOf(p.href)}${isNew ? ' <b>(YENİ)</b>' : ''}`;
     });
     const msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
     if (lines.length) msg.push(...lines);
@@ -167,7 +172,7 @@ async function scanAll() {
     if (gonePairs.length) {
       msg.push('─────────────────', `⛔ <b>Kaldırılan:</b>`);
       msg.push(...groupByKw(gonePairs).slice(0, 20).map((p) =>
-        p === null ? '───' : `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`
+        p === null ? '───' : `⛔ <code>${esc(p.keyword)}</code> → ${linkOf(p.href)}`
       ));
     }
     msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
