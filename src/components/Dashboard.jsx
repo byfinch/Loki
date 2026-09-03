@@ -75,10 +75,10 @@ const Dashboard = () => {
   const tabs = [
     { id: 'attack', label: 'Saldırı' },
     { id: 'loops', label: 'Looplar' },
+    { id: 'watch', label: 'Gözcü' },
     { id: 'tools', label: 'Araçlar' },
     { id: 'history', label: 'Geçmiş' },
-    { id: 'phish', label: 'Phish' },
-    { id: 'watch', label: 'Gözcü' }
+    { id: 'phish', label: 'Phish' }
   ];
 
   return (
@@ -100,10 +100,10 @@ const Dashboard = () => {
         {[
           { id: 'attack', icon: 'ph-lightning' },
           { id: 'loops', icon: 'ph-repeat' },
+          { id: 'watch', icon: 'ph-link' },
           { id: 'tools', icon: 'ph-wrench' },
           { id: 'history', icon: 'ph-clock-counter-clockwise' },
-          { id: 'phish', icon: 'ph-shield-warning' },
-          { id: 'watch', icon: 'ph-link' }
+          { id: 'phish', icon: 'ph-shield-warning' }
         ].map((item) => (
           <button
             key={item.id}

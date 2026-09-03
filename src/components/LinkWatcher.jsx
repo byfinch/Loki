@@ -121,6 +121,7 @@ const LinkWatcher = () => {
             <span>&gt; keyword: <b className="text-green-400 font-semibold">{data.keywords.length}</b></span>
             <span>&gt; aktif ikili: <b className="text-green-400 font-semibold">{live.length}</b></span>
             <span>&gt; son tarama: <b className="text-green-400 font-semibold">{fmt(data.lastScan)}</b></span>
+            <span>&gt; sonraki otomatik: <b className="text-green-400 font-semibold">{data.nextScanAt ? new Date(data.nextScanAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'}</b></span>
             {data.scanning && <span className="text-green-400 animate-pulse">taranıyor...</span>}
           </div>
           <button

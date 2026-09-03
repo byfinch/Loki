@@ -76,6 +76,7 @@ let scanning = false;
 let queuedAuto = false;
 let lastScan = null;
 let lastScanSummary = null;
+let nextScanAt = null; // bir sonraki otomatik tarama (saat dilimli: :00/:30)
 
 async function scanAll() {
   if (scanning) return;
@@ -188,11 +189,19 @@ async function scanAll() {
 }
 
 function initWatch() {
-  // Otomatik tur: baska tarama suruyorsa kuyruga al (basmaya kalkmaz)
-  setInterval(() => {
-    if (scanning) { queuedAuto = true; return; }
-    scanAll().catch(() => {});
-  }, SCAN_INTERVAL_MS);
+  // Otomatik turlar saat dilimlerine hizali: :00 ve :30 (09:00, 09:30, 10:00...)
+  const scheduleNext = () => {
+    const now = Date.now();
+    const next = Math.ceil(now / SCAN_INTERVAL_MS) * SCAN_INTERVAL_MS;
+    nextScanAt = new Date(next).toISOString();
+    setTimeout(() => {
+      // Baska tarama suruyorsa kuyruga al (basmaya kalkmaz)
+      if (scanning) queuedAuto = true;
+      else scanAll().catch(() => {});
+      scheduleNext();
+    }, next - now);
+  };
+  scheduleNext();
   setTimeout(() => {
     if (scanning) queuedAuto = true; else scanAll().catch(() => {});
   }, 15000);
@@ -203,7 +212,7 @@ function getState() {
   return {
     keywords, sites,
     findings: findings.slice().sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)),
-    scanning, lastScan, lastScanSummary
+    scanning, lastScan, lastScanSummary, nextScanAt
   };
 }
 
