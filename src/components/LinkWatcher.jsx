@@ -56,6 +56,11 @@ const LinkWatcher = () => {
 
   const fmt = (ts) => (ts ? new Date(ts).toLocaleString('tr-TR') : '—');
   const live = data.findings.filter((f) => !f.gone);
+  // Gorunen ad her zaman guncel keyword listesinden cozulur
+  const labelOf = (kw) => {
+    const k = data.keywords.find((x) => x.kw.toLowerCase() === String(kw).toLowerCase());
+    return (k && k.label) || kw;
+  };
 
   // Filtreleme: keyword secimi + link/site serbest arama
   const filtered = data.findings.filter((f) => {
@@ -234,7 +239,7 @@ const LinkWatcher = () => {
                 const isNew = data.lastScan && f.firstSeen === data.lastScan;
                 return (
                   <tr key={f.key} className="border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors">
-                    <td className="px-2 py-2.5 text-green-400">{f.label || f.keyword}</td>
+                    <td className="px-2 py-2.5 text-green-400">{labelOf(f.keyword)}</td>
                     <td className="px-2 py-2.5">
                       <a href={f.href} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{f.href}</a>
                       {f.anchor && <div className="text-[10px] text-gray-600 mt-0.5">{f.anchor}</div>}
