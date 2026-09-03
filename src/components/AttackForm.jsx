@@ -30,6 +30,21 @@ const METHOD_MIN_TIME = {
 const L7_MIN_TIME = 60;
 const L4_MIN_TIME = 60;
 
+// stresse.st'in destekledigi geo degerleri (hub formundaki liste)
+const GEO_OPTIONS = [
+  { value: 'worldwide', label: 'Worldwide (varsayılan)' },
+  { value: 'china', label: 'China' },
+  { value: 'russia', label: 'Russia' },
+  { value: 'brazil', label: 'Brazil' },
+  { value: 'korea', label: 'Korea' },
+  { value: 'turkey', label: 'Turkey' },
+  { value: 'thailand', label: 'Thailand' },
+  { value: 'japan', label: 'Japan' },
+  { value: 'vietnam', label: 'Vietnam' },
+  { value: 'indonesia', label: 'Indonesia' },
+  { value: 'iran', label: 'Iran' }
+];
+
 function getMinTime(method, layer) {
   if (METHOD_MIN_TIME[method?.toUpperCase()]) return METHOD_MIN_TIME[method.toUpperCase()];
   if (layer === 'L7') return L7_MIN_TIME;
@@ -43,6 +58,7 @@ const AttackForm = () => {
   const [port, setPort] = useState(53);
   const [time, setTime] = useState(60);
   const [concurrents, setConcurrents] = useState(1);
+  const [geo, setGeo] = useState('worldwide');
   const concurrentsRef = useRef(null);
   const [method, setMethod] = useState('');
   const [layer, setLayer] = useState('L4');
@@ -268,7 +284,7 @@ const AttackForm = () => {
         time: parseInt(time, 10),
         method,
         subnet: '32',
-        geo: 'worldwide',
+        geo,
         concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval, 10),
         infinite: loopActive,
@@ -289,7 +305,7 @@ const AttackForm = () => {
             time: parseInt(time, 10),
             method,
             subnet: '32',
-            geo: 'worldwide',
+            geo,
             concurrents: effectiveConcurrents,
             interval: parseInt(loopInterval, 10),
             infinite: true
@@ -445,6 +461,19 @@ const AttackForm = () => {
               onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
               className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; geo <span className="text-cyan-400/80">(opsiyonel)</span></label>
+            <select
+              value={geo}
+              onChange={(e) => setGeo(e.target.value)}
+              className="w-full appearance-none rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+            >
+              {GEO_OPTIONS.map((g) => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
+            </select>
           </div>
 
           {/* Not alani (opsiyonel) */}
