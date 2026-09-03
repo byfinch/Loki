@@ -41,3 +41,6 @@ backend/data.bak.*
 # Local test scripts (may contain credentials)
 backend/test-*.cjs
 backend/screenshot*.png
+rrt-test.py
+rrt_*.png
+rrt_body.txt
