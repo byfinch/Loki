@@ -2707,7 +2707,9 @@ app.delete('/api/watch/sites', (req, res) => {
 
 app.post('/api/watch/scan', (req, res) => {
   if (!watchAuth(req, res)) return;
-  triggerScan();
+  if (!triggerScan()) {
+    return res.status(409).json({ status: 'error', message: 'Tarama zaten sürüyor' });
+  }
   res.json({ status: 'success', message: 'Tarama baslatildi' });
 });
 

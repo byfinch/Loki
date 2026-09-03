@@ -18,7 +18,7 @@ const FINDINGS_FILE = path.join(DATA_DIR, 'watch-findings.json');
 
 const TG_TOKEN = process.env.LOKI_WATCH_TG_TOKEN || '';
 const TG_CHAT = process.env.LOKI_WATCH_TG_CHAT || '';
-const SCAN_INTERVAL_MS = 60 * 60 * 1000; // saatlik
+const SCAN_INTERVAL_MS = 30 * 60 * 1000; // yarim saatte bir
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -71,6 +71,9 @@ function findPairs(html, site) {
 }
 
 let scanning = false;
+// Otomatik tarama, manuel tarama surerken geldiyse: manuel bitene kadar
+// bekler, sonra kendi turunu calistirir (tikama/cakisma olmaz).
+let queuedAuto = false;
 let lastScan = null;
 let lastScanSummary = null;
 
@@ -128,13 +131,26 @@ async function scanAll() {
       const lines = gonePairs.slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>\n   <i>${esc(p.site)}</i>`);
       await tg([`🔴 <b>LOKI — KALDIRILAN LİNK${gonePairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
-  } finally { scanning = false; }
+  } finally {
+    scanning = false;
+    // Otomatik tur bekliyorduysa simdi calistir
+    if (queuedAuto) {
+      queuedAuto = false;
+      setTimeout(() => scanAll().catch(() => {}), 1000);
+    }
+  }
 }
 
 function initWatch() {
-  setInterval(() => scanAll().catch(() => {}), SCAN_INTERVAL_MS);
-  setTimeout(() => scanAll().catch(() => {}), 15000); // acilistan kisa sure sonra ilk tarama
-  console.log(`[watch] Link gozcusu aktif (${sites.length} site, ${keywords.length} keyword, saatlik tarama${TG_TOKEN && TG_CHAT ? ', telegram aktif' : ', telegram devre disi'})`);
+  // Otomatik tur: baska tarama suruyorsa kuyruga al (basmaya kalkmaz)
+  setInterval(() => {
+    if (scanning) { queuedAuto = true; return; }
+    scanAll().catch(() => {});
+  }, SCAN_INTERVAL_MS);
+  setTimeout(() => {
+    if (scanning) queuedAuto = true; else scanAll().catch(() => {});
+  }, 15000);
+  console.log(`[watch] Link gozcusu aktif (${sites.length} site, ${keywords.length} keyword, 30dk tarama${TG_TOKEN && TG_CHAT ? ', telegram aktif' : ', telegram devre disi'})`);
 }
 
 function getState() {
@@ -174,8 +190,11 @@ function removeSite(s) {
   return { sites };
 }
 
+// Manuel tarama: baska tarama suruyorsa baslatmaz (false doner).
 function triggerScan() {
+  if (scanning) return false;
   scanAll().catch(() => {});
+  return true;
 }
 
 module.exports = { initWatch, getState, addKeyword, removeKeyword, addSite, removeSite, triggerScan };
