@@ -4,12 +4,27 @@ import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 
+// stresse.st'in destekledigi geo degerleri (AttackForm ile ayni liste)
+const LOOP_GEO_OPTIONS = [
+  { value: 'worldwide', label: 'Worldwide' },
+  { value: 'china', label: 'China' },
+  { value: 'russia', label: 'Russia' },
+  { value: 'brazil', label: 'Brazil' },
+  { value: 'korea', label: 'Korea' },
+  { value: 'turkey', label: 'Turkey' },
+  { value: 'thailand', label: 'Thailand' },
+  { value: 'japan', label: 'Japan' },
+  { value: 'vietnam', label: 'Vietnam' },
+  { value: 'indonesia', label: 'Indonesia' },
+  { value: 'iran', label: 'Iran' }
+];
+
 const LoopManager = () => {
   const { state, setLoops, addLog, showToast } = useStressTest();
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState(null);
   const [editingLoopId, setEditingLoopId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1 });
+  const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1, geo: 'worldwide' });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const startEdit = (loopId, loop) => {
@@ -18,7 +33,8 @@ const LoopManager = () => {
       note: loop.note || '',
       time: parseInt(loop.params?.time, 10) || 0,
       interval: parseInt(loop.params?.interval, 10) || 0,
-      concurrents: parseInt(loop.params?.concurrents, 10) || 1
+      concurrents: parseInt(loop.params?.concurrents, 10) || 1,
+      geo: loop.params?.geo || 'worldwide'
     });
   };
 
@@ -31,7 +47,8 @@ const LoopManager = () => {
         note: editDraft.note.trim(),
         time: parseInt(editDraft.time, 10),
         interval: parseInt(editDraft.interval, 10),
-        concurrents: parseInt(editDraft.concurrents, 10)
+        concurrents: parseInt(editDraft.concurrents, 10),
+        geo: editDraft.geo
       });
       await refreshLoops();
       setEditingLoopId(null);
@@ -325,6 +342,18 @@ const LoopManager = () => {
                                   onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
                                   className="w-[55px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
                                 />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Geo</label>
+                                <select
+                                  value={editDraft.geo}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, geo: e.target.value }))}
+                                  className="appearance-none rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                >
+                                  {LOOP_GEO_OPTIONS.map((g) => (
+                                    <option key={g.value} value={g.value}>{g.label}</option>
+                                  ))}
+                                </select>
                               </div>
                               <button
                                 onClick={() => handleSaveEdit(loopId)}

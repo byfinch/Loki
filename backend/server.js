@@ -2453,6 +2453,12 @@ const loopEditHandler = async (req, res) => {
     const newTime = req.body.time !== undefined ? parseInt(req.body.time, 10) : parseInt(p.time, 10);
     const newInterval = req.body.interval !== undefined ? parseInt(req.body.interval, 10) : parseInt(p.interval, 10);
     const newConcurrents = req.body.concurrents !== undefined ? parseInt(req.body.concurrents, 10) : parseInt(p.concurrents, 10);
+    // Geo: sadece stresse.st'in destekledigi degerler kabul edilir
+    const VALID_GEO = ['worldwide', 'china', 'russia', 'brazil', 'korea', 'turkey', 'thailand', 'japan', 'vietnam', 'indonesia', 'iran'];
+    const newGeo = req.body.geo !== undefined ? String(req.body.geo).toLowerCase() : (p.geo || 'worldwide');
+    if (!VALID_GEO.includes(newGeo)) {
+      return res.status(400).json({ status: 'error', message: 'Gecersiz geo degeri' });
+    }
 
     if (!Number.isFinite(newTime)) {
       return res.status(400).json({ status: 'error', message: 'Gecersiz sure' });
@@ -2476,6 +2482,7 @@ const loopEditHandler = async (req, res) => {
     p.time = newTime;
     p.interval = newInterval;
     p.concurrents = newConcurrents;
+    p.geo = newGeo;
 
     if (req.body.note !== undefined) {
       const note = sanitizeNote(req.body.note);
@@ -2485,10 +2492,10 @@ const loopEditHandler = async (req, res) => {
     }
 
     saveState();
-    console.log(`[loop/edit] ${loopId} -> time=${p.time} interval=${p.interval} concurrents=${p.concurrents} note="${loop.note || ''}" (${sessionUser})`);
+    console.log(`[loop/edit] ${loopId} -> time=${p.time} interval=${p.interval} concurrents=${p.concurrents} geo=${p.geo} note="${loop.note || ''}" (${sessionUser})`);
     res.json({
       status: 'success',
-      params: { time: p.time, interval: p.interval, concurrents: p.concurrents },
+      params: { time: p.time, interval: p.interval, concurrents: p.concurrents, geo: p.geo },
       note: loop.note || ''
     });
   } catch (error) {
