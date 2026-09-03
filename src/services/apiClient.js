@@ -347,8 +347,8 @@ export const apiClient = {
     const res = await apiFetch(`${API_BASE}/watch/state`, { headers: getHeaders() });
     return handleResponse(res);
   },
-  async addWatchKeyword(keyword) {
-    const res = await apiFetch(`${API_BASE}/watch/keywords`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ keyword }) });
+  async addWatchKeyword(keyword, label) {
+    const res = await apiFetch(`${API_BASE}/watch/keywords`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ keyword, label }) });
     return handleResponse(res);
   },
   async removeWatchKeyword(keyword) {

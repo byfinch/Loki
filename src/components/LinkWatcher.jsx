@@ -31,6 +31,7 @@ const LinkWatcher = () => {
   const { addLog, showToast } = useStressTest();
   const [data, setData] = useState({ keywords: [], sites: [], findings: [], scanning: false, lastScan: null });
   const [newKw, setNewKw] = useState('');
+  const [newKwLabel, setNewKwLabel] = useState('');
   const [newSite, setNewSite] = useState('');
   const [copiedKey, setCopiedKey] = useState(null);
   const [kwFilter, setKwFilter] = useState('all');
@@ -73,8 +74,9 @@ const LinkWatcher = () => {
     const v = newKw.trim();
     if (!v) return;
     try {
-      await apiClient.addWatchKeyword(v);
+      await apiClient.addWatchKeyword(v, newKwLabel.trim());
       setNewKw('');
+      setNewKwLabel('');
       refresh();
     } catch (err) { showToast(err.message, 'error'); }
   };
@@ -138,20 +140,27 @@ const LinkWatcher = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <TermCard title="root@loki:~/keywords" cmd="$ ./edit --list">
           <label className={labelCls}>&gt; keyword_ekle</label>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-2">
             <input
-              className={inputCls} value={newKw} placeholder="herabet"
+              className={inputCls} value={newKw} placeholder="aranacak: milanbahis"
               onChange={(e) => setNewKw(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
             />
             <button className="px-4 rounded-sm text-xs font-mono border border-green-500/30 bg-green-500/10 text-green-400 hover:bg-green-500/20 transition" onClick={addKeyword}>EKLE</button>
           </div>
+          <div className="flex gap-2 mb-4">
+            <input
+              className={inputCls} value={newKwLabel} placeholder="görünen ad (opsiyonel): MilanBet"
+              onChange={(e) => setNewKwLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
+            />
+          </div>
           <div className="flex flex-wrap gap-1.5 min-h-[28px]">
             {data.keywords.length === 0 && <span className="text-xs text-gray-600"># henüz keyword yok</span>}
             {data.keywords.map((k) => (
-              <span key={k} className="inline-flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-sm px-2 py-1 text-xs text-green-200">
-                {k}
-                <button onClick={() => removeKeyword(k)} className="text-red-400/70 hover:text-red-400 font-bold" title="Kaldır">×</button>
+              <span key={k.kw} title={`aranan: ${k.kw}`} className="inline-flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-sm px-2 py-1 text-xs text-green-200">
+                {k.label || k.kw}
+                <button onClick={() => removeKeyword(k.kw)} className="text-red-400/70 hover:text-red-400 font-bold" title="Kaldır">×</button>
               </span>
             ))}
           </div>
@@ -191,7 +200,7 @@ const LinkWatcher = () => {
             >
               <option value="all">tüm keywordler</option>
               {data.keywords.map((k) => (
-                <option key={k} value={k.toLowerCase()}>{k}</option>
+                <option key={k.kw} value={k.kw.toLowerCase()}>{k.label || k.kw}</option>
               ))}
             </select>
             <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-green-500/60 text-[10px]">▾</span>
@@ -225,7 +234,7 @@ const LinkWatcher = () => {
                 const isNew = data.lastScan && f.firstSeen === data.lastScan;
                 return (
                   <tr key={f.key} className="border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors">
-                    <td className="px-2 py-2.5 text-green-400">{f.keyword}</td>
+                    <td className="px-2 py-2.5 text-green-400">{f.label || f.keyword}</td>
                     <td className="px-2 py-2.5">
                       <a href={f.href} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{f.href}</a>
                       {f.anchor && <div className="text-[10px] text-gray-600 mt-0.5">{f.anchor}</div>}
