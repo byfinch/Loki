@@ -352,7 +352,8 @@ export const apiClient = {
     return handleResponse(res);
   },
   async removeWatchKeyword(keyword) {
-    const res = await apiFetch(`${API_BASE}/watch/keywords`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ keyword }) });
+    // LiteSpeed ModSecurity DELETE'i engelliyor; POST /remove kullaniliyor.
+    const res = await apiFetch(`${API_BASE}/watch/keywords/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ keyword }) });
     return handleResponse(res);
   },
   async addWatchSite(site) {
@@ -360,7 +361,7 @@ export const apiClient = {
     return handleResponse(res);
   },
   async removeWatchSite(site) {
-    const res = await apiFetch(`${API_BASE}/watch/sites`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ site }) });
+    const res = await apiFetch(`${API_BASE}/watch/sites/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ site }) });
     return handleResponse(res);
   },
   async triggerWatchScan() {
