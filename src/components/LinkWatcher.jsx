@@ -182,16 +182,19 @@ const LinkWatcher = () => {
       <TermCard title="root@loki:~/bulgular" cmd="$ tail -f findings.log" className="w-full">
         {/* filtre cubugu */}
         <div className="flex flex-wrap gap-3 mb-4">
-          <select
-            value={kwFilter}
-            onChange={(e) => { setKwFilter(e.target.value); setPage(1); }}
-            className="bg-black/60 border border-green-500/20 rounded-sm px-3 py-2 text-xs font-mono text-green-100 focus:outline-none focus:border-green-500/50"
-          >
-            <option value="all">tüm keywordler</option>
-            {data.keywords.map((k) => (
-              <option key={k} value={k.toLowerCase()}>{k}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={kwFilter}
+              onChange={(e) => { setKwFilter(e.target.value); setPage(1); }}
+              className="appearance-none bg-black/60 border border-green-500/20 rounded-sm pl-3 pr-6 py-2 text-xs font-mono text-green-100 focus:outline-none focus:border-green-500/50"
+            >
+              <option value="all">tüm keywordler</option>
+              {data.keywords.map((k) => (
+                <option key={k} value={k.toLowerCase()}>{k}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-green-500/60 text-[10px]">▾</span>
+          </div>
           <input
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
