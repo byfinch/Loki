@@ -124,11 +124,11 @@ async function scanAll() {
     };
 
     if (newPairs.length) {
-      const lines = newPairs.slice(0, 20).map((p) => `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>\n   <i>${esc(p.site)}</i>`);
+      const lines = newPairs.slice(0, 20).map((p) => `🔗 <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
       await tg([`🟢 <b>LOKI — YENİ LİNK${newPairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
     if (gonePairs.length) {
-      const lines = gonePairs.slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>\n   <i>${esc(p.site)}</i>`);
+      const lines = gonePairs.slice(0, 20).map((p) => `⛔ <code>${esc(p.keyword)}</code> → <code>${esc(p.href)}</code>`);
       await tg([`🔴 <b>LOKI — KALDIRILAN LİNK${gonePairs.length > 1 ? 'LER' : ''}</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
     }
   } finally {
