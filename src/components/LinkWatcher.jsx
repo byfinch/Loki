@@ -242,7 +242,7 @@ const LinkWatcher = () => {
                     <td className="px-2 py-2.5 text-green-400">{labelOf(f.keyword)}</td>
                     <td className="px-2 py-2.5">
                       <a href={f.href} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{f.href}</a>
-                      {f.anchor && <div className="text-[10px] text-gray-600 mt-0.5">{f.anchor}</div>}
+                      <div className="text-[10px] text-gray-600 mt-0.5">{labelOf(f.keyword)}</div>
                     </td>
                     <td className="px-2 py-2.5 text-green-100/80">
                       {f.site}
