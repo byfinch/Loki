@@ -2683,7 +2683,7 @@ app.get('/api/watch/state', (req, res) => {
 
 app.post('/api/watch/keywords', (req, res) => {
   if (!watchAuth(req, res)) return;
-  const r = addKeyword(req.body?.keyword);
+  const r = addKeyword(req.body?.keyword, req.body?.label);
   if (r.error) return res.status(400).json({ status: 'error', message: r.error });
   res.json({ status: 'success', keywords: r.keywords });
 });

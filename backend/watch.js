@@ -31,7 +31,9 @@ function writeJson(file, data) {
   fs.renameSync(tmp, file);
 }
 
-let keywords = readJson(KEYWORDS_FILE, []);
+let keywords = readJson(KEYWORDS_FILE, []).map((x) =>
+  typeof x === 'string' ? { kw: x, label: x } : x
+);
 let sites = readJson(SITES_FILE, []);
 let findings = readJson(FINDINGS_FILE, []); // {key, site, keyword, anchor, href, firstSeen, lastSeen, gone}
 
@@ -56,10 +58,10 @@ function findPairs(html, site) {
     const inner = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const titleMatch = m[0].match(/title=["']([^"']+)["']/i);
     const haystack = `${titleMatch ? titleMatch[1] : ''} ${inner}`.toLowerCase();
-    for (const kw of keywords) {
-      if (haystack.includes(kw.toLowerCase())) {
+    for (const k of keywords) {
+      if (haystack.includes(k.kw.toLowerCase())) {
         pairs.push({
-          site, keyword: kw,
+          site, keyword: k.kw, label: k.label || k.kw,
           anchor: (titleMatch ? titleMatch[1] : inner).slice(0, 120),
           href: href.slice(0, 300)
         });
@@ -168,7 +170,7 @@ async function scanAll() {
     const lines = groupByKw(activePairs).slice(0, 60).map((p) => {
       if (p === null) return '───';
       const isNew = newKeys.has(p.key);
-      return `🔗 <code>${esc(p.keyword)}</code> → ${linkOf(p.href)}${isNew ? ' <b>(YENİ)</b>' : ''}`;
+      return `🔗 <code>${esc(p.label || p.keyword)}</code> → ${linkOf(p.href)}${isNew ? ' <b>(YENİ)</b>' : ''}`;
     });
     const msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
     if (lines.length) msg.push(...lines);
@@ -176,7 +178,7 @@ async function scanAll() {
     if (gonePairs.length) {
       msg.push('─────────────────', `⛔ <b>Kaldırılan:</b>`);
       msg.push(...groupByKw(gonePairs).slice(0, 20).map((p) =>
-        p === null ? '───' : `⛔ <code>${esc(p.keyword)}</code> → ${linkOf(p.href)}`
+        p === null ? '───' : `⛔ <code>${esc(p.label || p.keyword)}</code> → ${linkOf(p.href)}`
       ));
     }
     msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
@@ -219,16 +221,17 @@ function getState() {
   };
 }
 
-function addKeyword(k) {
+function addKeyword(k, label) {
   k = String(k || '').trim();
+  label = String(label || '').trim() || k;
   if (!k) return { error: 'Boş keyword' };
-  if (!keywords.some((x) => x.toLowerCase() === k.toLowerCase())) keywords.push(k);
+  if (!keywords.some((x) => x.kw.toLowerCase() === k.toLowerCase())) keywords.push({ kw: k, label });
   writeJson(KEYWORDS_FILE, keywords);
   return { keywords };
 }
 
 function removeKeyword(k) {
-  keywords = keywords.filter((x) => x.toLowerCase() !== String(k || '').toLowerCase());
+  keywords = keywords.filter((x) => x.kw.toLowerCase() !== String(k || '').toLowerCase());
   writeJson(KEYWORDS_FILE, keywords);
   return { keywords };
 }
