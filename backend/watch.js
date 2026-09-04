@@ -197,8 +197,8 @@ async function scanAll() {
       ));
     }
     msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
-    // Yeni link bulundugunda kayitli kullanicilari etiketle
-    if (newPairs.length && MENTIONS.length) {
+    // Yeni veya kaldirilan link oldugunda kayitli kullanicilari etiketle
+    if ((newPairs.length || gonePairs.length) && MENTIONS.length) {
       msg.push('👥 ' + MENTIONS.map((m) => `<a href="tg://user?id=${m.id}">${esc(m.name)}</a>`).join(' '));
     }
     await tg(msg.join('\n'));
