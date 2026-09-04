@@ -985,7 +985,7 @@ function handleEndpointError(res, error, label) {
   res.status(500).json({ status: 'error', message: error.message });
 }
 
-function checkPlanLimits(sessionId, time, concurrents) {
+function checkPlanLimits(sessionId, time, concurrents, excludeLoopId = null) {
   const plan = getSessionPlan(sessionId);
   const maxTime = plan.MaxTime || plan.attackTime || 86400;
   const maxConcurrents = plan.Concurrents || plan.concurrents || 80;
@@ -1001,9 +1001,13 @@ function checkPlanLimits(sessionId, time, concurrents) {
   // Suresi dolmus ama henuz cleanup'lanmamis kayitlar SAYILMAZ; aksi halde
   // biten saldiri 30-90sn daha slot isgal ediyor gorunur ve yeni launch
   // yanlislikla reddedilir.
+  // excludeLoopId: loop duzenlemesinde, duzenlenen loop'un kendi saldirilari
+  // sayilmaz (yeni ayar eskisinin yerine gececek; aksi halde loop'un degerini
+  // dusurmek bile "slot dolu" hatasina takilir).
   const now = Date.now();
   const currentConcurrents = Object.values(activeAttacks)
     .filter((a) => a.sessionId === sessionId && new Date(a.expiresAt || 0).getTime() > now)
+    .filter((a) => !excludeLoopId || a.loopId !== excludeLoopId)
     .reduce((sum, a) => sum + (parseInt(a.concurrents) || 1), 0);
 
   if (currentConcurrents + parseInt(concurrents) > parseInt(maxConcurrents)) {
@@ -2474,7 +2478,7 @@ const loopEditHandler = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Bekleme 0 veya daha buyuk olmali' });
     }
 
-    const planCheck = checkPlanLimits(sessionId, newTime, newConcurrents);
+    const planCheck = checkPlanLimits(sessionId, newTime, newConcurrents, loopId);
     if (!planCheck.ok) {
       return res.status(403).json({ status: 'error', message: planCheck.message });
     }
