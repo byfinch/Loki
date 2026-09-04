@@ -133,14 +133,14 @@ async function scanAll() {
         }
       }
     }
-    // Kaybolan ikililer: bulgunun goruldugu sitelerden EN AZ BIRI bu turda
-    // basariyla taranmis olmali VE link hicbir taranan sitede bulunmamis
-    // olmali. Site acilmadiysa bulgulara dokunulmaz.
+    // Kaybolan ikililer: bulgunun goruldugu TUM siteler bu turda basariyla
+    // taranmis olmali VE link hicbirinde bulunmamis olmali. Tek bir site bile
+    // acilamadiysa "kaldirildi" denmez (orada hala duruyor olabilir).
     const gonePairs = [];
     for (const f of findings) {
       const fSites = f.sites || [f.site];
-      const scannedSites = fSites.filter((s) => scannedOk.has(s));
-      if (!f.gone && scannedSites.length > 0 && f.lastSeen !== now) {
+      const allScanned = fSites.every((s) => scannedOk.has(s));
+      if (!f.gone && allScanned && f.lastSeen !== now) {
         f.gone = true;
         gonePairs.push(f);
       }
