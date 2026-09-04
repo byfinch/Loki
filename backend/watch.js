@@ -18,6 +18,15 @@ const FINDINGS_FILE = path.join(DATA_DIR, 'watch-findings.json');
 
 const TG_TOKEN = process.env.LOKI_WATCH_TG_TOKEN || '';
 const TG_CHAT = process.env.LOKI_WATCH_TG_CHAT || '';
+// Yeni link bulundugunda etiketlenecek kullanicilar.
+// LOKI_WATCH_MENTIONS = "id:ad,id:ad" (or. "8849693458:Burak Yalın")
+const MENTIONS = (process.env.LOKI_WATCH_MENTIONS || '')
+  .split(',').filter(Boolean)
+  .map((e) => {
+    const idx = e.indexOf(':');
+    return idx > 0 ? { id: e.slice(0, idx).trim(), name: e.slice(idx + 1).trim() } : null;
+  })
+  .filter(Boolean);
 const SCAN_INTERVAL_MS = 30 * 60 * 1000; // yarim saatte bir
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -188,6 +197,10 @@ async function scanAll() {
       ));
     }
     msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
+    // Yeni link bulundugunda kayitli kullanicilari etiketle
+    if (newPairs.length && MENTIONS.length) {
+      msg.push('👥 ' + MENTIONS.map((m) => `<a href="tg://user?id=${m.id}">${esc(m.name)}</a>`).join(' '));
+    }
     await tg(msg.join('\n'));
   } finally {
     scanning = false;
