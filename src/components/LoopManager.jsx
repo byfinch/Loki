@@ -239,7 +239,7 @@ const LoopManager = () => {
     if (g) {
       // Buyuk-kucuk harf duyarsiz tekillestirme: gorunur isim grup
       // listesindeki kanonik hali (yoksa kaydittaki hali)
-      const canon = groupsList.find((n) => n.toLowerCase() === g.toLowerCase()) || g;
+      const canon = groupsList.find((n) => n.toLocaleLowerCase('tr') === g.toLocaleLowerCase('tr')) || g;
       (groupedLoops[canon] = groupedLoops[canon] || []).push(entry);
     }
     else ungroupedLoops.push(entry);
