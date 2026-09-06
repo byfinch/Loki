@@ -83,7 +83,7 @@ const GroupPicker = ({ groups, value, onChange, compact = false }) => {
     >
       <option value="">grupsuz</option>
       {groups.map((g) => (
-        <option key={g} value={g}>{g}</option>
+        <option key={g} value={g}>{g.toLocaleLowerCase('tr')}</option>
       ))}
       <option value="__new__">＋ yeni grup oluştur</option>
     </select>

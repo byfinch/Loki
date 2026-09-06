@@ -560,14 +560,14 @@ const LoopManager = () => {
                         </span>
                       ) : (
                         <span
-                          className="text-[11px] font-bold uppercase tracking-wider text-green-300"
+                          className="text-[11px] font-bold tracking-wider text-green-300"
                           title="Yeniden adlandırmak için tıkla"
                           onClick={(e) => {
                             e.stopPropagation();
                             setRenamingGroup(gname);
                             setRenameDraft(gname);
                           }}
-                        >{gname}</span>
+                        >{gname.toLocaleLowerCase('tr')}</span>
                       )}
                       <span className="ml-auto flex items-center gap-1.5">
                         {deletingGroup === gname ? (

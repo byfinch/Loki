@@ -172,23 +172,29 @@ function saveGroups() {
 
 // Ismiyle grup bul veya olustur; grup adi dondurur (null = grupsuz).
 // Buyuk-kucuk harf duyarsiz: "Milan" ile "milan" ayni grup sayilir.
-function resolveGroupName(name) {
+function resolveGroupName(name, owner = null) {
   const n = String(name || '').trim();
   if (!n) return null;
-  const existing = attackGroups.find((g) => g.name.toLocaleLowerCase('tr') === n.toLocaleLowerCase('tr'));
+  // Hesap bazli: ayni isim baska hesapta varsa bu hesap icin ayri grup olusur.
+  // (Looplar hesap izolasyonlu; gruplar da oyle.)
+  const nLow = n.toLocaleLowerCase('tr');
+  const existing = attackGroups.find((g) =>
+    g.name.toLocaleLowerCase('tr') === nLow && (g.owner || null) === owner);
   if (existing) return existing.name;
-  attackGroups.push({ id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: n, createdAt: new Date().toISOString() });
+  attackGroups.push({ id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: n, owner, createdAt: new Date().toISOString() });
   saveGroups();
-  console.log(`[groups] yeni grup: ${n}`);
+  console.log(`[groups] yeni grup: ${n} (${owner || 'ortak'})`);
   return n;
 }
 
 function deleteGroup(name, ctx = {}) {
-  attackGroups = attackGroups.filter((g) => g.name !== name);
+  const owner = ctx.username || null;
+  attackGroups = attackGroups.filter((g) => !(g.name === name && ((g.owner || null) === owner || !g.owner)));
   // Gruptaki loop'lar da kaldırılır (grubu silmek = icerigiyle birlikte silmek)
   const stopped = [];
   Object.keys(activeLoops).forEach((loopId) => {
     if (activeLoops[loopId].group !== name) return;
+    if (owner && getLoopOwner(activeLoops[loopId]) !== owner) return; // baska hesabin loop'u dokunma
     stopped.push(activeLoops[loopId]);
     activeLoops[loopId].running = false;
     delete activeLoops[loopId];
@@ -2189,7 +2195,7 @@ app.post('/api/stresse/loop', async (req, res) => {
       // cagrisina spread ediliyor, notun upstream'e sizmamasi icin ayri alan.
       note,
       // Grup (opsiyonel): yoksa olusturulur, loop ona dahil olur
-      group: resolveGroupName(req.body.group) || undefined,
+      group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined,
 
       params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
@@ -2558,7 +2564,7 @@ const loopEditHandler = async (req, res) => {
     if (req.body.grupCikar === true) {
       delete loop.group;
     } else if (req.body.group !== undefined) {
-      const g = resolveGroupName(req.body.group);
+      const g = resolveGroupName(req.body.group, sessionUser);
       if (g) loop.group = g; else delete loop.group;
     }
 
@@ -2749,12 +2755,13 @@ app.post('/api/accounts/ensure', async (req, res) => {
  */
 app.get('/api/groups', (req, res) => {
   if (!watchAuth(req, res)) return;
-  res.json({ status: 'success', groups: attackGroups });
+  const u = sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username;
+  res.json({ status: 'success', groups: attackGroups.filter((g) => (g.owner || null) === (u || null) || !g.owner) });
 });
 
 app.post('/api/groups', (req, res) => {
   if (!watchAuth(req, res)) return;
-  const g = resolveGroupName(req.body?.name);
+  const g = resolveGroupName(req.body?.name, sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username);
   if (!g) return res.status(400).json({ status: 'error', message: 'Grup adı gerekli' });
   res.json({ status: 'success', groups: attackGroups });
 });
@@ -2764,7 +2771,8 @@ app.post('/api/groups/rename', (req, res) => {
   const from = String(req.body?.from || '').trim();
   const to = String(req.body?.to || '').trim();
   if (!from || !to) return res.status(400).json({ status: 'error', message: 'from ve to gerekli' });
-  const grp = attackGroups.find((g) => g.name.toLocaleLowerCase('tr') === from.toLocaleLowerCase('tr'));
+  const rnUser = sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username;
+  const grp = attackGroups.find((g) => g.name.toLocaleLowerCase('tr') === from.toLocaleLowerCase('tr') && ((g.owner || null) === (rnUser || null) || !g.owner));
   if (!grp) return res.status(404).json({ status: 'error', message: 'Grup bulunamadı' });
   // Mukerrer isim engeli: baska bir grup bu isimde olamaz (buyuk-kucuk harf duyarsiz)
   if (attackGroups.some((g) => g !== grp && g.name.toLocaleLowerCase('tr') === to.toLocaleLowerCase('tr'))) {
