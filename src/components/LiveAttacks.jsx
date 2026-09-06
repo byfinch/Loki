@@ -664,7 +664,8 @@ const LiveAttacks = () => {
   // grubu) varsa satir o grubun basliginin altinda cizilir. Atama/duzenleme
   // burada yapilmaz; Aktif Looplar'dan yapilir.
   const groupOfRow = (row) => {
-    if (row.type !== 'active') return null;
+    // active/dying/wait tum satir tipleri gruplanabilir: bitis satiri
+    // da kendi yerinde, grup icinde gorunur (blok disina kacmaz).
     const a = row.group;
     const direct = state.activeLoops?.[a.loopId]?.group || a.group;
     if (direct) return direct;
