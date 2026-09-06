@@ -704,7 +704,8 @@ const LiveAttacks = () => {
                   // Grup blogu (salt okunur): baslik + uyeler TEK konteynirda;
                   // ac/kapa iki yonlu akordeon animasyonlu (.rw)
                   if (row.type === 'groupHeader') {
-                    const isOpen = !collapsedGroups[row.name];
+                    // Varsayilan kapali: kullanici tiklayinca acar (Looplar ile ayni)
+                    const isOpen = collapsedGroups[row.name] === true;
                     return (
                       <div key={row.key} className="mx-0 mb-2 mt-2 overflow-hidden rounded-sm border border-green-500/25">
                         <div
