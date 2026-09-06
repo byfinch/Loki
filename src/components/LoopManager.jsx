@@ -459,7 +459,7 @@ const LoopManager = () => {
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
               {/* Kolon basligi: grup bloklarinin USTUNDE, tum listeye ortak */}
-              <table className="w-full table-fixed text-xs mb-1">
+              <table className="w-full table-fixed text-xs mb-1"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
                 <thead>
                   <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
                     <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
@@ -493,7 +493,7 @@ const LoopManager = () => {
                     </div>
                     <div className={`rw ${isOpen ? '' : 'closed'}`}>
                       <div className="rw-inner">
-                        <table className="w-full table-fixed text-xs"><colgroup><col style="width:30%" /><col style="width:12%" /><col style="width:9%" /><col style="width:10%" /><col style="width:8%" /><col style="width:8%" /><col style="width:23%" /></colgroup>
+                        <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
                           <tbody>
                             {members.map(([loopId, loop]) => renderLoopRow(loopId, loop, true))}
                           </tbody>
@@ -504,7 +504,7 @@ const LoopManager = () => {
                 );
               })}
 
-            <table className="w-full table-fixed text-xs"><colgroup><col style="width:30%" /><col style="width:12%" /><col style="width:9%" /><col style="width:10%" /><col style="width:8%" /><col style="width:8%" /><col style="width:23%" /></colgroup>
+            <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
               <tbody>
                 {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>
