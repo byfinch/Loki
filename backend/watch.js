@@ -167,9 +167,8 @@ async function scanAll() {
       return lines;
     };
 
-    // Her tarama sonucu bildirir: aktif ikililer keyword gruplu listelenir,
-    // bu turda ilk kez bulunanlar 🆕 ile isaretlenir.
-    // Telegram'da goruntude sade domain, tiklaninca tam URL (kopru link).
+    // Degisiklik-odakli bildirim: yeni/kaldirilan varsa SADECE onlar
+    // listelenir; hic degisiklik yoksa tek satirlik "temiz" notu gider.
     const linkOf = (href) => {
       const domain = href.replace(/^https?:\/\//i, '').split('/')[0] || href;
       return `<a href="${esc(href)}">${esc(domain)}</a>`;
@@ -180,24 +179,34 @@ async function scanAll() {
       const k = keywords.find((x) => x.kw.toLowerCase() === String(kw).toLowerCase());
       return (k && k.label) || kw;
     };
-    const newKeys = new Set(newPairs.map((p) => `${p.keyword.toLowerCase()}|${p.href}`));
     const activePairs = findings.filter((f) => !f.gone);
-    const lines = groupByKw(activePairs).slice(0, 60).map((p) => {
-      if (p === null) return '───';
-      const isNew = newKeys.has(p.key);
-      return `🔗 <code>${esc(labelOf(p.keyword))}</code> → ${linkOf(p.href)}${isNew ? ' <b>(YENİ)</b>' : ''}`;
-    });
-    const msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
-    if (lines.length) msg.push(...lines);
-    else msg.push('<i>bulgu yok</i>');
-    if (gonePairs.length) {
-      msg.push('─────────────────', `⛔ <b>Kaldırılan:</b>`);
-      msg.push(...groupByKw(gonePairs).slice(0, 20).map((p) =>
-        p === null ? '───' : `⛔ <code>${esc(labelOf(p.keyword))}</code> → ${linkOf(p.href)}`
-      ));
+
+    let msg;
+    if (!newPairs.length && !gonePairs.length) {
+      // Temiz tur: liste yok, tek not
+      msg = [
+        `✅ <b>LOKI — TARAMA TEMİZ</b>`,
+        '─────────────────',
+        `🔍 ${scannedOk.size}/${sites.length} site tarandı · değişiklik yok`,
+        `🕐 <i>${stamp()}</i>`
+      ];
+    } else {
+      msg = [`🟢 <b>LOKI — TARAMA SONUCU</b>`, '─────────────────'];
+      if (newPairs.length) {
+        msg.push(`🆕 <b>Yeni:</b>`);
+        msg.push(...groupByKw(newPairs).slice(0, 40).map((p) =>
+          p === null ? '───' : `🔗 <code>${esc(labelOf(p.keyword))}</code> → ${linkOf(p.href)}`
+        ));
+      }
+      if (gonePairs.length) {
+        msg.push('─────────────────', `⛔ <b>Kaldırılan:</b>`);
+        msg.push(...groupByKw(gonePairs).slice(0, 20).map((p) =>
+          p === null ? '───' : `⛔ <code>${esc(labelOf(p.keyword))}</code> → ${linkOf(p.href)}`
+        ));
+      }
+      msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
     }
-    msg.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site tarandı · ${activePairs.length} aktif ikili (${newPairs.length} yeni, ${gonePairs.length} kaldırılan)`, `🕐 <i>${stamp()}</i>`);
-    // Yeni veya kaldirilan link oldugunda kayitli kullanicilari etiketle
+    // Degisiklik varsa kayitli kullanicilari etiketle
     if ((newPairs.length || gonePairs.length) && MENTIONS.length) {
       msg.push('👥 ' + MENTIONS.map((m) => `<a href="tg://user?id=${m.id}">${esc(m.name)}</a>`).join(' '));
     }
