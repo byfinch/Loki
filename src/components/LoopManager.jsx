@@ -459,7 +459,7 @@ const LoopManager = () => {
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
               {/* Kolon basligi: grup bloklarinin USTUNDE, tum listeye ortak */}
-              <table className="w-full text-xs">
+              <table className="w-full table-fixed text-xs mb-1">
                 <thead>
                   <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
                     <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
@@ -476,12 +476,12 @@ const LoopManager = () => {
 {/* Grup bloklari: tikla-ac, born animasyonu (dogus) */}
               {orderedGroupNames.map((gname) => {
                 const members = groupedLoops[gname];
-                const isOpen = !collapsedGroups[gname];
+                const isOpen = collapsedGroups[gname] === true;
                 const isBorn = bornGroup === gname;
                 return (
                   <div
                     key={gname}
-                    className={`mx-2 mb-2 overflow-hidden rounded-sm border border-green-500/25 transition-all duration-300 ${isBorn ? 'animate-[grpBorn_0.9s_ease]' : ''} ${flash.kind === 'added' && flash.group === gname ? 'animate-[grpPulse_1s_ease]' : ''}`}
+                    className={`mx-2 mb-3 overflow-hidden rounded-sm border border-green-500/25 transition-all duration-300 ${isBorn ? 'animate-[grpBorn_0.9s_ease]' : ''} ${flash.kind === 'added' && flash.group === gname ? 'animate-[grpPulse_1s_ease]' : ''}`}
                   >
                     <div
                       onClick={() => setCollapsedGroups((c) => ({ ...c, [gname]: !c[gname] }))}
@@ -493,7 +493,7 @@ const LoopManager = () => {
                     </div>
                     <div className={`rw ${isOpen ? '' : 'closed'}`}>
                       <div className="rw-inner">
-                        <table className="w-full text-xs">
+                        <table className="w-full table-fixed text-xs"><colgroup><col style="width:30%" /><col style="width:12%" /><col style="width:9%" /><col style="width:10%" /><col style="width:8%" /><col style="width:8%" /><col style="width:23%" /></colgroup>
                           <tbody>
                             {members.map(([loopId, loop]) => renderLoopRow(loopId, loop, true))}
                           </tbody>
@@ -504,7 +504,7 @@ const LoopManager = () => {
                 );
               })}
 
-            <table className="w-full text-xs">
+            <table className="w-full table-fixed text-xs"><colgroup><col style="width:30%" /><col style="width:12%" /><col style="width:9%" /><col style="width:10%" /><col style="width:8%" /><col style="width:8%" /><col style="width:23%" /></colgroup>
               <tbody>
                 {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>

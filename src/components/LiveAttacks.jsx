@@ -701,7 +701,7 @@ const LiveAttacks = () => {
                   if (row.type === 'groupHeader') {
                     const isOpen = !collapsedGroups[row.name];
                     return (
-                      <div key={row.key} className="mx-0 my-1 overflow-hidden rounded-sm border border-green-500/25">
+                      <div key={row.key} className="mx-0 mb-2 mt-2 overflow-hidden rounded-sm border border-green-500/25">
                         <div
                           onClick={() => setCollapsedGroups((c) => ({ ...c, [row.name]: !c[row.name] }))}
                           className="flex cursor-pointer select-none items-center gap-2.5 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
