@@ -89,6 +89,41 @@ const LoopManager = () => {
     }
   };
 
+  // Grup yeniden adlandirma: mukerrer isim backend reddeder
+  const handleRenameGroup = async (name) => {
+    const to = window.prompt(`"${name}" grubunun yeni adı:`, name);
+    if (!to || !to.trim() || to.trim() === name) return;
+    try {
+      await apiClient.renameGroup(name, to.trim());
+      notifyGroupsChanged();
+      await refreshLoops();
+      showToast(`Grup yeniden adlandırıldı: ${to.trim()}`, 'success');
+    } catch (err) {
+      showToast(`Yeniden adlandırılamadı: ${err.message}`, 'error');
+    }
+  };
+
+  // Grubu kaldir: once blok animasyonla kapanir, sonra silinir;
+  // icindeki loop'lar da durdurulur (backend deleteGroup halleder).
+  const [deletingGroup, setDeletingGroup] = useState(null);
+  const handleDeleteGroup = async (name) => {
+    if (!window.confirm(`"${name}" grubu kaldırılacak ve içindeki loop'lar durdurulacak. Emin misin?`)) return;
+    setDeletingGroup(name);
+    setCollapsedGroups((c) => ({ ...c, [name]: false })); // kapanma animasyonu
+    setTimeout(async () => {
+      try {
+        await apiClient.deleteGroup(name);
+        notifyGroupsChanged();
+        await refreshLoops();
+        showToast(`"${name}" grubu kaldırıldı`, 'success');
+      } catch (err) {
+        showToast(`Grup kaldırılamadı: ${err.message}`, 'error');
+      } finally {
+        setDeletingGroup(null);
+      }
+    }, 450);
+  };
+
   const refreshLoops = async () => {
     try {
       const data = await apiClient.getLoops();
@@ -459,7 +494,7 @@ const LoopManager = () => {
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
               {/* Kolon basligi: grup bloklarinin USTUNDE, tum listeye ortak */}
-              <table className="w-full table-fixed text-xs mb-1"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
+              <table className="w-full table-fixed text-xs mb-3"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
                 <thead>
                   <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
                     <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
@@ -481,7 +516,7 @@ const LoopManager = () => {
                 return (
                   <div
                     key={gname}
-                    className={`mx-2 mb-3 overflow-hidden rounded-sm border border-green-500/25 transition-all duration-300 ${isBorn ? 'animate-[grpBorn_0.9s_ease]' : ''} ${flash.kind === 'added' && flash.group === gname ? 'animate-[grpPulse_1s_ease]' : ''}`}
+                    className={`mx-2 mb-3 overflow-hidden rounded-sm border border-green-500/25 transition-all duration-300 ${isBorn ? 'animate-[grpBorn_0.9s_ease]' : ''} ${flash.kind === 'added' && flash.group === gname ? 'animate-[grpPulse_1s_ease]' : ''} ${deletingGroup === gname ? 'opacity-40' : ''}`}
                   >
                     <div
                       onClick={() => setCollapsedGroups((c) => ({ ...c, [gname]: !c[gname] }))}
@@ -490,10 +525,26 @@ const LoopManager = () => {
                       <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
                       <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{gname}</span>
                       <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{members.length} loop</span>
+                      <span className="ml-auto flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRenameGroup(gname); }}
+                          title="Grubu yeniden adlandır"
+                          className="rounded-sm border border-white/10 px-2 py-1 text-[10px] text-gray-500 transition-colors hover:border-green-500/40 hover:text-green-400"
+                        >
+                          yeniden adlandır
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteGroup(gname); }}
+                          title="Grubu kaldır (içindeki loop'lar da durdurulur)"
+                          className="rounded-sm border border-red-500/30 px-2 py-1 text-[10px] text-red-400 transition-colors hover:bg-red-500/10"
+                        >
+                          grubu kaldır
+                        </button>
+                      </span>
                     </div>
                     <div className={`rw ${isOpen ? '' : 'closed'}`}>
                       <div className="rw-inner">
-                        <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
+                        <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
                           <tbody>
                             {members.map(([loopId, loop]) => renderLoopRow(loopId, loop, true))}
                           </tbody>
@@ -504,7 +555,7 @@ const LoopManager = () => {
                 );
               })}
 
-            <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '23%' }} /></colgroup>
+            <table className="w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
               <tbody>
                 {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>

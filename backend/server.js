@@ -182,13 +182,26 @@ function resolveGroupName(name) {
   return n;
 }
 
-function deleteGroup(name) {
+function deleteGroup(name, ctx = {}) {
   attackGroups = attackGroups.filter((g) => g.name !== name);
-  // Uyeleri grupsuza dondur
-  Object.values(activeLoops).forEach((l) => { if (l.group === name) delete l.group; });
+  // Gruptaki loop'lar da kaldırılır (grubu silmek = icerigiyle birlikte silmek)
+  const stopped = [];
+  Object.keys(activeLoops).forEach((loopId) => {
+    if (activeLoops[loopId].group !== name) return;
+    stopped.push(activeLoops[loopId]);
+    activeLoops[loopId].running = false;
+    delete activeLoops[loopId];
+  });
+  stopped.forEach((loop) => notifyLoopRemoved(loop, 'durduruldu', {
+    username: ctx.username,
+    ip: ctx.ip,
+    stopDetail: `"${name}" grubu kaldırıldı`
+  }));
+  // Dogrudan saldirilarin grup etiketi temizlenir (islem durmaz)
   Object.values(activeAttacks).forEach((a) => { if (a.group === name) delete a.group; });
   saveGroups();
   saveState();
+  return stopped.length;
 }
 
 // Hesap bazli token deposu: { username: apiToken }
@@ -2752,6 +2765,10 @@ app.post('/api/groups/rename', (req, res) => {
   if (!from || !to) return res.status(400).json({ status: 'error', message: 'from ve to gerekli' });
   const grp = attackGroups.find((g) => g.name === from);
   if (!grp) return res.status(404).json({ status: 'error', message: 'Grup bulunamadı' });
+  // Mukerrer isim engeli: baska bir grup bu isimde olamaz
+  if (attackGroups.some((g) => g.name === to && g !== grp)) {
+    return res.status(409).json({ status: 'error', message: 'Bu isimde bir grup zaten var' });
+  }
   grp.name = to;
   Object.values(activeLoops).forEach((l) => { if (l.group === from) l.group = to; });
   Object.values(activeAttacks).forEach((a) => { if (a.group === from) a.group = to; });
@@ -2764,8 +2781,11 @@ app.post('/api/groups/delete', (req, res) => {
   if (!watchAuth(req, res)) return;
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ status: 'error', message: 'name gerekli' });
-  deleteGroup(name);
-  res.json({ status: 'success', groups: attackGroups });
+  const removed = deleteGroup(name, {
+    username: sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username,
+    ip: getClientIp(req)
+  });
+  res.json({ status: 'success', groups: attackGroups, removedLoops: removed });
 });
 
 /**
