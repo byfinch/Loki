@@ -669,8 +669,12 @@ const LiveAttacks = () => {
     const direct = state.activeLoops?.[a.loopId]?.group || a.group;
     if (direct) return direct;
     // ID'siz satirlar: hedef+yontem imzasiyla loop'u bul, grubunu al
-    // (port ve protokol farklarini yok say: upstream ":443" tasiyabilir)
-    const stripPort = (t) => targetKeyNorm(t).replace(/:\d+$/, '');
+    // (protokol, port ve sondaki / farklari yok sayilir: upstream L7'de
+    // "host/:443" formu donebiliyor)
+    const stripPort = (t) => String(t || '').toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/:\d+(\/)?$/, '')
+      .replace(/\/+$/, '');
     const normT = stripPort(a.target);
     const normM = String(a.method || '').toLowerCase();
     const loop = Object.values(state.activeLoops || {}).find((l) =>
