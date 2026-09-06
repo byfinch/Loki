@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
+import GroupPicker, { useGroups, notifyGroupsChanged } from './GroupPicker';
 
 // stresse.st'in destekledigi geo degerleri (AttackForm ile ayni liste)
 const LOOP_GEO_OPTIONS = [
@@ -24,7 +25,7 @@ const LoopManager = () => {
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState(null);
   const [editingLoopId, setEditingLoopId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1, geo: 'worldwide' });
+  const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1, geo: 'worldwide', group: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const startEdit = (loopId, loop) => {
@@ -34,30 +35,57 @@ const LoopManager = () => {
       time: parseInt(loop.params?.time, 10) || 0,
       interval: parseInt(loop.params?.interval, 10) || 0,
       concurrents: parseInt(loop.params?.concurrents, 10) || 1,
-      geo: loop.params?.geo || 'worldwide'
+      geo: loop.params?.geo || 'worldwide',
+      group: loop.group || ''
     });
   };
 
-  // Loop duzenlemesini kaydet: not + gelecek turlarin saldiri ayarlari.
+  // Loop duzenlemesini kaydet: not + gelecek turlarin saldiri ayarlari + grup.
   // Yeni degerler bir sonraki turdan itibaren gecerli olur.
   const handleSaveEdit = async (loopId) => {
     setSavingEdit(true);
     try {
+      // Yeni isim yazildiysa once grup backend'de olussun
+      if (editDraft.group && !groupsList.includes(editDraft.group)) {
+        await apiClient.createGroup(editDraft.group).catch(() => {});
+        notifyGroupsChanged();
+      }
       await apiClient.editLoop(loopId, {
         note: editDraft.note.trim(),
         time: parseInt(editDraft.time, 10),
         interval: parseInt(editDraft.interval, 10),
         concurrents: parseInt(editDraft.concurrents, 10),
-        geo: editDraft.geo
+        geo: editDraft.geo,
+        group: editDraft.group || ''
       });
       await refreshLoops();
       setEditingLoopId(null);
+      // yesil vurgu: grup degisti/eklendiyse satir parlar, blok nabiz atar
+      if (editDraft.group) {
+        setFlash({ id: loopId, kind: 'added', group: editDraft.group });
+        setTimeout(() => setFlash({ id: null, kind: null }), 1600);
+      }
       addLog(`Loop güncellendi: ${loopId}`);
       showToast('Loop ayarları kaydedildi (yeni turlarda geçerli)', 'success');
     } catch (err) {
       showToast(`Loop güncellenemedi: ${err.message}`, 'error');
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Gruptan cikar: kaydetmeye gerek yok, dogrudan cikarilir
+  const handleRemoveFromGroup = async (loopId) => {
+    try {
+      await apiClient.editLoop(loopId, { grupCikar: true });
+      await refreshLoops();
+      setEditingLoopId(null);
+      // amber vurgu: satir grupsuz listeye amber seritle duser
+      setFlash({ id: loopId, kind: 'removed' });
+      setTimeout(() => setFlash({ id: null, kind: null }), 1600);
+      showToast('Loop gruptan çıkarıldı', 'success');
+    } catch (err) {
+      showToast(`Gruptan çıkarılamadı: ${err.message}`, 'error');
     }
   };
 
@@ -162,7 +190,235 @@ const LoopManager = () => {
 
   const loops = Object.entries(state.activeLoops);
 
-  return (
+  // Grup bloklari: loop.group'e gore gruplanir; geri kalanlar grupsuz tabloda.
+  const groupsList = useGroups();
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  // Gecis vurgusu: gruba eklenen/cikarilan satir kisa sure isaretlenir
+  const [flash, setFlash] = useState({ id: null, kind: null });
+  const groupedLoops = {};
+  const ungroupedLoops = [];
+  loops.forEach((entry) => {
+    const g = entry[1]?.group;
+    if (g) (groupedLoops[g] = groupedLoops[g] || []).push(entry);
+    else ungroupedLoops.push(entry);
+  });
+  const orderedGroupNames = [
+    ...groupsList.filter((n) => groupedLoops[n]),
+    ...Object.keys(groupedLoops).filter((n) => !groupsList.includes(n))
+  ];
+
+  // Yeni grup olusum animasyonu (dogus): yeni gorulen grup adini kisa sure
+  // 'born' isaretle
+  const [bornGroup, setBornGroup] = useState(null);
+  const prevGroupsRef = useRef(new Set());
+  useEffect(() => {
+    const names = new Set(orderedGroupNames);
+    names.forEach((n) => {
+      if (!prevGroupsRef.current.has(n) && prevGroupsRef.current.size > 0) {
+        setBornGroup(n);
+        setTimeout(() => setBornGroup(null), 1400);
+      }
+    });
+    prevGroupsRef.current = names;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedGroupNames.join('|')]);
+
+  const renderLoopRow = (loopId, loop, isMember = false) => (
+  
+                    <React.Fragment key={loopId}>
+                      <tr className={`border-b border-dashed border-green-500/10 transition-colors duration-300 hover:bg-green-500/5 ${isMember ? 'bg-green-500/[0.02] shadow-[inset_2px_0_0_rgba(0,255,65,0.25)]' : ''} ${flash.id === loopId ? (flash.kind === 'added' ? 'shadow-[inset_0_0_0_1px_rgba(0,255,65,0.7)] bg-green-500/10' : 'shadow-[inset_2px_0_0_#fbbf24] bg-amber-500/10') : ''}`}>
+                        <td className="px-3 py-2.5 align-middle">
+                          <div className="flex items-center gap-2">
+                            <span
+                              title="URL'yi kopyala"
+                              onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                              className="inline-block w-[210px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
+                            >
+                              {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
+                            </span>
+                            <button
+                              onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                              title="URL'yi kopyala"
+                              className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
+                                copiedKey === loopId
+                                  ? 'border-green-500/40 bg-green-500/20 text-green-400'
+                                  : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                              }`}
+                            >
+                              {copiedKey === loopId ? (
+                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                              ) : (
+                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                          {loop.note && (
+                            <div className="mt-1 flex max-w-[240px] items-center gap-1.5 truncate text-[10px] text-cyan-400/90">
+                              <span className="text-gray-600">📝</span>
+                              <span className="truncate" title={loop.note}>{renderNoteWithLinks(loop.note)}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">{loop.params?.method?.toUpperCase()}</td>
+                        <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
+                        <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.interval}s</td>
+                        <td className="px-3 py-2.5 text-center font-bold text-cyan-400">{loop.roundCount || 0}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          {(loop.errors || 0) > 0 ? (
+                            <span className="font-bold text-[#ff2d2d] [text-shadow:0_0_8px_rgba(255,45,45,0.7)]">{loop.errors}</span>
+                          ) : (
+                            <span className="text-gray-600">0</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => (editingLoopId === loopId ? setEditingLoopId(null) : startEdit(loopId, loop))}
+                              title="Not / saldırı ayarlarını düzenle"
+                              className={`flex h-7 w-7 items-center justify-center rounded-sm border text-[11px] transition-all ${
+                                editingLoopId === loopId
+                                  ? 'border-green-500/50 bg-green-500/15 text-green-400 shadow-[0_0_8px_rgba(0,255,65,0.3)]'
+                                  : 'border-green-500/20 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                              }`}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => handleStop(loopId)}
+                              disabled={loading === loopId}
+                              className="inline-flex h-7 w-16 items-center justify-center rounded-sm border border-red-500/30 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:opacity-50"
+                            >
+                              {loading === loopId ? (
+                                <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              ) : 'Çıkar'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {editingLoopId === loopId && (
+                        <tr className="border-b border-dashed border-green-500/10">
+                          <td colSpan={7} className="px-3 pb-3 pt-1">
+                            <div className="rounded-sm border border-green-500/20 bg-black/50 p-3">
+                              <div className="mb-2.5 text-[10px] text-green-500/50">
+                                loopctl edit --target {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))} --next-round
+                              </div>
+                              <div className="flex flex-wrap items-end gap-3">
+                                <div className="min-w-[220px] flex-1">
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Not</label>
+                                  <input
+                                    type="text"
+                                    value={editDraft.note}
+                                    maxLength={120}
+                                    onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
+                                    placeholder="Marka / asıl site linki"
+                                    className="w-full rounded-sm border border-dashed border-cyan-500/40 bg-black px-2.5 py-1.5 text-[11px] text-cyan-300 placeholder-gray-700 focus:outline-none focus:shadow-[0_0_10px_rgba(0,212,255,0.15)]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Süre (sn)</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={editDraft.time}
+                                    onChange={(e) => setEditDraft((d) => ({ ...d, time: e.target.value }))}
+                                    className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Bekleme (sn)</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={editDraft.interval}
+                                    onChange={(e) => setEditDraft((d) => ({ ...d, interval: e.target.value }))}
+                                    className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Adet</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={editDraft.concurrents}
+                                    onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
+                                    className="w-[55px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Geo</label>
+                                  <select
+                                    value={editDraft.geo}
+                                    onChange={(e) => setEditDraft((d) => ({ ...d, geo: e.target.value }))}
+                                    className="appearance-none rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
+                                  >
+                                    {LOOP_GEO_OPTIONS.map((g) => (
+                                      <option key={g.value} value={g.value}>{g.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Grup</label>
+                                  <div className="w-[170px]">
+                                    <GroupPicker
+                                      compact
+                                      groups={groupsList}
+                                      value={editDraft.group}
+                                      onChange={(v) => setEditDraft((d) => ({ ...d, group: v || '' }))}
+                                    />
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleSaveEdit(loopId)}
+                                  disabled={savingEdit}
+                                  className="h-8 rounded-sm border border-green-500/40 bg-green-500/10 px-4 text-[11px] text-green-400 transition-all hover:bg-green-500/20 disabled:opacity-50"
+                                >
+                                  {savingEdit ? 'kaydediliyor...' : 'Kaydet'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingLoopId(null)}
+                                  disabled={savingEdit}
+                                  className="h-8 rounded-sm border border-white/10 px-4 text-[11px] text-gray-500 transition-colors hover:border-white/20 hover:text-gray-300 disabled:opacity-50"
+                                >
+                                  İptal
+                                </button>
+                                {loop.group && (
+                                  <button
+                                    onClick={() => handleRemoveFromGroup(loopId)}
+                                    className="h-8 rounded-sm border border-red-500/30 px-4 text-[11px] text-red-400 transition-all hover:bg-red-500/10"
+                                    title="Loop'u gruptan çıkar (grupsuz yapar)"
+                                  >
+                                    gruptan çıkar
+                                  </button>
+                                )}
+                                <span className="w-full text-[10px] text-gray-700"># yeni ayarlar bir sonraki turdan itibaren geçerli olur</span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {loop.lastError && (
+                        <tr className="border-b border-dashed border-green-500/10">
+                          <td colSpan={7} className="px-3 pb-3 pt-1">
+                            <div className="flex items-center gap-2 rounded-sm border border-[#ff2d2d]/45 border-l-[3px] border-l-[#ff2d2d] bg-[#ff2d2d]/10 px-3 py-2 text-[11px] text-[#ff5c5c] [text-shadow:0_0_6px_rgba(255,45,45,0.4)]">
+                              <span className="flex-shrink-0 font-bold text-[#ff2d2d]">[ERR]</span>
+                              <span className="truncate" title={loop.lastError}>son hata: {loop.lastError}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  
+                );
+  
+    return (
     <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
       {/* CRT scanline dokusu */}
       <div
@@ -202,6 +458,37 @@ const LoopManager = () => {
           </div>
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
+{/* Grup bloklari: tikla-ac, born animasyonu (dogus) */}
+              {orderedGroupNames.map((gname) => {
+                const members = groupedLoops[gname];
+                const isOpen = !collapsedGroups[gname];
+                const isBorn = bornGroup === gname;
+                return (
+                  <div
+                    key={gname}
+                    className={`mx-2 mb-2 overflow-hidden rounded-sm border border-green-500/25 transition-all duration-300 ${isBorn ? 'animate-[grpBorn_0.9s_ease]' : ''} ${flash.kind === 'added' && flash.group === gname ? 'animate-[grpPulse_1s_ease]' : ''}`}
+                  >
+                    <div
+                      onClick={() => setCollapsedGroups((c) => ({ ...c, [gname]: !c[gname] }))}
+                      className="flex cursor-pointer select-none items-center gap-2.5 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
+                    >
+                      <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{gname}</span>
+                      <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{members.length} loop</span>
+                    </div>
+                    <div className={`rw ${isOpen ? '' : 'closed'}`}>
+                      <div className="rw-inner">
+                        <table className="w-full text-xs">
+                          <tbody>
+                            {members.map(([loopId, loop]) => renderLoopRow(loopId, loop, true))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
@@ -215,178 +502,7 @@ const LoopManager = () => {
                 </tr>
               </thead>
               <tbody>
-                {loops.map(([loopId, loop]) => (
-                  <React.Fragment key={loopId}>
-                    <tr className="border-b border-dashed border-green-500/10 transition-colors hover:bg-green-500/5">
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="flex items-center gap-2">
-                          <span
-                            title="URL'yi kopyala"
-                            onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
-                            className="inline-block w-[210px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
-                          >
-                            {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
-                          </span>
-                          <button
-                            onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
-                            title="URL'yi kopyala"
-                            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
-                              copiedKey === loopId
-                                ? 'border-green-500/40 bg-green-500/20 text-green-400'
-                                : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
-                            }`}
-                          >
-                            {copiedKey === loopId ? (
-                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="20 6 9 17 4 12"/>
-                              </svg>
-                            ) : (
-                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                              </svg>
-                            )}
-                          </button>
-                        </div>
-                        {loop.note && (
-                          <div className="mt-1 flex max-w-[240px] items-center gap-1.5 truncate text-[10px] text-cyan-400/90">
-                            <span className="text-gray-600">📝</span>
-                            <span className="truncate" title={loop.note}>{renderNoteWithLinks(loop.note)}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">{loop.params?.method?.toUpperCase()}</td>
-                      <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
-                      <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.interval}s</td>
-                      <td className="px-3 py-2.5 text-center font-bold text-cyan-400">{loop.roundCount || 0}</td>
-                      <td className="px-3 py-2.5 text-center">
-                        {(loop.errors || 0) > 0 ? (
-                          <span className="font-bold text-[#ff2d2d] [text-shadow:0_0_8px_rgba(255,45,45,0.7)]">{loop.errors}</span>
-                        ) : (
-                          <span className="text-gray-600">0</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => (editingLoopId === loopId ? setEditingLoopId(null) : startEdit(loopId, loop))}
-                            title="Not / saldırı ayarlarını düzenle"
-                            className={`flex h-7 w-7 items-center justify-center rounded-sm border text-[11px] transition-all ${
-                              editingLoopId === loopId
-                                ? 'border-green-500/50 bg-green-500/15 text-green-400 shadow-[0_0_8px_rgba(0,255,65,0.3)]'
-                                : 'border-green-500/20 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
-                            }`}
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => handleStop(loopId)}
-                            disabled={loading === loopId}
-                            className="inline-flex h-7 w-16 items-center justify-center rounded-sm border border-red-500/30 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:opacity-50"
-                          >
-                            {loading === loopId ? (
-                              <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                            ) : 'Çıkar'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {editingLoopId === loopId && (
-                      <tr className="border-b border-dashed border-green-500/10">
-                        <td colSpan={7} className="px-3 pb-3 pt-1">
-                          <div className="rounded-sm border border-green-500/20 bg-black/50 p-3">
-                            <div className="mb-2.5 text-[10px] text-green-500/50">
-                              loopctl edit --target {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))} --next-round
-                            </div>
-                            <div className="flex flex-wrap items-end gap-3">
-                              <div className="min-w-[220px] flex-1">
-                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Not</label>
-                                <input
-                                  type="text"
-                                  value={editDraft.note}
-                                  maxLength={120}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
-                                  placeholder="Marka / asıl site linki"
-                                  className="w-full rounded-sm border border-dashed border-cyan-500/40 bg-black px-2.5 py-1.5 text-[11px] text-cyan-300 placeholder-gray-700 focus:outline-none focus:shadow-[0_0_10px_rgba(0,212,255,0.15)]"
-                                />
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Süre (sn)</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={editDraft.time}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, time: e.target.value }))}
-                                  className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
-                                />
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Bekleme (sn)</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={editDraft.interval}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, interval: e.target.value }))}
-                                  className="w-[70px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
-                                />
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Adet</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={editDraft.concurrents}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, concurrents: e.target.value }))}
-                                  className="w-[55px] rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
-                                />
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-[9px] uppercase tracking-wider text-gray-600">Geo</label>
-                                <select
-                                  value={editDraft.geo}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, geo: e.target.value }))}
-                                  className="appearance-none rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
-                                >
-                                  {LOOP_GEO_OPTIONS.map((g) => (
-                                    <option key={g.value} value={g.value}>{g.label}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <button
-                                onClick={() => handleSaveEdit(loopId)}
-                                disabled={savingEdit}
-                                className="h-8 rounded-sm border border-green-500/40 bg-green-500/10 px-4 text-[11px] text-green-400 transition-all hover:bg-green-500/20 disabled:opacity-50"
-                              >
-                                {savingEdit ? 'kaydediliyor...' : 'Kaydet'}
-                              </button>
-                              <button
-                                onClick={() => setEditingLoopId(null)}
-                                disabled={savingEdit}
-                                className="h-8 rounded-sm border border-white/10 px-4 text-[11px] text-gray-500 transition-colors hover:border-white/20 hover:text-gray-300 disabled:opacity-50"
-                              >
-                                İptal
-                              </button>
-                              <span className="w-full text-[10px] text-gray-700"># yeni ayarlar bir sonraki turdan itibaren geçerli olur</span>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {loop.lastError && (
-                      <tr className="border-b border-dashed border-green-500/10">
-                        <td colSpan={7} className="px-3 pb-3 pt-1">
-                          <div className="flex items-center gap-2 rounded-sm border border-[#ff2d2d]/45 border-l-[3px] border-l-[#ff2d2d] bg-[#ff2d2d]/10 px-3 py-2 text-[11px] text-[#ff5c5c] [text-shadow:0_0_6px_rgba(255,45,45,0.4)]">
-                            <span className="flex-shrink-0 font-bold text-[#ff2d2d]">[ERR]</span>
-                            <span className="truncate" title={loop.lastError}>son hata: {loop.lastError}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
+                {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>
             </table>
           </div>

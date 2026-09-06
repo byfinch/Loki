@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opsiyon D — Hibrit: Otomatik + Manuel (Önizleme)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#050505; color:#e5e5e5; font-family:system-ui,-apple-system,sans-serif; padding:40px 20px; }
+  .demo-wrap { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+  .section-label { color:#00ff41; font-family:'Courier New',monospace; font-size:13px; letter-spacing:2px; text-transform:uppercase; }
+  .section-label span { color:#555; letter-spacing:0; text-transform:none; }
+  .card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:24px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:#6b7280; font-weight:500; font-size:12px; padding:0 12px 12px; border-bottom:1px solid rgba(255,255,255,.1); }
+  td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
+  .host { font-family:'Courier New',monospace; font-size:12px; }
+  .method { display:inline-block; padding:4px 10px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.1); border-radius:6px; font-size:11px; font-family:'Courier New',monospace; }
+  .num { color:#d1d5db; font-family:'Courier New',monospace; font-size:12px; }
+  .status { display:inline-block; padding:4px 12px; background:rgba(0,255,65,.1); border:1px solid rgba(0,255,65,.35); border-radius:8px; font-size:11px; color:#00ff41; }
+  .stop { padding:5px 12px; background:rgba(255,68,68,.08); border:1px solid rgba(255,68,68,.3); border-radius:6px; color:#ff7777; font-size:11px; cursor:pointer; }
+  .group-row { cursor:pointer; }
+  .group-row td { background:rgba(0,255,65,.04); }
+  .group-row:hover td { background:rgba(0,255,65,.08); }
+  .chev { display:inline-block; transition:transform .2s; color:#00ff41; margin-right:8px; }
+  .group-row.open .chev { transform:rotate(90deg); }
+  .group-badge { padding:2px 8px; background:rgba(0,0,0,.6); border:1px solid rgba(0,255,65,.25); border-radius:4px; font-size:11px; color:#00ff41; font-family:'Courier New',monospace; margin-left:10px; }
+  .child-row td { padding-left:34px; background:rgba(255,255,255,.012); }
+  .child-row { display:none; } .child-row.show { display:table-row; }
+  .custom-row td { background:rgba(0,212,255,.05); border-left:2px solid rgba(0,212,255,.5); }
+  .custom-badge { padding:2px 8px; background:rgba(0,212,255,.1); border:1px solid rgba(0,212,255,.35); border-radius:4px; font-size:11px; color:#00d4ff; font-family:'Courier New',monospace; margin-left:10px; }
+  .pin-btn { background:none; border:1px solid rgba(255,255,255,.12); border-radius:5px; color:#6b7280; font-size:10px; padding:3px 7px; cursor:pointer; font-family:'Courier New',monospace; }
+  .pin-btn:hover { color:#00d4ff; border-color:rgba(0,212,255,.4); }
+  .loop-tag { display:inline-block; padding:2px 8px; background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.3); border-radius:6px; font-size:10px; color:#00d4ff; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <div class="section-label">Opsiyon D — Hibrit <span>(otomatik hedef grupları + kullanıcı özel grubu sabitleyebilir; satırları aç/kapa)</span></div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Hedef / Grup</th><th>Yöntem</th><th>Kalan Süre</th><th>Adet</th><th>Durum</th><th>İşlem</th></tr></thead>
+      <tbody>
+        <!-- ozel grup (kullanici olusturdu) -->
+        <tr class="group-row custom-row" data-g="c0">
+          <td class="host"><span class="chev" style="color:#00d4ff">▸</span>Özel: gece kampanyası<span class="custom-badge">2 hedef · x72</span></td>
+          <td><span class="method">CLOUDFLARE + TEMPESTA</span></td>
+          <td class="num">—</td><td class="num">x72</td>
+          <td><span class="status">Aktif</span></td>
+          <td><button class="stop" onclick="event.stopPropagation();alert('Özel gruptaki her şey durur')">Hepsini Durdur</button></td>
+        </tr>
+        <tr class="child-row c0"><td class="host">krknclothing.com</td><td><span class="method">CLOUDFLARE</span> <span class="loop-tag">loop</span></td><td class="num">31s</td><td class="num">x1</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+        <tr class="child-row c0"><td class="host">voicesetfree.com</td><td><span class="method">HTTP-TEMPESTA</span></td><td class="num">145s</td><td class="num">x12</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+
+        <!-- otomatik hedef gruplari -->
+        <tr class="group-row" data-g="a1">
+          <td class="host"><span class="chev">▸</span>194.39.149.156<span class="group-badge">3 işlem · x130</span>
+            <button class="pin-btn" onclick="event.stopPropagation();alert('Bu otomatik grup özel gruba çevrilir (isim ver)')">Özelleştir</button></td>
+          <td><span class="method">STOMP + HANDSHAKE +1</span></td>
+          <td class="num">—</td><td class="num">x130</td>
+          <td><span class="status">Aktif</span></td>
+          <td><button class="stop" onclick="event.stopPropagation();alert('Hedefteki 3 işlem durur')">Hepsini Durdur</button></td>
+        </tr>
+        <tr class="child-row a1"><td class="host">194.39.149.156</td><td><span class="method">STOMP</span> <span class="loop-tag">loop</span></td><td class="num">96s</td><td class="num">x60</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+        <tr class="child-row a1"><td class="host">194.39.149.156</td><td><span class="method">HANDSHAKE</span> <span class="loop-tag">loop</span></td><td class="num">88s</td><td class="num">x50</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+        <tr class="child-row a1"><td class="host">194.39.149.156</td><td><span class="method">TCPAMP</span></td><td class="num">102s</td><td class="num">x20</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+
+        <tr class="group-row" data-g="a2">
+          <td class="host"><span class="chev">▸</span>65.181.120.58<span class="group-badge">3 işlem · x30</span>
+            <button class="pin-btn" onclick="event.stopPropagation();alert('Bu otomatik grup özel gruba çevrilir')">Özelleştir</button></td>
+          <td><span class="method">UDP + SYN + ACK</span></td>
+          <td class="num">—</td><td class="num">x30</td>
+          <td><span class="status">Aktif</span></td>
+          <td><button class="stop" onclick="event.stopPropagation();alert('Hedefteki 3 işlem durur')">Hepsini Durdur</button></td>
+        </tr>
+        <tr class="child-row a2"><td class="host">65.181.120.58</td><td><span class="method">UDP</span></td><td class="num">44s</td><td class="num">x10</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+        <tr class="child-row a2"><td class="host">65.181.120.58</td><td><span class="method">SYN</span></td><td class="num">50s</td><td class="num">x10</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+        <tr class="child-row a2"><td class="host">65.181.120.58</td><td><span class="method">ACK</span></td><td class="num">38s</td><td class="num">x10</td><td><span class="status">Aktif</span></td><td><button class="stop">Durdur</button></td></tr>
+
+        <!-- tekli islem: grupsuz, aynen kalir -->
+        <tr>
+          <td class="host">emspan.com</td>
+          <td><span class="method">GO-NEBULA</span></td>
+          <td class="num">26s</td><td class="num">x10</td>
+          <td><span class="status">Aktif</span></td>
+          <td><button class="stop">Durdur</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="color:#6b7280;font-size:12px;font-family:'Courier New',monospace"># kural: ayni hedef 2+ işlemse otomatik tek satır; tek işlemse düz satır. "Özelleştir" otomatik grubu isimli özel gruba çevirir.</p>
+</div>
+<script>
+document.querySelectorAll('.group-row').forEach(r => r.addEventListener('click', () => {
+  r.classList.toggle('open');
+  document.querySelectorAll('.child-row.' + r.dataset.g).forEach(c => c.classList.toggle('show'));
+}));
+</script>
+</body>
+</html>

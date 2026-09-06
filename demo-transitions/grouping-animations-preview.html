@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gruplama Geçiş Animasyonları — Önizleme</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; color:#d1d5db; font-family:'Courier New',monospace; padding:40px 20px; }
+  .wrap { max-width:860px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+  .lbl { color:#00ff41; font-size:13px; letter-spacing:2px; text-transform:uppercase; }
+  .lbl span { color:#555; letter-spacing:0; text-transform:none; }
+  .term { position:relative; overflow:hidden; border-radius:6px; border:1px solid rgba(0,255,65,.25); background:rgba(2,10,4,.85); }
+  .bar { display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(0,255,65,.2); background:rgba(0,255,65,.05); padding:10px 16px; font-size:12px; color:#4ade80; }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .body { padding:16px 18px; }
+  .row { display:grid; grid-template-columns:1fr 120px 90px 60px 150px; align-items:center; gap:8px; padding:9px 12px; border-bottom:1px dashed rgba(0,255,65,.08); font-size:12px; transition:background .3s, transform .4s, opacity .4s, box-shadow .3s; }
+  .host { color:#bbf7d0; }
+  .method { display:inline-block; padding:3px 9px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.1); border-radius:5px; font-size:11px; }
+  .num { color:#d1d5db; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .b { padding:8px 14px; background:rgba(0,255,65,.08); border:1px solid rgba(0,255,65,.3); border-radius:5px; color:#4ade80; font-size:11px; cursor:pointer; font-family:inherit; }
+  .b:hover { background:rgba(0,255,65,.16); }
+  .b.amber { border-color:rgba(251,191,36,.4); color:#fbbf24; background:rgba(251,191,36,.06); }
+
+  /* grup blogu */
+  .gblock { margin:8px 8px 4px; border:1px solid rgba(0,255,65,.22); border-radius:5px; overflow:hidden; transition:box-shadow .4s; }
+  .ghead { display:flex; align-items:center; gap:10px; padding:9px 12px; background:rgba(0,255,65,.05); }
+  .gname { font-weight:700; font-size:11px; letter-spacing:1px; color:#4ade80; text-transform:uppercase; }
+  .gcount { font-size:10px; color:#4ade80; border:1px solid rgba(0,255,65,.25); background:rgba(0,0,0,.6); border-radius:3px; padding:2px 8px; }
+  .gmember td, .gmember { background:rgba(0,255,65,.02); }
+  .gmember { box-shadow:inset 2px 0 0 rgba(0,255,65,.3); }
+
+  /* ANIMASYONLAR */
+  /* B: yerinde parlat */
+  .flash { box-shadow:inset 0 0 0 1px rgba(0,255,65,.7); background:rgba(0,255,65,.12) !important; }
+  /* B: blok nabzi */
+  @keyframes pulseGlow { 0%{box-shadow:0 0 0 rgba(0,255,65,0)} 40%{box-shadow:0 0 22px rgba(0,255,65,.35)} 100%{box-shadow:0 0 0 rgba(0,255,65,0)} }
+  .pulse { animation:pulseGlow 1s ease; }
+  /* satir acilis/kapanis (AttackRow kalibi) */
+  .rw { display:grid; grid-template-rows:1fr; transition:grid-template-rows .35s cubic-bezier(.4,0,.2,1); }
+  .rw.closed { grid-template-rows:0fr; }
+  .rw-inner { overflow:hidden; min-height:0; }
+  /* gruptan cikis: amber serit + saga kayma + solar */
+  .leaving { box-shadow:inset 2px 0 0 #fbbf24 !important; background:rgba(251,191,36,.07) !important; transform:translateX(28px); opacity:0; }
+  .tag { font-size:9px; color:#fbbf24; font-weight:700; }
+  /* yeni grup dogusu: asagidan kayarak belirir, glow ile yerlesir */
+  .gblock { transition:box-shadow .4s, opacity .35s cubic-bezier(.4,0,.2,1), transform .35s cubic-bezier(.4,0,.2,1); }
+  .born-start { opacity:0; transform:translateY(-8px); }
+  .born { animation:pulseGlow 1.2s ease .2s; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="lbl">geçiş animasyonları <span>(butonlara bas; sahne altta canlanır)</span></div>
+  <div class="term">
+    <div class="bar">
+      <span class="dot" style="background:rgba(248,113,113,.8)"></span>
+      <span class="dot" style="background:rgba(251,191,36,.8)"></span>
+      <span class="dot" style="background:rgba(74,222,128,.8)"></span>
+      <span style="color:rgba(134,239,172,.9)">root@loki:~/aktif-looplar</span>
+      <span style="color:rgba(74,222,128,.6)">$ animasyon --demo</span>
+      <span style="animation:blink 1s infinite">▊</span>
+    </div>
+    <div class="body">
+      <div class="btns">
+        <button class="b" onclick="demoAdd()">B — gruba ekle (parlat + nabız)</button>
+        <button class="b amber" onclick="demoRemove()">gruptan çıkar (amber flip)</button>
+        <button class="b" onclick="demoBirth()">yeni grup doğuşu</button>
+        <button class="b" onclick="demoToggle()">blok aç/kapa (akordeon)</button>
+        <button class="b" style="border-color:rgba(255,255,255,.15);color:#6b7280" onclick="resetScene()">sıfırla</button>
+      </div>
+
+      <!-- grup blogu -->
+      <div class="gblock" id="gblock">
+        <div class="ghead">
+          <span class="gname" id="gname">Müşteri X işi</span>
+          <span class="gcount" id="gcount">1 loop</span>
+        </div>
+        <div id="gbody" style="transition:max-height .3s">
+          <div class="rw" id="m1"><div class="rw-inner"><div class="row gmember"><span class="host">194.39.149.156</span><span><span class="method">STOMP</span></span><span class="num">150s</span><span class="num">x60</span><span></span></div></div></div>
+          <div id="gbodyInner"></div>
+        </div>
+      </div>
+
+      <!-- grupsuz satir -->
+      <div class="rw" id="loose"><div class="rw-inner"><div class="row" id="looseRow">
+        <span class="host">65.181.120.58</span><span><span class="method">UDP</span></span><span class="num">60s</span><span class="num">x10</span>
+        <span id="looseTag"></span>
+      </div></div></div>
+    </div>
+  </div>
+
+  <p style="color:#4b5563;font-size:11px">
+    # B: eklenen satır önce parlar, grup bloğu nabız atar, satır içeride açılır · gruptan çıkış: amber şerit + "[--] gruptan çıktı" + sağa kayıp solma, sonra grupsuz alanda doğar · doğuş: blok glow'la belirir · akordeon: max-height geçişi
+  </p>
+</div>
+<script>
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const loose = document.getElementById('loose');
+const looseRow = document.getElementById('looseRow');
+const gblock = document.getElementById('gblock');
+const gbodyInner = document.getElementById('gbodyInner');
+const gcount = document.getElementById('gcount');
+let memberCount = 1;
+
+async function demoAdd(){
+  // 1) kaynak satir parlar
+  looseRow.classList.add('flash');
+  await sleep(700);
+  looseRow.classList.remove('flash');
+  // 2) satir grupsuzdan kapanir
+  loose.classList.add('closed');
+  // 3) blok nabiz atar
+  gblock.classList.add('pulse');
+  setTimeout(()=>gblock.classList.remove('pulse'), 1000);
+  await sleep(400);
+  // 4) icinde acilir
+  const w = document.createElement('div');
+  w.className = 'rw closed';
+  w.innerHTML = `<div class="rw-inner"><div class="row gmember"><span class="host">65.181.120.58</span><span><span class="method">UDP</span></span><span class="num">60s</span><span class="num">x10</span><span></span></div></div>`;
+  gbodyInner.appendChild(w);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>w.classList.remove('closed')));
+  memberCount++; gcount.textContent = memberCount + ' loop';
+}
+
+async function demoRemove(){
+  const members = gbodyInner.querySelectorAll('.rw');
+  if (!members.length) return;
+  const w = members[members.length-1];
+  const r = w.querySelector('.row');
+  // 1) amber serit + etiket
+  r.classList.add('leaving');
+  r.lastElementChild.innerHTML = '<span class="tag">[--] gruptan çıktı</span>';
+  await sleep(900);
+  // 2) kapanir
+  w.classList.add('closed');
+  memberCount--; gcount.textContent = memberCount + ' loop';
+  await sleep(400);
+  w.remove();
+  // 3) grupsuz alanda dogar
+  looseRow.classList.remove('leaving');
+  document.getElementById('looseTag').innerHTML = '';
+  loose.classList.remove('closed');
+}
+
+function demoBirth(){
+  // yeni grup blogu: once gorunmez-kaymis halde eklenir, sonra yerine oturur
+  const b = gblock.cloneNode(true);
+  b.id = '';
+  b.classList.add('born-start');
+  b.querySelector('.gname').textContent = 'yeni grup';
+  b.querySelector('.gcount').textContent = '1 loop';
+  b.querySelectorAll('.rw').forEach(x=>x.remove());
+  const w = document.createElement('div');
+  w.className = 'rw closed';
+  w.innerHTML = `<div class="rw-inner"><div class="row gmember"><span class="host">emspan.com</span><span><span class="method">GO-NEBULA</span></span><span class="num">60s</span><span class="num">x10</span><span></span></div></div>`;
+  b.appendChild(w);
+  gblock.after(b);
+  // iki frame bekle ki baslangic durumu islenmis olsun, sonra ac
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    b.classList.remove('born-start');
+    b.classList.add('born');
+    setTimeout(()=>w.classList.remove('closed'), 250);
+  }));
+}
+
+function demoToggle(){
+  const body = document.getElementById('gbody');
+  const open = body.style.maxHeight !== '0px';
+  if (open) { body.style.maxHeight = body.scrollHeight + 'px'; requestAnimationFrame(()=>{ body.style.maxHeight='0px'; body.style.overflow='hidden'; }); }
+  else { body.style.maxHeight = body.scrollHeight + 'px'; body.style.overflow='hidden'; setTimeout(()=>{body.style.maxHeight='';body.style.overflow='';},350); }
+}
+
+function resetScene(){ location.reload(); }
+</script>
+<style>@keyframes blink{50%{opacity:0}}</style>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opsiyon B — Manuel Gruplar (Önizleme)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#050505; color:#e5e5e5; font-family:system-ui,-apple-system,sans-serif; padding:40px 20px; }
+  .demo-wrap { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+  .section-label { color:#00ff41; font-family:'Courier New',monospace; font-size:13px; letter-spacing:2px; text-transform:uppercase; }
+  .section-label span { color:#555; letter-spacing:0; text-transform:none; }
+  .card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:24px; }
+  .toolbar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  .toolbar input { flex:1; min-width:200px; background:rgba(0,0,0,.6); border:1px solid rgba(0,255,65,.25); border-radius:6px; color:#00ff41; padding:8px 12px; font-size:12px; font-family:'Courier New',monospace; outline:none; }
+  .btn { padding:8px 16px; background:rgba(0,255,65,.1); border:1px solid rgba(0,255,65,.3); border-radius:6px; color:#00ff41; font-size:12px; cursor:pointer; font-family:'Courier New',monospace; }
+  .btn:hover { background:rgba(0,255,65,.2); }
+  .group-box { border:1px solid rgba(255,255,255,.1); border-radius:10px; margin-bottom:14px; overflow:hidden; }
+  .group-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:rgba(255,255,255,.04); cursor:pointer; }
+  .group-head:hover { background:rgba(255,255,255,.06); }
+  .group-title { display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .cnt { font-size:11px; color:#6b7280; font-family:'Courier New',monospace; }
+  .group-body { display:none; }
+  .group-box.open .group-body { display:block; }
+  .chev { transition:transform .2s; color:#6b7280; }
+  .group-box.open .chev { transform:rotate(90deg); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:#6b7280; font-weight:500; font-size:12px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.1); }
+  td { padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.04); vertical-align:middle; }
+  .host { font-family:'Courier New',monospace; font-size:12px; }
+  .method { display:inline-block; padding:4px 10px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.1); border-radius:6px; font-size:11px; font-family:'Courier New',monospace; }
+  .num { color:#d1d5db; font-family:'Courier New',monospace; font-size:12px; }
+  .stop { padding:4px 10px; background:rgba(255,68,68,.08); border:1px solid rgba(255,68,68,.3); border-radius:6px; color:#ff7777; font-size:11px; cursor:pointer; }
+  select.assign { background:#000; border:1px solid rgba(255,255,255,.15); border-radius:5px; color:#9ca3af; font-size:11px; padding:4px 6px; font-family:'Courier New',monospace; }
+  .hint { color:#6b7280; font-size:12px; font-family:'Courier New',monospace; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <div class="section-label">Opsiyon B — Manuel gruplar <span>(grup oluştur → satırdan gruba ata → başlığa tıkla: aç/kapa)</span></div>
+  <div class="card">
+    <div class="toolbar">
+      <input id="newGroup" placeholder="yeni grup adı (örn. gece işi)">
+      <button class="btn" onclick="createGroup()">+ GRUP OLUŞTUR</button>
+    </div>
+    <div id="groups"></div>
+    <div class="group-box open" style="border-style:dashed">
+      <div class="group-head" onclick="this.parentElement.classList.toggle('open')">
+        <span class="group-title"><span class="chev">▸</span><span style="color:#9ca3af">Grupsuz</span> <span class="cnt" id="ungCount"></span></span>
+      </div>
+      <div class="group-body"><table><thead><tr><th>Hedef</th><th>Yöntem</th><th>Adet</th><th>Gruba Ata</th><th>İşlem</th></tr></thead><tbody id="unassigned"></tbody></table></div>
+    </div>
+  </div>
+  <p class="hint"># demo: sağdaki dropdown'dan satırı gruba ata; grup başlığında toplu durdur var</p>
+</div>
+<script>
+const state = {
+  groups: [
+    { id:'g1', name:'Müşteri X işi', color:'#00ff41', items:[
+      { host:'194.39.149.156', method:'STOMP', conc:60 },
+      { host:'194.39.149.156', method:'HANDSHAKE', conc:50 } ] },
+    { id:'g2', name:'gece işi', color:'#00d4ff', items:[
+      { host:'krknclothing.com', method:'CLOUDFLARE', conc:1 } ] }
+  ],
+  unassigned: [
+    { host:'65.181.120.58', method:'UDP', conc:10 },
+    { host:'65.181.120.58', method:'SYN', conc:10 },
+    { host:'voicesetfree.com', method:'HTTP-TEMPESTA', conc:12 }
+  ]
+};
+function esc(s){return s.replace(/</g,'&lt;')}
+function rowHtml(a, gi){
+  const opts = ['<option value="">grup seç…</option>']
+    .concat(state.groups.map((g,i)=>`<option value="${i}">${esc(g.name)}</option>`)).join('');
+  return `<tr>
+    <td class="host">${esc(a.host)}</td>
+    <td><span class="method">${esc(a.method)}</span></td>
+    <td class="num">x${a.conc}</td>
+    <td><select class="assign" data-host="${esc(a.host)}" data-method="${esc(a.method)}">${opts}</select></td>
+    <td><button class="stop">Durdur</button></td>
+  </tr>`;
+}
+function render(){
+  document.getElementById('groups').innerHTML = state.groups.map((g,gi)=>`
+    <div class="group-box" style="border-color:${g.color}33">
+      <div class="group-head" onclick="this.parentElement.classList.toggle('open')">
+        <span class="group-title"><span class="chev">▸</span><span class="dot" style="background:${g.color};box-shadow:0 0 8px ${g.color}"></span>${esc(g.name)} <span class="cnt">${g.items.length} işlem · x${g.items.reduce((s,a)=>s+a.conc,0)}</span></span>
+        <button class="stop" onclick="event.stopPropagation();alert('Gruptaki tüm işlemler durdurulur')">Hepsini Durdur</button>
+      </div>
+      <div class="group-body"><table><thead><tr><th>Hedef</th><th>Yöntem</th><th>Adet</th><th></th><th>İşlem</th></tr></thead><tbody>
+        ${g.items.map(a=>`<tr><td class="host">${esc(a.host)}</td><td><span class="method">${esc(a.method)}</span></td><td class="num">x${a.conc}</td><td></td><td><button class="stop">Durdur</button></td></tr>`).join('')}
+      </tbody></table></div>
+    </div>`).join('');
+  document.getElementById('unassigned').innerHTML = state.unassigned.map(rowHtml).join('');
+  document.getElementById('ungCount').textContent = state.unassigned.length + ' işlem';
+  document.querySelectorAll('select.assign').forEach(sel => sel.addEventListener('change', () => {
+    if (sel.value === '') return;
+    const g = state.groups[+sel.value];
+    const i = state.unassigned.findIndex(a => a.host === sel.dataset.host && a.method === sel.dataset.method);
+    if (i >= 0) { g.items.push(state.unassigned.splice(i,1)[0]); render(); }
+  }));
+}
+function createGroup(){
+  const name = document.getElementById('newGroup').value.trim();
+  if (!name) return;
+  const colors = ['#00ff41','#00d4ff','#ffb020','#ff6ec7','#a78bfa'];
+  state.groups.push({ id:'g'+Date.now(), name, color: colors[state.groups.length % colors.length], items: [] });
+  document.getElementById('newGroup').value = '';
+  render();
+}
+render();
+</script>
+</body>
+</html>

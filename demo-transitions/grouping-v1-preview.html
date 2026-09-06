@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gruplama Önizleme v3 — Form + Loop düzenleme paneli</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; color:#d1d5db; font-family:'Courier New',monospace; padding:40px 20px; }
+  .wrap { max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:32px; }
+  .lbl { color:#00ff41; font-size:13px; letter-spacing:2px; text-transform:uppercase; }
+  .lbl span { color:#555; letter-spacing:0; text-transform:none; }
+  .term { position:relative; overflow:hidden; border-radius:6px; border:1px solid rgba(0,255,65,.25); background:rgba(2,10,4,.85); box-shadow:0 0 40px rgba(0,255,65,.06); }
+  .term::after { content:''; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,255,65,.015) 0 1px, transparent 1px 3px); }
+  .bar { position:relative; z-index:1; display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(0,255,65,.2); background:rgba(0,255,65,.05); padding:10px 16px; font-size:12px; color:#4ade80; }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .body { position:relative; z-index:1; padding:18px 20px; }
+  .fl { display:block; font-size:10px; letter-spacing:1px; color:rgba(74,222,128,.55); margin-bottom:6px; }
+  .fi, .fs { width:100%; background:#000; border:1px solid rgba(0,255,65,.3); border-radius:3px; padding:10px 12px; font-size:13px; color:#4ade80; font-family:inherit; outline:none; }
+  .fs { appearance:none; }
+  .fi:focus { box-shadow:0 0 12px rgba(0,255,65,.2); }
+  .big { width:100%; padding:13px; background:linear-gradient(180deg,#00d95a,#00913c); border:none; border-radius:3px; color:#021108; font-weight:700; font-size:13px; letter-spacing:2px; font-family:inherit; cursor:pointer; box-shadow:0 0 16px rgba(0,255,65,.3); }
+  .hint { font-size:9px; color:#4b5563; margin-top:5px; }
+
+  /* degisebilen grup kutusu: secici <-> yazi ayni kutu */
+  .gbox { position:relative; }
+  .gbox .gx { position:absolute; right:8px; top:50%; transform:translateY(-50%); width:22px; height:22px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,68,68,.35); border-radius:4px; color:#f87171; font-size:12px; cursor:pointer; background:rgba(0,0,0,.6); }
+  .gbox .gx:hover { background:rgba(255,68,68,.15); }
+
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; color:#4b5563; font-size:10px; padding:0 10px 10px; border-bottom:1px solid rgba(0,255,65,.15); }
+  td { padding:9px 10px; border-bottom:1px dashed rgba(0,255,65,.08); vertical-align:middle; }
+  .host { color:#bbf7d0; }
+  .method { display:inline-block; padding:3px 9px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.1); border-radius:5px; font-size:11px; }
+  .num { color:#d1d5db; }
+  .act { padding:4px 11px; background:rgba(255,68,68,.08); border:1px solid rgba(255,68,68,.3); border-radius:5px; color:#f87171; font-size:11px; cursor:pointer; font-family:inherit; }
+  .edit { padding:4px 9px; background:rgba(0,255,65,.06); border:1px solid rgba(0,255,65,.2); border-radius:5px; color:#4ade80; font-size:11px; cursor:pointer; font-family:inherit; }
+  .gblock { margin:10px 10px 4px; border:1px solid rgba(0,255,65,.22); border-radius:5px; overflow:hidden; }
+  .ghead { display:flex; align-items:center; gap:10px; padding:9px 12px; background:rgba(0,255,65,.05); cursor:pointer; }
+  .ghead:hover { background:rgba(0,255,65,.09); }
+  .ghead .chev { color:#4ade80; transition:transform .2s; font-size:11px; }
+  .gblock.open .ghead .chev { transform:rotate(90deg); }
+  .gname { font-weight:700; font-size:11px; letter-spacing:1px; color:#4ade80; text-transform:uppercase; }
+  .gcount { font-size:10px; color:#4ade80; border:1px solid rgba(0,255,65,.25); background:rgba(0,0,0,.6); border-radius:3px; padding:2px 8px; }
+  .gbody { display:none; } .gblock.open .gbody { display:block; }
+  .gbody td { background:rgba(0,255,65,.02); }
+  .gbody td:first-child { box-shadow:inset 2px 0 0 rgba(0,255,65,.3); }
+
+  /* kalem paneli (mevcut loop edit kalibi) */
+  .editpanel { margin:6px 10px 10px; border:1px dashed rgba(0,212,255,.35); border-radius:5px; padding:12px 14px; background:rgba(0,212,255,.02); }
+  .editpanel .row { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
+  .editpanel label { font-size:9px; color:#4b5563; display:block; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px; }
+  .editpanel .sm { background:#000; border:1px solid rgba(0,255,65,.3); border-radius:3px; padding:6px 8px; font-size:11px; color:#4ade80; font-family:inherit; width:70px; }
+  .editpanel .sml { background:#000; border:1px solid rgba(0,255,65,.3); border-radius:3px; padding:6px 8px; font-size:11px; color:#4ade80; font-family:inherit; width:200px; appearance:none; }
+  .editpanel .smli { background:#000; border:1px solid rgba(0,255,65,.3); border-radius:3px; padding:6px 24px 6px 8px; font-size:11px; color:#4ade80; font-family:inherit; width:200px; }
+  .save { padding:7px 18px; background:rgba(0,255,65,.12); border:1px solid rgba(0,255,65,.4); border-radius:4px; color:#4ade80; font-size:11px; cursor:pointer; font-family:inherit; }
+  .ghost { padding:7px 14px; background:transparent; border:1px solid rgba(255,255,255,.12); border-radius:4px; color:#6b7280; font-size:11px; cursor:pointer; font-family:inherit; }
+  .ghost.red:hover { color:#f87171; border-color:rgba(255,68,68,.4); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="lbl">1) Saldırı formu — değişebilen grup kutusu <span>(seçicide "yeni grup"a tıkla → aynı kutu yazılabilir olur; × geri alır)</span></div>
+  <div class="term">
+    <div class="bar">
+      <span class="dot" style="background:rgba(248,113,113,.8)"></span>
+      <span class="dot" style="background:rgba(251,191,36,.8)"></span>
+      <span class="dot" style="background:rgba(74,222,128,.8)"></span>
+      <span style="color:rgba(134,239,172,.9)">root@loki:~/saldiri-baslat</span>
+      <span style="color:rgba(74,222,128,.6)">$ ./launch.sh --interactive</span>
+      <span style="animation:pulse 1s infinite">▊</span>
+    </div>
+    <div class="body">
+      <div style="display:flex;flex-direction:column;gap:13px;max-width:560px">
+        <div><span class="fl">&gt; hedef_ip</span><input class="fi" value="1.1.1.1"></div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1"><span class="fl">&gt; sure_sn</span><input class="fi" value="60"></div>
+          <div style="flex:1"><span class="fl">&gt; port</span><input class="fi" value="53"></div>
+        </div>
+        <div><span class="fl">&gt; yontem</span><input class="fi" value="FIVEM — UDP Flood emulating fivem connections"></div>
+
+        <!-- DEGISEBILEN KUTU -->
+        <div>
+          <span class="fl">&gt; grup <span style="color:rgba(0,212,255,.8)">(opsiyonel)</span></span>
+          <div class="gbox" id="fGroupBox">
+            <select class="fs" id="fGroupSel" onchange="fGroupMode(this)">
+              <option value="">grupsuz</option>
+              <option>Müşteri X işi</option>
+              <option>gece kampanyası</option>
+              <option value="__new__">＋ yeni grup oluştur</option>
+            </select>
+          </div>
+          <p class="hint"># seçiciden mevcut grup seçilir · "yeni grup oluştur" kutuyu yazılabilir yapar · × ile seçiciye geri dönülür</p>
+        </div>
+
+        <div class="fi" style="color:#6b7280;cursor:default">[ &nbsp;] loop_aktif <span style="float:right;color:#4b5563;font-size:10px"># bittikçe otomatik tekrar başlar</span></div>
+        <button class="big">SALDİRİ BAŞLAT</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="lbl">2) Aktif looplar — gruplu + kalem panelinde grup işlemleri <span>(✎ tıkla: alttaki panel açılır)</span></div>
+  <div class="term">
+    <div class="bar">
+      <span class="dot" style="background:rgba(248,113,113,.8)"></span>
+      <span class="dot" style="background:rgba(251,191,36,.8)"></span>
+      <span class="dot" style="background:rgba(74,222,128,.8)"></span>
+      <span style="color:rgba(134,239,172,.9)">root@loki:~/aktif-looplar</span>
+      <span style="color:rgba(74,222,128,.6)">$ watch -n3 loopctl list --count=4</span>
+      <span style="animation:pulse 1s infinite">▊</span>
+    </div>
+    <div class="body">
+
+      <div class="gblock open">
+        <div class="ghead" onclick="this.parentElement.classList.toggle('open')">
+          <span class="chev">▸</span>
+          <span class="gname">Müşteri X işi</span>
+          <span class="gcount">2 loop</span>
+        </div>
+        <div class="gbody">
+          <table>
+            <thead><tr><th>Hedef</th><th>Yöntem</th><th>Süre</th><th>Bekleme</th><th>Set</th><th>Hata</th><th>İşlem</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="host">194.39.149.156</td><td><span class="method">STOMP</span></td><td class="num">150s</td><td class="num">5s</td><td class="num" style="color:#00d4ff">358</td><td class="num">0</td>
+                <td><button class="edit" onclick="document.getElementById('editp').classList.toggle('hidden')">✎</button> <button class="act">Çıkar</button></td>
+              </tr>
+              <tr>
+                <td class="host">194.39.149.156</td><td><span class="method">HANDSHAKE</span></td><td class="num">150s</td><td class="num">5s</td><td class="num" style="color:#00d4ff">340</td><td class="num" style="color:#f87171">1</td>
+                <td><button class="edit" onclick="document.getElementById('editp').classList.toggle('hidden')">✎</button> <button class="act">Çıkar</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- kalem paneli (mevcut edit panelinin genisletilmis hali) -->
+      <div class="editpanel" id="editp">
+        <div style="font-size:10px;color:rgba(0,212,255,.7);margin-bottom:10px">loopctl edit --target 194.39.149.156 --next-round</div>
+        <div class="row">
+          <div><label>Süre (sn)</label><input class="sm" value="150"></div>
+          <div><label>Bekleme (sn)</label><input class="sm" value="5"></div>
+          <div><label>Adet</label><input class="sm" value="60"></div>
+          <div><label>Geo</label><select class="sml"><option>Worldwide</option></select></div>
+          <div>
+            <label>Grup</label>
+            <div class="gbox" style="width:200px">
+              <select class="sml" onchange="lGroupMode(this)">
+                <option selected>Müşteri X işi</option>
+                <option>gece kampanyası</option>
+                <option value="__new__">＋ yeni grup oluştur</option>
+              </select>
+            </div>
+          </div>
+          <button class="save">Kaydet</button>
+          <button class="ghost">İptal</button>
+          <button class="ghost red">gruptan çıkar</button>
+        </div>
+        <p class="hint"># grup: seçiciden değiştir · "yeni grup oluştur" yazılabilir yapar (× geri alır) · "gruptan çıkar" loop'u grupsuz yapar</p>
+      </div>
+
+      <table style="margin-top:10px">
+        <tbody>
+          <tr>
+            <td class="host">krknclothing.com</td><td><span class="method">CLOUDFLARE</span></td><td class="num">60s</td><td class="num">5s</td><td class="num" style="color:#00d4ff">40</td><td class="num">0</td>
+            <td><button class="edit" onclick="document.getElementById('editp').classList.toggle('hidden')">✎</button> <button class="act">Çıkar</button></td>
+          </tr>
+          <tr>
+            <td class="host">65.181.120.58</td><td><span class="method">UDP</span></td><td class="num">60s</td><td class="num">5s</td><td class="num" style="color:#00d4ff">7</td><td class="num">0</td>
+            <td><button class="edit" onclick="document.getElementById('editp').classList.toggle('hidden')">✎</button> <button class="act">Çıkar</button></td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <p class="hint" style="font-size:11px"># kalem paneli bugünkü edit bölümünün aynısı + Grup alanı · gruptan çıkar butonu gruplu loop'ta görünür · Aktif Saldırılar'da aynı grup ayracı salt-görünüm olur, atama hep Looplar'dan</p>
+</div>
+<script>
+// form kutusu: secici <-> yazi modu
+function fGroupMode(sel){
+  if (sel.value !== '__new__') return;
+  const box = document.getElementById('fGroupBox');
+  box.innerHTML = `<input class="fi" style="padding-right:36px" placeholder="yeni grup adı yaz..." id="fGroupInp"><span class="gx" onclick="fGroupBack()">×</span>`;
+  document.getElementById('fGroupInp').focus();
+}
+function fGroupBack(){
+  document.getElementById('fGroupBox').innerHTML = `<select class="fs" id="fGroupSel" onchange="fGroupMode(this)">
+    <option value="">grupsuz</option><option>Müşteri X işi</option><option>gece kampanyası</option><option value="__new__">＋ yeni grup oluştur</option></select>`;
+}
+// kalem paneli kutusu: ayni mantik
+function lGroupMode(sel){
+  if (sel.value !== '__new__') return;
+  const box = sel.parentElement;
+  box.innerHTML = `<input class="smli" placeholder="yeni grup adı yaz..."><span class="gx" style="right:4px" onclick="lGroupBack(this)">×</span>`;
+  box.querySelector('input').focus();
+}
+function lGroupBack(x){
+  x.parentElement.innerHTML = `<select class="sml" onchange="lGroupMode(this)">
+    <option selected>Müşteri X işi</option><option>gece kampanyası</option><option value="__new__">＋ yeni grup oluştur</option></select>`;
+}
+</script>
+<style>.hidden{display:none} @keyframes pulse{50%{opacity:0}}</style>
+</body>
+</html>
