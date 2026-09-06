@@ -30,7 +30,7 @@ const rowKeyOf = (g) => sigOf(g.target, g.method);
 //  - phase 'done'  : kirmizi serit + "[--] bitti" (~1.1sn gorunur kalir)
 //  - phase 'exit'  : saga kayarak solar
 //  - phase 'closed': 1fr->0fr grid kapanisiyla yumusakca yok olur
-const AttackRow = ({ phase, initialOpen = false, children }) => {
+const AttackRow = ({ phase, initialOpen = false, child = false, children }) => {
   const [open, setOpen] = useState(initialOpen);
   useEffect(() => {
     if (initialOpen) return undefined;
@@ -45,7 +45,7 @@ const AttackRow = ({ phase, initialOpen = false, children }) => {
         <div
           className={`grid items-center gap-2 border-b border-dashed border-green-500/10 px-3 py-2.5 transition-[background,transform,opacity] duration-300 ${
             dying ? 'bg-[#ff2d2d]/[0.06] shadow-[inset_2px_0_0_#ff2d2d]' : 'hover:bg-green-500/5'
-          } ${phase === 'exit' ? 'translate-x-7 opacity-0' : ''}`}
+          } ${phase === 'exit' ? 'translate-x-7 opacity-0' : ''} ${child ? 'bg-green-500/[0.03] shadow-[inset_2px_0_0_rgba(0,255,65,0.25)]' : ''}`}
           style={{ gridTemplateColumns: 'minmax(0,1fr) 150px 110px 60px 180px' }}
         >
           {children}
@@ -58,6 +58,7 @@ const AttackRow = ({ phase, initialOpen = false, children }) => {
 const LiveAttacks = () => {
   const { state, setLiveAttacks, setLoops, addLog, showToast, setStopProgress, setActiveStopKey, setStopCancelled, resetStopProgress } = useStressTest();
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
   const [copiedKey, setCopiedKey] = useState(null);
   const [stopping, setStopping] = useState(new Set());
   const stopCancelledRef = useRef(state.stopCancelled || false);
@@ -659,6 +660,31 @@ const LiveAttacks = () => {
     );
   }, [groupedAttacks, waitingRows, dyingRows]);
 
+  // Grup ayraçları (salt okunur): loop'un grubu (veya dogrudan saldirinin
+  // grubu) varsa satir o grubun basliginin altinda cizilir. Atama/duzenleme
+  // burada yapilmaz; Aktif Looplar'dan yapilir.
+  const groupOfRow = (row) => {
+    if (row.type !== 'active') return null;
+    const a = row.group;
+    return state.activeLoops?.[a.loopId]?.group || a.group || null;
+  };
+  const displayRows = useMemo(() => {
+    const out = [];
+    const headPos = new Map();
+    combinedRows.forEach((row) => {
+      const g = groupOfRow(row);
+      if (!g) { out.push(row); return; }
+      if (!headPos.has(g)) {
+        headPos.set(g, out.length);
+        out.push({ key: `grouphead::${g}`, type: 'groupHeader', name: g, members: [] });
+      }
+      out[headPos.get(g)].members.push(row);
+      if (!collapsedGroups[g]) out.push({ ...row, __child: true });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combinedRows, collapsedGroups, state.activeLoops]);
+
   return (
     <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
       {/* CRT scanline dokusu */}
@@ -748,7 +774,23 @@ const LiveAttacks = () => {
                 <span className="text-right">&gt; İşlem</span>
               </div>
 
-              {combinedRows.map((row) => {
+              {displayRows.map((row) => {
+                // Grup baslik ayraci (salt okunur)
+                if (row.type === 'groupHeader') {
+                  const isOpen = !collapsedGroups[row.name];
+                  return (
+                    <div key={row.key} className="px-2 pt-2">
+                      <div
+                        onClick={() => setCollapsedGroups((c) => ({ ...c, [row.name]: !c[row.name] }))}
+                        className="flex cursor-pointer select-none items-center gap-2.5 rounded-sm border border-green-500/25 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
+                      >
+                        <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{row.name}</span>
+                        <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{row.members.length} işlem</span>
+                      </div>
+                    </div>
+                  );
+                }
                 // Tur arasi bekleme satiri (loop): yeni tur bekleniyor
                 if (row.type === 'wait') {
                   const g = row.group;
@@ -796,7 +838,7 @@ const LiveAttacks = () => {
                 const isFirstStopping = stopping.has(firstId);
 
                 return (
-                  <AttackRow key={rowKey}>
+                  <AttackRow key={rowKey} child={!!row.__child}>
                     <div>
                       <div className="flex items-center gap-2">
                         <span

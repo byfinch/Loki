@@ -367,5 +367,24 @@ export const apiClient = {
   async triggerWatchScan() {
     const res = await apiFetch(`${API_BASE}/watch/scan`, { method: 'POST', headers: getHeaders() });
     return handleResponse(res);
+  },
+
+  // ---- Gruplar (ortak panel) ----
+  async getGroups() {
+    const res = await apiFetch(`${API_BASE}/groups`, { headers: getHeaders() });
+    const data = await handleResponse(res);
+    return Array.isArray(data.groups) ? data.groups : [];
+  },
+  async createGroup(name) {
+    const res = await apiFetch(`${API_BASE}/groups`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) });
+    return handleResponse(res);
+  },
+  async renameGroup(from, to) {
+    const res = await apiFetch(`${API_BASE}/groups/rename`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ from, to }) });
+    return handleResponse(res);
+  },
+  async deleteGroup(name) {
+    const res = await apiFetch(`${API_BASE}/groups/delete`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) });
+    return handleResponse(res);
   }
 };

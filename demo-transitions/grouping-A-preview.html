@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opsiyon A — Otomatik Hedef Gruplama (Önizleme)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#050505; color:#e5e5e5; font-family:system-ui,-apple-system,sans-serif; padding:40px 20px; }
+  .demo-wrap { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+  .section-label { color:#00ff41; font-family:'Courier New',monospace; font-size:13px; letter-spacing:2px; text-transform:uppercase; }
+  .section-label span { color:#555; letter-spacing:0; text-transform:none; }
+  .card { position:relative; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:24px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:#6b7280; font-weight:500; font-size:12px; padding:0 12px 12px; border-bottom:1px solid rgba(255,255,255,.1); }
+  td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
+  .host { color:#e5e5e5; font-family:'Courier New',monospace; font-size:12px; }
+  .method { display:inline-block; padding:4px 10px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.1); border-radius:6px; font-size:11px; font-family:'Courier New',monospace; }
+  .num { color:#d1d5db; font-family:'Courier New',monospace; font-size:12px; }
+  .status { display:inline-block; padding:4px 12px; background:rgba(0,255,65,.1); border:1px solid rgba(0,255,65,.35); border-radius:8px; font-size:11px; color:#00ff41; }
+  .stop { padding:5px 12px; background:rgba(255,68,68,.08); border:1px solid rgba(255,68,68,.3); border-radius:6px; color:#ff7777; font-size:11px; cursor:pointer; }
+  .stop:hover { background:rgba(255,68,68,.18); }
+  /* grup satiri */
+  .group-row { cursor:pointer; }
+  .group-row td { background:rgba(0,255,65,.04); }
+  .group-row:hover td { background:rgba(0,255,65,.08); }
+  .chev { display:inline-block; transition:transform .2s; color:#00ff41; margin-right:8px; }
+  .group-row.open .chev { transform:rotate(90deg); }
+  .group-badge { padding:2px 8px; background:rgba(0,0,0,.6); border:1px solid rgba(0,255,65,.25); border-radius:4px; font-size:11px; color:#00ff41; font-family:'Courier New',monospace; margin-left:10px; }
+  .child-row td { padding-left:34px; background:rgba(255,255,255,.012); }
+  .child-row { display:none; }
+  .child-row.show { display:table-row; }
+  .loop-tag { display:inline-block; padding:2px 8px; background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.3); border-radius:6px; font-size:10px; color:#00d4ff; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <div class="section-label">Opsiyon A — Otomatik hedef gruplama <span>(aynı hedefe giden işlemler tek satırda; satıra tıkla: aç/kapa)</span></div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Hedef</th><th>Yöntem</th><th>Kalan Süre</th><th>Adet</th><th>Durum</th><th>İşlem</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+// sahte veri: 8 aktif işlem, 3 farkli hedef
+const attacks = [
+  { host:'194.39.149.156', method:'STOMP', time:'96s', conc:60, loop:true },
+  { host:'194.39.149.156', method:'HANDSHAKE', time:'88s', conc:50, loop:true },
+  { host:'194.39.149.156', method:'TCPAMP', time:'102s', conc:20, loop:false },
+  { host:'krknclothing.com', method:'CLOUDFLARE', time:'31s', conc:1, loop:true },
+  { host:'krknclothing.com', method:'HTTP-TEMPESTA', time:'145s', conc:12, loop:true },
+  { host:'65.181.120.58', method:'UDP', time:'44s', conc:10, loop:false },
+  { host:'65.181.120.58', method:'SYN', time:'50s', conc:10, loop:false },
+  { host:'65.181.120.58', method:'ACK', time:'38s', conc:10, loop:false },
+];
+const groups = {};
+attacks.forEach(a => { (groups[a.host] = groups[a.host] || []).push(a); });
+const rows = document.getElementById('rows');
+Object.entries(groups).forEach(([host, list], gi) => {
+  const gid = 'g' + gi;
+  const total = list.reduce((s,a)=>s+a.conc,0);
+  rows.insertAdjacentHTML('beforeend', `
+    <tr class="group-row" data-g="${gid}">
+      <td class="host"><span class="chev">▸</span>${host}<span class="group-badge">${list.length} işlem · x${total}</span></td>
+      <td><span class="method">${list.map(a=>a.method).slice(0,2).join(' + ')}${list.length>2?'…':''}</span></td>
+      <td class="num">—</td><td class="num">x${total}</td>
+      <td><span class="status">Aktif</span></td>
+      <td><button class="stop" onclick="event.stopPropagation();alert('Gruptaki ${list.length} işlem durdurulur')">Hepsini Durdur</button></td>
+    </tr>`);
+  list.forEach(a => {
+    rows.insertAdjacentHTML('beforeend', `
+      <tr class="child-row ${gid}">
+        <td class="host">${a.host}</td>
+        <td><span class="method">${a.method}</span> ${a.loop?'<span class="loop-tag">loop</span>':''}</td>
+        <td class="num">${a.time}</td><td class="num">x${a.conc}</td>
+        <td><span class="status">Aktif</span></td>
+        <td><button class="stop" onclick="alert('Tek işlem durdurulur')">Durdur</button></td>
+      </tr>`);
+  });
+});
+document.querySelectorAll('.group-row').forEach(r => r.addEventListener('click', () => {
+  r.classList.toggle('open');
+  document.querySelectorAll('.child-row.' + r.dataset.g).forEach(c => c.classList.toggle('show'));
+}));
+</script>
+</body>
+</html>

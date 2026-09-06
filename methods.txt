@@ -1,0 +1,23 @@
+=== L4 METODLAR ===
+FIVEM - UDP Flood emulating fivem connections
+FREE-DNS - Dns Amplification Flood
+ACK - TCP-ACK Flood
+SYN - TCP-SYN Flood
+TCPAMP - TCP Amplification Flood
+HANDSHAKE - Raw TCP Handshake flood
+STOMP - Raw PSH-ACK flood
+GAME - UDP Flood optimized for Game servers
+RAKNET - UDP Flood with RakNet queries
+TS3 - Special TeamSpeak3 Query Udp Flood
+UDPBYPASS - UDP Flood optimized for high pps
+UDP - UDP Flood optimized for high output
+DISCORD - UDP Flood with special payload
+
+=== L7 METODLAR ===
+FREE-TLS - HTTP/2 Flood
+GO-NEBULA - HTTP/2 Flood for targets with big backend (FLOODER)
+HTTP-ROCKET - Strong HTTP/2 Flooder for high RQ/S (FLOODER)
+HTTP-TEMPESTA - HTTP/2 Flood adapted to bypass most protections (BROWSER)
+CLOUDFLARE - HTTP/2 Flooder for cloudflare targets without js challange (FLOODER)
+HTTP-REST - Exclusive HTTP/2 Flooder for protected targets (880$+)
+HTTP - HTTP/1 Flood Universal (CC)

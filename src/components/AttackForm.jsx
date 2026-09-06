@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '../services/apiClient';
 import { useStressTest } from '../context/StressTestContext';
 import CyberSelect from './CyberSelect';
+import GroupPicker, { useGroups, notifyGroupsChanged } from './GroupPicker';
 
 function normalizeHost(host) {
   if (!host || typeof host !== 'string') return host;
@@ -59,6 +60,8 @@ const AttackForm = () => {
   const [time, setTime] = useState(60);
   const [concurrents, setConcurrents] = useState(1);
   const [geo, setGeo] = useState('worldwide');
+  const [group, setGroup] = useState('');
+  const groups = useGroups();
   const concurrentsRef = useRef(null);
   const [method, setMethod] = useState('');
   const [layer, setLayer] = useState('L4');
@@ -285,6 +288,7 @@ const AttackForm = () => {
         method,
         subnet: '32',
         geo,
+        group: group.trim() || undefined,
         concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval, 10),
         infinite: loopActive,
@@ -306,6 +310,7 @@ const AttackForm = () => {
             method,
             subnet: '32',
             geo,
+            group: group.trim() || undefined,
             concurrents: effectiveConcurrents,
             interval: parseInt(loopInterval, 10),
             infinite: true
@@ -493,6 +498,24 @@ const AttackForm = () => {
               <p className="text-[9px] text-gray-600"># Aktif Looplar ve Geçmiş'te tıklanabilir görünür</p>
               <p className="text-[9px] text-gray-700">{note.length}/120</p>
             </div>
+          </div>
+
+          {/* Grup secimi: secici <-> yazi (GroupPicker). Yeni isim yazilirsa
+              saldiri baslatilirken backend grubu olusturur (resolveGroupName). */}
+          <div>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; grup <span className="text-cyan-400/80">(opsiyonel)</span></label>
+            <GroupPicker
+              groups={groups}
+              value={group}
+              onChange={(v) => {
+                setGroup(v || '');
+                if (v && !groups.includes(v)) {
+                  // yeni isim: hemen kaydedip tum picker'lari tazele
+                  apiClient.createGroup(v).then(notifyGroupsChanged).catch(() => {});
+                }
+              }}
+            />
+            <p className="mt-0.5 text-[9px] text-gray-600"># yeni isim yazarsan grup otomatik oluşur; mevcut grup adını seçersen ona eklenir</p>
           </div>
 
           {/* Loop toggle: terminal checkbox */}

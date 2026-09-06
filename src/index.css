@@ -422,3 +422,16 @@ body {
 .rw { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .5s cubic-bezier(.4,0,.2,1), opacity .4s ease; }
 .rw.closed { grid-template-rows: 0fr; opacity: 0; }
 .rw-inner { overflow: hidden; min-height: 0; }
+
+/* Grup dogusu: belirirken asagidan kayma + glow yerlesmesi */
+@keyframes grpBorn {
+  0% { opacity: 0; transform: translateY(-8px); box-shadow: 0 0 0 rgba(0,255,65,0); }
+  40% { opacity: 1; box-shadow: 0 0 22px rgba(0,255,65,0.30); }
+  100% { opacity: 1; transform: translateY(0); box-shadow: 0 0 0 rgba(0,255,65,0); }
+}
+/* Gruba ekleme nabzi (blok bir kez glow atar) */
+@keyframes grpPulse {
+  0% { box-shadow: 0 0 0 rgba(0,255,65,0); }
+  40% { box-shadow: 0 0 22px rgba(0,255,65,0.35); }
+  100% { box-shadow: 0 0 0 rgba(0,255,65,0); }
+}

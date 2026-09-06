@@ -152,6 +152,44 @@ const LOOPS_FILE = path.join(DATA_DIR, 'active-loops.json');
 const ATTACKS_FILE = path.join(DATA_DIR, 'active-attacks.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'attack-history.json');
 const API_TOKENS_FILE = path.join(DATA_DIR, 'api-tokens.json');
+const GROUPS_FILE = path.join(DATA_DIR, 'attack-groups.json');
+
+// Gruplar (ortak panel): loop/saldiri gruplama. [{ id, name, createdAt }]
+// Loop/attack kayitlarina group (isim) yazilir; grup silinince kayitlar
+// grupsuza doner (group alani temizlenir, islem durmaz).
+let attackGroups = (() => {
+  try { return JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf8')); } catch { return []; }
+})();
+
+function saveGroups() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(GROUPS_FILE, JSON.stringify(attackGroups, null, 2));
+  } catch (err) {
+    console.warn('[groups] kaydedilemedi:', err.message);
+  }
+}
+
+// Ismiyle grup bul veya olustur; grup adi dondurur (null = grupsuz).
+function resolveGroupName(name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  if (!attackGroups.some((g) => g.name === n)) {
+    attackGroups.push({ id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: n, createdAt: new Date().toISOString() });
+    saveGroups();
+    console.log(`[groups] yeni grup: ${n}`);
+  }
+  return n;
+}
+
+function deleteGroup(name) {
+  attackGroups = attackGroups.filter((g) => g.name !== name);
+  // Uyeleri grupsuza dondur
+  Object.values(activeLoops).forEach((l) => { if (l.group === name) delete l.group; });
+  Object.values(activeAttacks).forEach((a) => { if (a.group === name) delete a.group; });
+  saveGroups();
+  saveState();
+}
 
 // Hesap bazli token deposu: { username: apiToken }
 function readApiTokens() {
@@ -820,6 +858,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     time: parseInt(params.time) || 0,
     concurrents: parseInt(concurrents) || 1,
     loopId: loopId || null,
+    group: params.group || null, // dogrudan saldirida form secimi; loop'ta loop.group uzerinden
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
   };
@@ -1427,6 +1466,9 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       item.note = resolveNoteForRow(username, item.target || item.host, item.method);
       const localAttack = activeAttacks[id];
       if (!localAttack) return;
+      // Grup goruntusu: loopId ve group satira tasinir
+      if (localAttack.loopId) item.loopId = localAttack.loopId;
+      if (localAttack.group) item.group = localAttack.group;
       // Sadece gercek kalan sure ile uzat. item.time (tam sure) veya || 60
       // fallback'i expiresAt'i her poll'da ileri itip kaydi olumsuzlastiriyordu
       // (hayalet birikim). timeLeft yoksa/0 ise uzatma YOK; kayit dogal
@@ -1541,7 +1583,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     if (attackIds.length > 0) {
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
+        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group) || undefined });
       });
       addAttackHistory(sessionId, { host, port, method, time, layer, note }, {
         concurrents: 1,
@@ -1622,7 +1664,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     attackIds.forEach((attackId) => {
-      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer });
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group) || undefined });
     });
 
     const successCount = attackIds.length;
@@ -2132,6 +2174,8 @@ app.post('/api/stresse/loop', async (req, res) => {
       // Not, params ICINDE tutulmaz: loop.params dogrudan stresse.st API
       // cagrisina spread ediliyor, notun upstream'e sizmamasi icin ayri alan.
       note,
+      // Grup (opsiyonel): yoksa olusturulur, loop ona dahil olur
+      group: resolveGroupName(req.body.group) || undefined,
 
       params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
@@ -2495,12 +2539,22 @@ const loopEditHandler = async (req, res) => {
       if (hist && hist.status === 'active') hist.note = note;
     }
 
+    // Grup islemleri: group alani geldiyse (string) gruba ata/olustur,
+    // grupCikar=true ise gruptan cikar. Ikisi birlikte gelmez.
+    if (req.body.grupCikar === true) {
+      delete loop.group;
+    } else if (req.body.group !== undefined) {
+      const g = resolveGroupName(req.body.group);
+      if (g) loop.group = g; else delete loop.group;
+    }
+
     saveState();
-    console.log(`[loop/edit] ${loopId} -> time=${p.time} interval=${p.interval} concurrents=${p.concurrents} geo=${p.geo} note="${loop.note || ''}" (${sessionUser})`);
+    console.log(`[loop/edit] ${loopId} -> time=${p.time} interval=${p.interval} concurrents=${p.concurrents} geo=${p.geo} group=${loop.group || '-'} note="${loop.note || ''}" (${sessionUser})`);
     res.json({
       status: 'success',
       params: { time: p.time, interval: p.interval, concurrents: p.concurrents, geo: p.geo },
-      note: loop.note || ''
+      note: loop.note || '',
+      group: loop.group || null
     });
   } catch (error) {
     handleEndpointError(res, error, 'Loop edit error');
@@ -2673,6 +2727,45 @@ app.post('/api/accounts/ensure', async (req, res) => {
   } catch (error) {
     handleEndpointError(res, error, 'Account ensure error');
   }
+});
+
+/**
+ * Grup uclari (ortak panel): liste / olustur / yeniden adlandir / sil.
+ * POST kullaniliyor (LiteSpeed ModSecurity PUT/DELETE'i engelliyor).
+ */
+app.get('/api/groups', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', groups: attackGroups });
+});
+
+app.post('/api/groups', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const g = resolveGroupName(req.body?.name);
+  if (!g) return res.status(400).json({ status: 'error', message: 'Grup adı gerekli' });
+  res.json({ status: 'success', groups: attackGroups });
+});
+
+app.post('/api/groups/rename', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const from = String(req.body?.from || '').trim();
+  const to = String(req.body?.to || '').trim();
+  if (!from || !to) return res.status(400).json({ status: 'error', message: 'from ve to gerekli' });
+  const grp = attackGroups.find((g) => g.name === from);
+  if (!grp) return res.status(404).json({ status: 'error', message: 'Grup bulunamadı' });
+  grp.name = to;
+  Object.values(activeLoops).forEach((l) => { if (l.group === from) l.group = to; });
+  Object.values(activeAttacks).forEach((a) => { if (a.group === from) a.group = to; });
+  saveGroups();
+  saveState();
+  res.json({ status: 'success', groups: attackGroups });
+});
+
+app.post('/api/groups/delete', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ status: 'error', message: 'name gerekli' });
+  deleteGroup(name);
+  res.json({ status: 'success', groups: attackGroups });
 });
 
 /**
@@ -3087,6 +3180,9 @@ async function liveHubTick(hub, username) {
           if (t > 0 && Number.isFinite(tl) && tl > t) {
             next = { ...next, timeLeft: t };
           }
+          // Grup goruntusu icin: loopId ve group frontend'e tasinir
+          if (local.loopId) next = { ...next, loopId: local.loopId };
+          if (local.group) next = { ...next, group: local.group };
         }
         const note = resolveNoteForRow(username, item.target || item.host, item.method);
         return note ? { ...next, note } : next;
