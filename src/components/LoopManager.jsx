@@ -236,7 +236,12 @@ const LoopManager = () => {
   const ungroupedLoops = [];
   loops.forEach((entry) => {
     const g = entry[1]?.group;
-    if (g) (groupedLoops[g] = groupedLoops[g] || []).push(entry);
+    if (g) {
+      // Buyuk-kucuk harf duyarsiz tekillestirme: gorunur isim grup
+      // listesindeki kanonik hali (yoksa kaydittaki hali)
+      const canon = groupsList.find((n) => n.toLowerCase() === g.toLowerCase()) || g;
+      (groupedLoops[canon] = groupedLoops[canon] || []).push(entry);
+    }
     else ungroupedLoops.push(entry);
   });
   const orderedGroupNames = [
@@ -527,18 +532,32 @@ const LoopManager = () => {
                       <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
                       <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{members.length} loop</span>
                       {renamingGroup === gname ? (
-                        <input
-                          autoFocus
-                          value={renameDraft}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') submitRename(gname);
-                            if (e.key === 'Escape') setRenamingGroup(null);
-                          }}
-                          onBlur={() => submitRename(gname)}
-                          className="w-40 rounded-sm border border-green-500/50 bg-black px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-green-300 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.25)]"
-                        />
+                        <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') submitRename(gname);
+                              if (e.key === 'Escape') setRenamingGroup(null);
+                            }}
+                            className="w-40 rounded-sm border border-green-500/50 bg-black px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-green-300 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.25)]"
+                          />
+                          <button
+                            onClick={() => submitRename(gname)}
+                            title="Onayla"
+                            className="flex h-5 w-5 items-center justify-center rounded-sm border border-green-500/40 bg-green-500/15 text-green-400 transition hover:bg-green-500/25"
+                          >
+                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                          </button>
+                          <button
+                            onClick={() => setRenamingGroup(null)}
+                            title="Vazgeç"
+                            className="flex h-5 w-5 items-center justify-center rounded-sm border border-white/10 text-gray-500 transition hover:text-gray-300"
+                          >
+                            ×
+                          </button>
+                        </span>
                       ) : (
                         <span
                           className="text-[11px] font-bold uppercase tracking-wider text-green-300"
