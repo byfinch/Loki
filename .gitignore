@@ -44,3 +44,4 @@ backend/screenshot*.png
 rrt-test.py
 rrt_*.png
 rrt_body.txt
+dbg-*.png
