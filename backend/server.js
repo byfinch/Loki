@@ -175,7 +175,7 @@ function saveGroups() {
 function resolveGroupName(name) {
   const n = String(name || '').trim();
   if (!n) return null;
-  const existing = attackGroups.find((g) => g.name.toLowerCase() === n.toLowerCase());
+  const existing = attackGroups.find((g) => g.name.toLocaleLowerCase('tr') === n.toLocaleLowerCase('tr'));
   if (existing) return existing.name;
   attackGroups.push({ id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: n, createdAt: new Date().toISOString() });
   saveGroups();
@@ -2764,15 +2764,15 @@ app.post('/api/groups/rename', (req, res) => {
   const from = String(req.body?.from || '').trim();
   const to = String(req.body?.to || '').trim();
   if (!from || !to) return res.status(400).json({ status: 'error', message: 'from ve to gerekli' });
-  const grp = attackGroups.find((g) => g.name.toLowerCase() === from.toLowerCase());
+  const grp = attackGroups.find((g) => g.name.toLocaleLowerCase('tr') === from.toLocaleLowerCase('tr'));
   if (!grp) return res.status(404).json({ status: 'error', message: 'Grup bulunamadı' });
   // Mukerrer isim engeli: baska bir grup bu isimde olamaz (buyuk-kucuk harf duyarsiz)
-  if (attackGroups.some((g) => g !== grp && g.name.toLowerCase() === to.toLowerCase())) {
+  if (attackGroups.some((g) => g !== grp && g.name.toLocaleLowerCase('tr') === to.toLocaleLowerCase('tr'))) {
     return res.status(409).json({ status: 'error', message: 'Bu isimde bir grup zaten var' });
   }
   // Uye kayitlarini da guncelle
-  Object.values(activeLoops).forEach((l) => { if (l.group && l.group.toLowerCase() === from.toLowerCase()) l.group = to; });
-  Object.values(activeAttacks).forEach((a) => { if (a.group && a.group.toLowerCase() === from.toLowerCase()) a.group = to; });
+  Object.values(activeLoops).forEach((l) => { if (l.group && l.group.toLocaleLowerCase('tr') === from.toLocaleLowerCase('tr')) l.group = to; });
+  Object.values(activeAttacks).forEach((a) => { if (a.group && a.group.toLocaleLowerCase('tr') === from.toLocaleLowerCase('tr')) a.group = to; });
   grp.name = to;
   saveGroups();
   saveState();
