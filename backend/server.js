@@ -2756,7 +2756,9 @@ app.post('/api/accounts/ensure', async (req, res) => {
 app.get('/api/groups', (req, res) => {
   if (!watchAuth(req, res)) return;
   const u = sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username;
-  res.json({ status: 'success', groups: attackGroups.filter((g) => (g.owner || null) === (u || null) || !g.owner) });
+  // Kati hesap izolasyonu: sadece kendi hesabinin gruplari. (Sahipsiz eski
+  // gruplar listeye girmez; onlara sahiplik migrasyonla atandi.)
+  res.json({ status: 'success', groups: attackGroups.filter((g) => (g.owner || null) === (u || null)) });
 });
 
 app.post('/api/groups', (req, res) => {
