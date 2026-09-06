@@ -690,13 +690,146 @@ const LiveAttacks = () => {
         out.push({ key: `grouphead::${g}`, type: 'groupHeader', name: g, members: [] });
       }
       out[headPos.get(g)].members.push(row);
-      if (!collapsedGroups[g]) out.push({ ...row, __child: true });
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combinedRows, collapsedGroups, state.activeLoops]);
 
-  return (
+  const renderCombinedRow = (row) => {
+                  // Grup blogu (salt okunur): baslik + uyeler TEK konteynirda;
+                  // ac/kapa iki yonlu akordeon animasyonlu (.rw)
+                  if (row.type === 'groupHeader') {
+                    const isOpen = !collapsedGroups[row.name];
+                    return (
+                      <div key={row.key} className="mx-0 my-1 overflow-hidden rounded-sm border border-green-500/25">
+                        <div
+                          onClick={() => setCollapsedGroups((c) => ({ ...c, [row.name]: !c[row.name] }))}
+                          className="flex cursor-pointer select-none items-center gap-2.5 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
+                        >
+                          <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{row.name}</span>
+                          <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{row.members.length} işlem</span>
+                        </div>
+                        <div className={`rw ${isOpen ? '' : 'closed'}`}>
+                          <div className="rw-inner">
+                            {row.members.map((m) => renderCombinedRow({ ...m, __child: true }))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Tur arasi bekleme satiri (loop): yeni tur bekleniyor
+                  if (row.type === 'wait') {
+                    const g = row.group;
+                    return (
+                      <AttackRow key={row.key} initialOpen>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
+                            {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
+                          </span>
+                        </div>
+                        <span className="text-gray-400">{g.method}</span>
+                        <span className="font-bold text-cyan-400/80">[..] tur arası</span>
+                        <span className="text-gray-500">x{g.count}</span>
+                        <div />
+                      </AttackRow>
+                    );
+                  }
+  
+                  // Bitmis/durdurulmus satir: kendi sirasinda V2 status-flip
+                  if (row.type === 'dying') {
+                    const r = row.row;
+                    const g = row.group;
+                    return (
+                      <AttackRow key={row.key} phase={r.phase} initialOpen>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block max-w-[230px] truncate text-left text-gray-500">
+                            {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
+                          </span>
+                        </div>
+                        <span className="text-gray-600">{g.method}</span>
+                        <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
+                        <span className="text-gray-600">x{g.count}</span>
+                        <div />
+                      </AttackRow>
+                    );
+                  }
+  
+                  // Aktif satir
+                  const attack = row.group;
+                  const rowKey = row.key;
+                  const displayTarget = formatTargetShort(formatTargetForDisplay(attack.target, attack.layer, attack.method));
+                  const isCopied = copiedKey === rowKey;
+                  const rowKeyStopping = stopping.has(attack.ids.join(','));
+                  const firstId = attack.ids[0];
+                  const isFirstStopping = stopping.has(firstId);
+  
+                  return (
+                    <AttackRow key={rowKey} child={!!row.__child}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            title="URL'yi kopyala"
+                            onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
+                            className="inline-block max-w-[230px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
+                          >
+                            {displayTarget}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
+                            title="URL'yi kopyala"
+                            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
+                              isCopied
+                                ? 'border-green-500/40 bg-green-500/20 text-green-400'
+                                : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
+                            }`}
+                          >
+                            {isCopied ? (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            ) : (
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                        {attack.note && (
+                          <div className="mt-1 flex max-w-[260px] items-center gap-1.5 truncate text-[10px] text-cyan-400/90">
+                            <span className="text-gray-600">📝</span>
+                            <span className="truncate" title={attack.note}>{renderNoteWithLinks(attack.note)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-gray-200">{attack.method}</span>
+                      <span className="font-bold text-green-400">{attack.timeLeft}s</span>
+                      <span className="text-gray-400">x{attack.count}</span>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleStopSingle(firstId, rowKey, sigOf(attack.target, attack.method))}
+                          disabled={isFirstStopping}
+                          title="Tek durdur"
+                          className="inline-flex h-7 w-[76px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                        >
+                          {isFirstStopping ? '…' : '■ durdur'}
+                        </button>
+                        <button
+                          onClick={() => attack.count > 1 && handleStopRow(attack.ids, rowKey, sigOf(attack.target, attack.method))}
+                          disabled={attack.count <= 1 || rowKeyStopping}
+                          title={attack.count > 1 ? `Bu satırdaki ${attack.count} saldırıyı durdur` : 'Tek saldırı - satır durdurma kullanılamaz'}
+                          className="inline-flex h-7 w-[60px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                          {rowKeyStopping ? '…' : `■ x${attack.count}`}
+                        </button>
+                      </div>
+                    </AttackRow>
+                  );
+                
+                };
+  
+    return (
     <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
       {/* CRT scanline dokusu */}
       <div
@@ -785,132 +918,7 @@ const LiveAttacks = () => {
                 <span className="text-right">&gt; İşlem</span>
               </div>
 
-              {displayRows.map((row) => {
-                // Grup baslik ayraci (salt okunur)
-                if (row.type === 'groupHeader') {
-                  const isOpen = !collapsedGroups[row.name];
-                  return (
-                    <div key={row.key} className="px-2 pt-2">
-                      <div
-                        onClick={() => setCollapsedGroups((c) => ({ ...c, [row.name]: !c[row.name] }))}
-                        className="flex cursor-pointer select-none items-center gap-2.5 rounded-sm border border-green-500/25 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
-                      >
-                        <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{row.name}</span>
-                        <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{row.members.length} işlem</span>
-                      </div>
-                    </div>
-                  );
-                }
-                // Tur arasi bekleme satiri (loop): yeni tur bekleniyor
-                if (row.type === 'wait') {
-                  const g = row.group;
-                  return (
-                    <AttackRow key={row.key} initialOpen>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
-                          {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
-                        </span>
-                      </div>
-                      <span className="text-gray-400">{g.method}</span>
-                      <span className="font-bold text-cyan-400/80">[..] tur arası</span>
-                      <span className="text-gray-500">x{g.count}</span>
-                      <div />
-                    </AttackRow>
-                  );
-                }
-
-                // Bitmis/durdurulmus satir: kendi sirasinda V2 status-flip
-                if (row.type === 'dying') {
-                  const r = row.row;
-                  const g = row.group;
-                  return (
-                    <AttackRow key={row.key} phase={r.phase} initialOpen>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block max-w-[230px] truncate text-left text-gray-500">
-                          {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
-                        </span>
-                      </div>
-                      <span className="text-gray-600">{g.method}</span>
-                      <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
-                      <span className="text-gray-600">x{g.count}</span>
-                      <div />
-                    </AttackRow>
-                  );
-                }
-
-                // Aktif satir
-                const attack = row.group;
-                const rowKey = row.key;
-                const displayTarget = formatTargetShort(formatTargetForDisplay(attack.target, attack.layer, attack.method));
-                const isCopied = copiedKey === rowKey;
-                const rowKeyStopping = stopping.has(attack.ids.join(','));
-                const firstId = attack.ids[0];
-                const isFirstStopping = stopping.has(firstId);
-
-                return (
-                  <AttackRow key={rowKey} child={!!row.__child}>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          title="URL'yi kopyala"
-                          onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
-                          className="inline-block max-w-[230px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
-                        >
-                          {displayTarget}
-                        </span>
-                        <button
-                          onClick={() => handleCopy(attack.target, attack.layer, attack.method, rowKey)}
-                          title="URL'yi kopyala"
-                          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
-                            isCopied
-                              ? 'border-green-500/40 bg-green-500/20 text-green-400'
-                              : 'border-green-500/15 bg-green-500/5 text-green-500/50 hover:border-green-500/40 hover:text-green-400'
-                          }`}
-                        >
-                          {isCopied ? (
-                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          ) : (
-                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {attack.note && (
-                        <div className="mt-1 flex max-w-[260px] items-center gap-1.5 truncate text-[10px] text-cyan-400/90">
-                          <span className="text-gray-600">📝</span>
-                          <span className="truncate" title={attack.note}>{renderNoteWithLinks(attack.note)}</span>
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-gray-200">{attack.method}</span>
-                    <span className="font-bold text-green-400">{attack.timeLeft}s</span>
-                    <span className="text-gray-400">x{attack.count}</span>
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleStopSingle(firstId, rowKey, sigOf(attack.target, attack.method))}
-                        disabled={isFirstStopping}
-                        title="Tek durdur"
-                        className="inline-flex h-7 w-[76px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                      >
-                        {isFirstStopping ? '…' : '■ durdur'}
-                      </button>
-                      <button
-                        onClick={() => attack.count > 1 && handleStopRow(attack.ids, rowKey, sigOf(attack.target, attack.method))}
-                        disabled={attack.count <= 1 || rowKeyStopping}
-                        title={attack.count > 1 ? `Bu satırdaki ${attack.count} saldırıyı durdur` : 'Tek saldırı - satır durdurma kullanılamaz'}
-                        className="inline-flex h-7 w-[60px] items-center justify-center rounded-sm border border-white/10 bg-white/[0.03] px-2 text-[10px] text-gray-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        {rowKeyStopping ? '…' : `■ x${attack.count}`}
-                      </button>
-                    </div>
-                  </AttackRow>
-                );
-              })}
+              {displayRows.map((row) => renderCombinedRow(row))}
             </div>
           </div>
         )}

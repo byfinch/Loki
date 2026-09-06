@@ -458,6 +458,21 @@ const LoopManager = () => {
           </div>
         ) : (
           <div className="-mx-2 overflow-x-auto px-2">
+              {/* Kolon basligi: grup bloklarinin USTUNDE, tum listeye ortak */}
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
+                    <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Yöntem</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Süre</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Bekleme</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Set</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Hata</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-right font-normal">&gt; İşlem</th>
+                  </tr>
+                </thead>
+              </table>
+
 {/* Grup bloklari: tikla-ac, born animasyonu (dogus) */}
               {orderedGroupNames.map((gname) => {
                 const members = groupedLoops[gname];
@@ -490,17 +505,6 @@ const LoopManager = () => {
               })}
 
             <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-green-500/25 text-left text-[10px] text-green-500/50">
-                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Hedef</th>
-                  <th className="whitespace-nowrap px-3 py-2 font-normal">&gt; Yöntem</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Süre</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Bekleme</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Set</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-center font-normal">&gt; Hata</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right font-normal">&gt; İşlem</th>
-                </tr>
-              </thead>
               <tbody>
                 {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>
