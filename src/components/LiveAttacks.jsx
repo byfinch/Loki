@@ -666,7 +666,18 @@ const LiveAttacks = () => {
   const groupOfRow = (row) => {
     if (row.type !== 'active') return null;
     const a = row.group;
-    return state.activeLoops?.[a.loopId]?.group || a.group || null;
+    const direct = state.activeLoops?.[a.loopId]?.group || a.group;
+    if (direct) return direct;
+    // ID'siz satirlar: hedef+yontem imzasiyla loop'u bul, grubunu al
+    // (port ve protokol farklarini yok say: upstream ":443" tasiyabilir)
+    const stripPort = (t) => targetKeyNorm(t).replace(/:\d+$/, '');
+    const normT = stripPort(a.target);
+    const normM = String(a.method || '').toLowerCase();
+    const loop = Object.values(state.activeLoops || {}).find((l) =>
+      String(l.params?.method || '').toLowerCase() === normM &&
+      stripPort(l.displayTarget || l.params?.host || '') === normT
+    );
+    return loop?.group || null;
   };
   const displayRows = useMemo(() => {
     const out = [];
