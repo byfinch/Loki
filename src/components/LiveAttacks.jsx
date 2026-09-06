@@ -707,7 +707,7 @@ const LiveAttacks = () => {
                           className="flex cursor-pointer select-none items-center gap-2.5 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
                         >
                           <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{row.name}</span>
+                          <span className="text-[11px] font-bold tracking-wider text-green-300">{row.name.toLocaleLowerCase('tr')}</span>
                           <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{row.members.length} işlem</span>
                         </div>
                         <div className={`rw ${isOpen ? '' : 'closed'}`}>
