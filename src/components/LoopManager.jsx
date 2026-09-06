@@ -89,26 +89,28 @@ const LoopManager = () => {
     }
   };
 
-  // Grup yeniden adlandirma: mukerrer isim backend reddeder
-  const handleRenameGroup = async (name) => {
-    const to = window.prompt(`"${name}" grubunun yeni adı:`, name);
-    if (!to || !to.trim() || to.trim() === name) return;
+  // Grup yeniden adlandirma: isme tikla -> yerinde input. Enter/blur kaydeder,
+  // Esc vazgec. Mukerrer isim backend reddeder.
+  const [renamingGroup, setRenamingGroup] = useState(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const submitRename = async (from) => {
+    const to = renameDraft.trim();
+    setRenamingGroup(null);
+    if (!to || to === from) return;
     try {
-      await apiClient.renameGroup(name, to.trim());
+      await apiClient.renameGroup(from, to);
       notifyGroupsChanged();
       await refreshLoops();
-      showToast(`Grup yeniden adlandırıldı: ${to.trim()}`, 'success');
+      showToast(`Grup yeniden adlandırıldı: ${to}`, 'success');
     } catch (err) {
       showToast(`Yeniden adlandırılamadı: ${err.message}`, 'error');
     }
   };
 
-  // Grubu kaldir: once blok animasyonla kapanir, sonra silinir;
-  // icindeki loop'lar da durdurulur (backend deleteGroup halleder).
-  const [deletingGroup, setDeletingGroup] = useState(null);
+  // Grubu kaldir: iki asamali buton (ilk tik: onaya donusur, ikinci tik: siler).
+  // Icindeki loop'lar da durdurulur (backend deleteGroup halleder).
+  const [deletingGroup, setDeletingGroup] = useState(null); // onay asamasindaki grup
   const handleDeleteGroup = async (name) => {
-    if (!window.confirm(`"${name}" grubu kaldırılacak ve içindeki loop'lar durdurulacak. Emin misin?`)) return;
-    setDeletingGroup(name);
     setCollapsedGroups((c) => ({ ...c, [name]: false })); // kapanma animasyonu
     setTimeout(async () => {
       try {
@@ -523,23 +525,57 @@ const LoopManager = () => {
                       className="flex cursor-pointer select-none items-center gap-2.5 bg-green-500/[0.06] px-3 py-2 transition-colors hover:bg-green-500/[0.11]"
                     >
                       <span className={`inline-block text-[11px] text-green-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-green-300">{gname}</span>
                       <span className="rounded-sm border border-green-500/25 bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400">{members.length} loop</span>
+                      {renamingGroup === gname ? (
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitRename(gname);
+                            if (e.key === 'Escape') setRenamingGroup(null);
+                          }}
+                          onBlur={() => submitRename(gname)}
+                          className="w-40 rounded-sm border border-green-500/50 bg-black px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-green-300 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.25)]"
+                        />
+                      ) : (
+                        <span
+                          className="text-[11px] font-bold uppercase tracking-wider text-green-300"
+                          title="Yeniden adlandırmak için tıkla"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingGroup(gname);
+                            setRenameDraft(gname);
+                          }}
+                        >{gname}</span>
+                      )}
                       <span className="ml-auto flex items-center gap-1.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleRenameGroup(gname); }}
-                          title="Grubu yeniden adlandır"
-                          className="rounded-sm border border-white/10 px-2 py-1 text-[10px] text-gray-500 transition-colors hover:border-green-500/40 hover:text-green-400"
-                        >
-                          yeniden adlandır
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteGroup(gname); }}
-                          title="Grubu kaldır (içindeki loop'lar da durdurulur)"
-                          className="rounded-sm border border-red-500/30 px-2 py-1 text-[10px] text-red-400 transition-colors hover:bg-red-500/10"
-                        >
-                          grubu kaldır
-                        </button>
+                        {deletingGroup === gname ? (
+                          <>
+                            <span className="text-[10px] text-red-400">loop'lar da durur — emin misin?</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeletingGroup(null); handleDeleteGroup(gname); }}
+                              className="rounded-sm border border-red-500/50 bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-400 transition-colors hover:bg-red-500/25"
+                            >
+                              evet, kaldır
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeletingGroup(null); }}
+                              className="rounded-sm border border-white/10 px-2 py-1 text-[10px] text-gray-500 transition-colors hover:text-gray-300"
+                            >
+                              vazgeç
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeletingGroup(gname); }}
+                            title="Grubu kaldır (içindeki loop'lar da durdurulur)"
+                            className="rounded-sm border border-red-500/30 px-2 py-1 text-[10px] text-red-400 transition-colors hover:bg-red-500/10"
+                          >
+                            grubu kaldır
+                          </button>
+                        )}
                       </span>
                     </div>
                     <div className={`rw ${isOpen ? '' : 'closed'}`}>
