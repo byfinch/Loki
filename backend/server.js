@@ -189,11 +189,12 @@ function resolveGroupName(name, owner = null) {
 
 function deleteGroup(name, ctx = {}) {
   const owner = ctx.username || null;
-  attackGroups = attackGroups.filter((g) => !(g.name === name && ((g.owner || null) === owner || !g.owner)));
+  const nLow = name.toLocaleLowerCase('tr');
+  attackGroups = attackGroups.filter((g) => !(g.name.toLocaleLowerCase('tr') === nLow && ((g.owner || null) === owner || !g.owner)));
   // Gruptaki loop'lar da kaldırılır (grubu silmek = icerigiyle birlikte silmek)
   const stopped = [];
   Object.keys(activeLoops).forEach((loopId) => {
-    if (activeLoops[loopId].group !== name) return;
+    if (String(activeLoops[loopId].group || '').toLocaleLowerCase('tr') !== nLow) return;
     if (owner && getLoopOwner(activeLoops[loopId]) !== owner) return; // baska hesabin loop'u dokunma
     stopped.push(activeLoops[loopId]);
     activeLoops[loopId].running = false;
@@ -205,7 +206,7 @@ function deleteGroup(name, ctx = {}) {
     stopDetail: `"${name}" grubu kaldırıldı`
   }));
   // Dogrudan saldirilarin grup etiketi temizlenir (islem durmaz)
-  Object.values(activeAttacks).forEach((a) => { if (a.group === name) delete a.group; });
+  Object.values(activeAttacks).forEach((a) => { if (a.group && a.group.toLocaleLowerCase('tr') === nLow) delete a.group; });
   saveGroups();
   saveState();
   return stopped.length;
