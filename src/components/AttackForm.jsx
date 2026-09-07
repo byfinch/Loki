@@ -58,7 +58,7 @@ const AttackForm = () => {
   const [host, setHost] = useState('');
   const [port, setPort] = useState(53);
   const [time, setTime] = useState(60);
-  const [concurrents, setConcurrents] = useState(1);
+  const [concurrents, setConcurrents] = useState(3);
   const [geo, setGeo] = useState('worldwide');
   const [group, setGroup] = useState('');
   const groups = useGroups();
