@@ -2757,9 +2757,30 @@ app.post('/api/accounts/ensure', async (req, res) => {
 app.get('/api/groups', (req, res) => {
   if (!watchAuth(req, res)) return;
   const u = sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username;
-  // Kati hesap izolasyonu: sadece kendi hesabinin gruplari. (Sahipsiz eski
-  // gruplar listeye girmez; onlara sahiplik migrasyonla atandi.)
-  res.json({ status: 'success', groups: attackGroups.filter((g) => (g.owner || null) === (u || null)) });
+  // Kati hesap izolasyonu: sadece kendi hesabinin gruplari.
+  let mine = attackGroups.filter((g) => (g.owner || null) === (u || null));
+  // Bos gruplari buda: hic loop'u kalmamis grup listede gorunmesin
+  // (kayit defterinden de duser — hayalet isim birikimi olmaz).
+  const busyNames = new Set(
+    [
+      ...Object.values(activeLoops)
+        .filter((l) => (l.owner || sessions[l.sessionId]?.username) === u)
+        .map((l) => l.group),
+      ...Object.values(activeAttacks)
+        .filter((a) => a.username === u)
+        .map((a) => a.group)
+    ]
+      .map((g) => (g || '').toLocaleLowerCase('tr'))
+      .filter(Boolean)
+  );
+  const alive = mine.filter((g) => busyNames.has(g.name.toLocaleLowerCase('tr')));
+  if (alive.length !== mine.length) {
+    const deadIds = new Set(mine.filter((g) => !alive.includes(g)).map((g) => g.id));
+    attackGroups = attackGroups.filter((g) => !deadIds.has(g.id));
+    saveGroups();
+    mine = alive;
+  }
+  res.json({ status: 'success', groups: mine });
 });
 
 app.post('/api/groups', (req, res) => {
