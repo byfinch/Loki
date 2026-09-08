@@ -89,7 +89,7 @@ let lastScan = null;
 let lastScanSummary = null;
 let nextScanAt = null; // bir sonraki otomatik tarama (saat dilimli: :00/:30)
 
-async function scanAll() {
+async function scanAll(silent = false) {
   if (scanning) return;
   scanning = true;
   const now = new Date().toISOString();
@@ -236,7 +236,8 @@ function initWatch() {
   };
   scheduleNext();
   setTimeout(() => {
-    if (scanning) queuedAuto = true; else scanAll().catch(() => {});
+    // Acilis taramasi sessiz: deploy/restart'ta gruba mesaj dusmez.
+    if (scanning) queuedAuto = true; else scanAll(true).catch(() => {});
   }, 15000);
   console.log(`[watch] Link gozcusu aktif (${sites.length} site, ${keywords.length} keyword, 30dk tarama${TG_TOKEN && TG_CHAT ? ', telegram aktif' : ', telegram devre disi'})`);
 }
