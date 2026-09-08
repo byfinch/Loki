@@ -15,7 +15,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
-const { initInvader, getInvaderState } = require('./invader');
+const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
@@ -2760,8 +2760,32 @@ app.post('/api/accounts/ensure', async (req, res) => {
  */
 app.post('/api/invader/scan', (req, res) => {
   if (!watchAuth(req, res)) return;
-  runChecks().catch(() => {});
+  invaderRunChecks(req.body?.url || null).catch(() => {});
   res.json({ status: 'success', message: 'Tarama baslatildi' });
+});
+
+app.post('/api/invader/sites', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const r = invaderAddSite(req.body || {});
+  if (r.error) return res.status(400).json({ status: 'error', message: r.error });
+  res.json({ status: 'success', sites: r.sites });
+});
+
+app.post('/api/invader/sites/remove', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', sites: invaderRemoveSite(req.body?.name).sites });
+});
+
+app.get('/api/invader/history', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', records: invaderHistory(50) });
+});
+
+app.post('/api/invader/interval', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  const min = parseInt(req.body?.min, 10);
+  if (!Number.isFinite(min) || min < 1) return res.status(400).json({ status: 'error', message: 'Gecersiz aralik' });
+  res.json({ status: 'success', ...invaderSetInterval(min) });
 });
 
 app.get('/api/invader/state', (req, res) => {

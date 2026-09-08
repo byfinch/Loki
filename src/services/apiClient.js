@@ -374,8 +374,25 @@ export const apiClient = {
     const res = await apiFetch(`${API_BASE}/invader/state`, { headers: getHeaders() });
     return handleResponse(res);
   },
-  async triggerInvaderScan() {
-    const res = await apiFetch(`${API_BASE}/invader/scan`, { method: 'POST', headers: getHeaders() });
+  async triggerInvaderScan(url = null) {
+    const res = await apiFetch(`${API_BASE}/invader/scan`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(url ? { url } : {}) });
+    return handleResponse(res);
+  },
+  async addInvaderSite(site) {
+    const res = await apiFetch(`${API_BASE}/invader/sites`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(site) });
+    return handleResponse(res);
+  },
+  async removeInvaderSite(name) {
+    const res = await apiFetch(`${API_BASE}/invader/sites/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) });
+    return handleResponse(res);
+  },
+  async getInvaderHistory() {
+    const res = await apiFetch(`${API_BASE}/invader/history`, { headers: getHeaders() });
+    const data = await handleResponse(res);
+    return Array.isArray(data.records) ? data.records : [];
+  },
+  async setInvaderInterval(min) {
+    const res = await apiFetch(`${API_BASE}/invader/interval`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ min }) });
     return handleResponse(res);
   },
 
