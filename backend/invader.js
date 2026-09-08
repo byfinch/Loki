@@ -195,7 +195,7 @@ function initInvader() {
 // (Googlebot / Kullanici) buyuk etiketli. Metin ozeti ayri mesajda gider.
 async function buildSiteCard(r, shotBot, shotUsr) {
   const cell = (p, bigLabel, sub) => p
-    ? `<div class="cell"><div class="lblrow"><span class="big">${bigLabel}</span><span class="sub">${sub}</span></div><img src="file://${p}"></div>`
+    ? `<div class="cell"><img src="file://${p}"><div class="lblrow"><span class="big">${bigLabel}</span><span class="sub">${sub}</span></div></div>`
     : `<div class="cell empty">${bigLabel}<br>görüntü alınamadı</div>`;
   const html = `<html><head><meta charset="utf-8"><style>
     body{background:#050705;color:#c9d6cc;font-family:Consolas,monospace;margin:0;padding:28px;width:1350px}
@@ -210,8 +210,8 @@ async function buildSiteCard(r, shotBot, shotUsr) {
     .stamp{color:#5d7a64;font-size:13px;margin:4px 0 20px}
     .pair{display:flex;gap:14px}
     .cell{flex:1;border:1px solid rgba(0,255,65,.18);border-radius:10px;background:#0a0f0c;padding:10px}
-    .cell img{width:100%;border-radius:6px;display:block}
-    .lblrow{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+    .cell img{width:100%;border-radius:6px;display:block;margin-bottom:8px}
+    .lblrow{display:flex;align-items:baseline;gap:10px;justify-content:center;padding:6px 0 2px;border-top:1px solid rgba(0,255,65,.15)}
     .big{font-size:17px;font-weight:700;color:#00ff41;letter-spacing:1px}
     .sub{font-size:12px;color:#5d7a64}
     .empty{color:#5d7a64;font-size:14px;padding:40px;text-align:center}
@@ -230,7 +230,7 @@ async function buildSiteCard(r, shotBot, shotUsr) {
   await new Promise((resolve) => {
     execFile(CHROME, [
       '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
-      '--allow-file-access-from-files', '--window-size=1406,760',
+      '--allow-file-access-from-files', '--window-size=1406,655',
       `--screenshot=${outPng}`, 'file://' + reportPath
     ], { timeout: 60000 }, () => resolve());
   });
