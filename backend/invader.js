@@ -26,6 +26,8 @@ const TG_TOKEN = process.env.LOKI_WATCH_TG_TOKEN || '';
 
 const CURL_IMP = process.env.CURL_IMP || '/opt/curl-imp/curl_chrome150';
 const CURL_CACERT = process.env.CURL_CACERT || '/etc/pki/tls/certs/ca-bundle.crt';
+const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
+const SHOT_DIR = path.join(DATA_DIR, 'invader-shots');
 
 const readJson = (f, fb) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return fb; } };
 const writeJson = (f, d) => { const t = f + '.tmp'; fs.writeFileSync(t, JSON.stringify(d, null, 2)); fs.renameSync(t, f); };
@@ -79,6 +81,35 @@ async function tgDm(message) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: NOTIFY_DM, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
       signal: AbortSignal.timeout(10000)
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+// Ekran goruntusu: headless Chrome ile gercek gorunum (bot/kullanici UA ile)
+function captureShot(url, ua, tag) {
+  if (!fs.existsSync(SHOT_DIR)) fs.mkdirSync(SHOT_DIR, { recursive: true });
+  const out = path.join(SHOT_DIR, `${Date.now()}-${tag}.png`);
+  return new Promise((resolve) => {
+    execFile(CHROME, [
+      '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+      '--window-size=1366,900', `--user-agent=${ua}`, `--screenshot=${out}`, url
+    ], { timeout: 60000 }, (err) => {
+      resolve(err || !fs.existsSync(out) ? null : out);
+    });
+  });
+}
+
+async function tgDmPhoto(photoPath, caption) {
+  if (!TG_TOKEN) return false;
+  try {
+    const form = new FormData();
+    form.append('chat_id', NOTIFY_DM);
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+    form.append('photo', new Blob([fs.readFileSync(photoPath)]), path.basename(photoPath));
+    const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendPhoto`, {
+      method: 'POST', body: form, signal: AbortSignal.timeout(30000)
     });
     return res.ok;
   } catch { return false; }
@@ -161,6 +192,7 @@ function initInvader() {
 }
 
 // Manuel test icin: node ile cagrilinca tek site sonucunu DM'e atar
+// (metin ozeti + her sitenin bot/kullanici gorunum ekran goruntuleri)
 async function testAndNotify() {
   const sites = readJson(SITES_FILE, []);
   const results = [];
@@ -170,6 +202,13 @@ async function testAndNotify() {
     (r.expect ? `\n   beklenen: <code>${esc(r.expect)}</code>` : '')
   );
   const ok = await tgDm([`🛡️ <b>Invader Control — test taraması</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
+  // Gorsel kanit: her sitenin iki gorunumu
+  for (const r of results) {
+    const shotBot = await captureShot(r.url, BOT_UA, 'bot');
+    if (shotBot) await tgDmPhoto(shotBot, `🤖 <b>${esc(r.name)}</b> — Googlebot görünümü`);
+    const shotUsr = await captureShot(r.url, USER_UA, 'usr');
+    if (shotUsr) await tgDmPhoto(shotUsr, `👤 <b>${esc(r.name)}</b> — kullanıcı görünümü`);
+  }
   console.log('DM gonderildi:', ok);
   return results;
 }
