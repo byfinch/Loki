@@ -369,6 +369,16 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  // ---- Invader Control ----
+  async getInvaderState() {
+    const res = await apiFetch(`${API_BASE}/invader/state`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  async triggerInvaderScan() {
+    const res = await apiFetch(`${API_BASE}/invader/scan`, { method: 'POST', headers: getHeaders() });
+    return handleResponse(res);
+  },
+
   // ---- Gruplar (ortak panel) ----
   async getGroups() {
     const res = await apiFetch(`${API_BASE}/groups`, { headers: getHeaders() });
