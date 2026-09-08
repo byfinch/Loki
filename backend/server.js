@@ -15,6 +15,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
+const { initInvader } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
@@ -3383,6 +3384,8 @@ loadState();
 initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
 // Link Gozcusu: izlenen sitelerde keyword->link ikililerini saatlik tarar.
 initWatch();
+// Invader Control (Node surumu): site cloak/durum kontrolu, degisimde DM
+initInvader();
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
