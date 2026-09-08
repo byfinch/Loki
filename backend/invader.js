@@ -191,24 +191,71 @@ function initInvader() {
   console.log(`[invader] aktif: ${sites.length} site, 10dk aralik, DM: ${NOTIFY_DM}`);
 }
 
-// Manuel test icin: node ile cagrilinca tek site sonucunu DM'e atar
-// (metin ozeti + her sitenin bot/kullanici gorunum ekran goruntuleri)
+// Manuel test icin: tek birlesik kanit gorseli (ozet + tum gorunumler) DM'e
 async function testAndNotify() {
   const sites = readJson(SITES_FILE, []);
   const results = [];
   for (const site of sites) results.push(await checkSite(site));
-  const lines = results.map((r) =>
-    `${EMOJI[r.status] || '❔'} <b>${esc(r.name)}</b>\n   bot: <b>${r.status}</b> (HTTP ${r.http})${r.note ? ` — ${esc(r.note)}` : ''}\n   kullanıcı: <b>${r.ustatus}</b>${r.unote ? ` — ${esc(r.unote)}` : ''}` +
-    (r.expect ? `\n   beklenen: <code>${esc(r.expect)}</code>` : '')
-  );
-  const ok = await tgDm([`🛡️ <b>Invader Control — test taraması</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
-  // Gorsel kanit: her sitenin iki gorunumu
+
+  // Her site icin iki gorunumun ekran goruntusu
+  const shots = {};
   for (const r of results) {
-    const shotBot = await captureShot(r.url, BOT_UA, 'bot');
-    if (shotBot) await tgDmPhoto(shotBot, `🤖 <b>${esc(r.name)}</b> — Googlebot görünümü`);
-    const shotUsr = await captureShot(r.url, USER_UA, 'usr');
-    if (shotUsr) await tgDmPhoto(shotUsr, `👤 <b>${esc(r.name)}</b> — kullanıcı görünümü`);
+    shots[r.name] = {
+      bot: await captureShot(r.url, BOT_UA, 'bot'),
+      usr: await captureShot(r.url, USER_UA, 'usr')
+    };
   }
+
+  // Birlesik rapor: HTML -> tek PNG
+  const rowsHtml = results.map((r) => {
+    const s = shots[r.name] || {};
+    const cell = (p, label) => p
+      ? `<div class="cell"><div class="tag">${label}</div><img src="file://${p}"></div>`
+      : `<div class="cell empty">${label}: goruntu yok</div>`;
+    return `<div class="row">
+      <div class="head"><span class="st st-${r.status}">${r.status}</span> <b>${esc(r.name)}</b>
+        <span class="meta">bot HTTP ${r.http}${r.note ? ' · ' + esc(r.note) : ''} · kullanıcı ${r.ustatus}${r.expect ? ' · beklenen: ' + esc(r.expect) : ''}</span></div>
+      <div class="pair">${cell(s.bot, 'Googlebot')}${cell(s.usr, 'Kullanıcı')}</div>
+    </div>`;
+  }).join('');
+
+  const html = `<html><head><meta charset="utf-8"><style>
+    body{background:#050705;color:#c9d6cc;font-family:Consolas,monospace;margin:0;padding:24px;width:1360px}
+    h1{color:#00ff41;font-size:22px;margin:0 0 4px}.sub{color:#5d7a64;font-size:12px;margin-bottom:18px}
+    .row{border:1px solid rgba(0,255,65,.18);border-radius:10px;background:#0a0f0c;margin-bottom:14px;padding:12px}
+    .head{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:14px}
+    .meta{color:#5d7a64;font-size:11px}
+    .st{font-weight:700;padding:2px 10px;border-radius:6px;font-size:12px}
+    .st-OK{background:rgba(0,255,65,.15);color:#00ff41}.st-DOWN{background:rgba(255,68,68,.15);color:#ff6b6b}
+    .st-BLOCKED{background:rgba(255,200,0,.15);color:#ffd166}.st-OBSERVED{background:rgba(0,200,255,.15);color:#4dd0ff}
+    .st-ERROR{background:rgba(255,255,255,.1);color:#ccc}
+    .pair{display:flex;gap:10px}.cell{flex:1}.cell img{width:100%;border:1px solid rgba(0,255,65,.15);border-radius:6px}
+    .tag{color:#5d7a64;font-size:10px;margin-bottom:4px}
+    .empty{color:#5d7a64;font-size:11px;padding:20px;border:1px dashed rgba(0,255,65,.15);border-radius:6px}
+  </style></head><body>
+    <h1>Invader Control — test taraması</h1>
+    <div class="sub">${results.length} hedef · ${stamp()}</div>
+    ${rowsHtml}
+  </body></html>`;
+
+  const reportPath = path.join(SHOT_DIR, 'report.html');
+  if (!fs.existsSync(SHOT_DIR)) fs.mkdirSync(SHOT_DIR, { recursive: true });
+  fs.writeFileSync(reportPath, html);
+
+  // Raporun tam boyunu hesapla: baslik + her satir (baslik 30 + goruntu ~440 + padding)
+  const height = 120 + results.length * 480;
+  const outPng = path.join(SHOT_DIR, `report-${Date.now()}.png`);
+  await new Promise((resolve) => {
+    execFile(CHROME, [
+      '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+      '--allow-file-access-from-files', `--window-size=1410,${Math.min(height, 8000)}`,
+      `--screenshot=${outPng}`, 'file://' + reportPath
+    ], { timeout: 60000 }, () => resolve());
+  });
+
+  const ok = fs.existsSync(outPng)
+    ? await tgDmPhoto(outPng, `🛡️ <b>Invader Control — test taraması</b> (${results.length} hedef · ${stamp()})`)
+    : false;
   console.log('DM gonderildi:', ok);
   return results;
 }
