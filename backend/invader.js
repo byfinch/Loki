@@ -22,7 +22,7 @@ const BOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/b
 const USER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10dk
 const NOTIFY_DM = process.env.INVADER_DM_CHAT || '8849693458'; // Burak
-const TG_TOKEN = process.env.LOKI_WATCH_TG_TOKEN || '';
+const TG_TOKEN = process.env.INVADER_TG_TOKEN || process.env.LOKI_WATCH_TG_TOKEN || '';
 
 const CURL_IMP = process.env.CURL_IMP || '/opt/curl-imp/curl_chrome150';
 const CURL_CACERT = process.env.CURL_CACERT || '/etc/pki/tls/certs/ca-bundle.crt';
