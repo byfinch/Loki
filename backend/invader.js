@@ -20,8 +20,11 @@ const STATE_FILE = path.join(DATA_DIR, 'invader-state.json');
 
 const BOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 const USER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-const CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10dk
-const NOTIFY_DM = process.env.INVADER_DM_CHAT || '8849693458'; // Burak
+const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30dk
+// Bildirim kanallari: grup (tum degisimler) + DM (sadece down<->up gecisi)
+const GROUP_CHAT = process.env.INVADER_TG_CHAT || '';
+const DM_USERS = ['8849693458', '8757169131']; // Burak + Turco
+
 const TG_TOKEN = process.env.INVADER_TG_TOKEN || process.env.LOKI_WATCH_TG_TOKEN || '';
 
 const CURL_IMP = process.env.CURL_IMP || '/opt/curl-imp/curl_chrome150';
@@ -74,12 +77,12 @@ function isChallenge(code, body) {
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
 
-async function tgDm(message) {
+async function tgDm(message, chatId) {
   if (!TG_TOKEN) return false;
   try {
     const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: NOTIFY_DM, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
       signal: AbortSignal.timeout(10000)
     });
     return res.ok;
@@ -100,11 +103,11 @@ function captureShot(url, ua, tag) {
   });
 }
 
-async function tgDmPhoto(photoPath, caption) {
+async function tgDmPhoto(photoPath, caption, chatId) {
   if (!TG_TOKEN) return false;
   try {
     const form = new FormData();
-    form.append('chat_id', NOTIFY_DM);
+    form.append('chat_id', chatId);
     form.append('caption', caption);
     form.append('parse_mode', 'HTML');
     form.append('photo', new Blob([fs.readFileSync(photoPath)]), path.basename(photoPath));
@@ -151,6 +154,17 @@ async function checkSite(site) {
 
 const EMOJI = { OK: '✅', DOWN: '🔴', BLOCKED: '🟡', OBSERVED: '🔵', ERROR: '⚠️', EMPTY: '⚪' };
 
+// Mesaj govdesi (caption): tam sonuc + tiklanabilir site linki
+const captionOf = (r, prev = null) => [
+  `🛡️ <b>Invader Control</b> — ${EMOJI[r.status] || '❔'} <b>${r.status}</b>`,
+  `🏷️ <code>${esc(r.name)}</code>`,
+  `🔗 <b>Taranan site:</b> <a href="${esc(r.url)}">${esc(r.url)}</a>`,
+  `🤖 <b>Googlebot:</b> ${prev ? prev.status + ' → ' : ''}<b>${r.status}</b> (HTTP ${r.http})${r.note ? ` — ${esc(r.note)}` : ''}`,
+  `👤 <b>Kullanıcı:</b> ${r.ustatus}${r.unote ? ` — ${esc(r.unote)}` : ''}`,
+  ...(r.expect ? [`🎯 <b>Beklenen:</b> <code>${esc(r.expect)}</code>`] : []),
+  `🕐 <i>${stamp()}</i>`
+].join('\n');
+
 let state = readJson(STATE_FILE, {});
 let timer = null;
 
@@ -168,15 +182,22 @@ async function runChecks() {
   }
   writeJson(STATE_FILE, state);
 
-  // Sadece durum degisince bildir (ilk turda da bildir — kayit baslangici)
-  if (changes.length) {
-    const lines = changes.map(({ prev, r }) =>
-      `${EMOJI[r.status] || '❔'} <b>${esc(r.name)}</b>\n` +
-      `   bot: ${prev ? prev.status : '—'} → <b>${r.status}</b>${r.note ? ` (${esc(r.note)})` : ''}\n` +
-      `   kullanıcı: ${prev ? prev.ustatus : '—'} → <b>${r.ustatus}</b>${r.unote ? ` (${esc(r.unote)})` : ''}` +
-      (r.expect ? `\n   beklenen: <code>${esc(r.expect)}</code>` : '')
-    );
-    await tgDm([`🛡️ <b>Invader Control — durum değişimi</b>`, '─────────────────', ...lines, `🕐 <i>${stamp()}</i>`].join('\n'));
+  // Degisen her site: gruba kart gorseli + sonuc (caption).
+  // down<->up gecisi: Burak + Turco'ya DM de gider.
+  for (const { prev, r } of changes) {
+    const shotBot = await captureShot(r.url, BOT_UA, 'bot');
+    const shotUsr = await captureShot(r.url, USER_UA, 'usr');
+    const card = await buildSiteCard(r, shotBot, shotUsr);
+    const wasDown = prev?.status === 'DOWN';
+    const isDown = r.status === 'DOWN';
+    const cap = captionOf(r, prev);
+    if (GROUP_CHAT && card) await tgDmPhoto(card, cap, GROUP_CHAT);
+    if ((isDown || wasDown) && isDown !== wasDown) {
+      for (const dm of DM_USERS) {
+        if (card) await tgDmPhoto(card, cap, dm);
+        else await tgDm(cap, dm);
+      }
+    }
   }
 }
 
@@ -188,7 +209,7 @@ function initInvader() {
   }
   timer = setInterval(() => runChecks().catch((e) => console.warn('[invader]', e.message)), CHECK_INTERVAL_MS);
   setTimeout(() => runChecks().catch((e) => console.warn('[invader]', e.message)), 20000);
-  console.log(`[invader] aktif: ${sites.length} site, 10dk aralik, DM: ${NOTIFY_DM}`);
+  console.log(`[invader] aktif: ${sites.length} site, 30dk aralik, grup: ${GROUP_CHAT || '-'}, DM: ${DM_USERS.join(',')}`);
 }
 
 // Site basina tek birlesik kanit gorseli: baslik + durum + iki gorunum
@@ -237,29 +258,25 @@ async function buildSiteCard(r, shotBot, shotUsr) {
   return fs.existsSync(outPng) ? outPng : null;
 }
 
-// Manuel test: her site TEK mesaj — kart gorseli + caption'da tam sonuc + link
+// Manuel test: her site TEK mesaj — kart gorseli + caption (Burak DM)
 async function testAndNotify() {
   const sites = readJson(SITES_FILE, []);
   const results = [];
   for (const site of sites) results.push(await checkSite(site));
 
-  const captionOf = (r) => [
-    `🛡️ <b>Invader Control</b> — ${EMOJI[r.status] || '❔'} <b>${r.status}</b>`,
-    `🏷️ <code>${esc(r.name)}</code>`,
-    `🔗 <b>Taranan site:</b> <a href="${esc(r.url)}">${esc(r.url)}</a>`,
-    `🤖 <b>Googlebot:</b> ${r.status} (HTTP ${r.http})${r.note ? ` — ${esc(r.note)}` : ''}`,
-    `👤 <b>Kullanıcı:</b> ${r.ustatus}${r.unote ? ` — ${esc(r.unote)}` : ''}`,
-    ...(r.expect ? [`🎯 <b>Beklenen:</b> <code>${esc(r.expect)}</code>`] : []),
-    `🕐 <i>${stamp()}</i>`
-  ].join('\n');
-
   for (const r of results) {
     const shotBot = await captureShot(r.url, BOT_UA, 'bot');
     const shotUsr = await captureShot(r.url, USER_UA, 'usr');
     const card = await buildSiteCard(r, shotBot, shotUsr);
-    if (card) await tgDmPhoto(card, captionOf(r));
+    if (card) await tgDmPhoto(card, captionOf(r), DM_USERS[0]);
   }
   return results;
 }
 
-module.exports = { initInvader, runChecks, testAndNotify };
+function getInvaderState() {
+  const sites = readJson(SITES_FILE, []);
+  state = readJson(STATE_FILE, state);
+  return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: 30 };
+}
+
+module.exports = { initInvader, runChecks, testAndNotify, getInvaderState };

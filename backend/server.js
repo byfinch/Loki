@@ -15,7 +15,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
-const { initInvader } = require('./invader');
+const { initInvader, getInvaderState } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
@@ -2758,6 +2758,17 @@ app.post('/api/accounts/ensure', async (req, res) => {
  * Grup uclari (ortak panel): liste / olustur / yeniden adlandir / sil.
  * POST kullaniliyor (LiteSpeed ModSecurity PUT/DELETE'i engelliyor).
  */
+app.post('/api/invader/scan', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  runChecks().catch(() => {});
+  res.json({ status: 'success', message: 'Tarama baslatildi' });
+});
+
+app.get('/api/invader/state', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', ...getInvaderState() });
+});
+
 app.get('/api/groups', (req, res) => {
   if (!watchAuth(req, res)) return;
   const u = sessions[req.headers['sessionid'] || req.headers['sessionId']]?.username;
