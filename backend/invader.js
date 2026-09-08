@@ -245,7 +245,8 @@ async function testAndNotify() {
 
   const captionOf = (r) => [
     `🛡️ <b>Invader Control</b> — ${EMOJI[r.status] || '❔'} <b>${r.status}</b>`,
-    `🔗 <b>Site:</b> <a href="${esc(r.url)}">${esc(r.name)}</a>`,
+    `🏷️ <code>${esc(r.name)}</code>`,
+    `🔗 <b>Taranan site:</b> <a href="${esc(r.url)}">${esc(r.url)}</a>`,
     `🤖 <b>Googlebot:</b> ${r.status} (HTTP ${r.http})${r.note ? ` — ${esc(r.note)}` : ''}`,
     `👤 <b>Kullanıcı:</b> ${r.ustatus}${r.unote ? ` — ${esc(r.unote)}` : ''}`,
     ...(r.expect ? [`🎯 <b>Beklenen:</b> <code>${esc(r.expect)}</code>`] : []),
