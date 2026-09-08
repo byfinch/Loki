@@ -17,10 +17,16 @@ const { execFile } = require('child_process');
 const DATA_DIR = path.join(__dirname, 'data');
 const SITES_FILE = path.join(DATA_DIR, 'invader-sites.json');
 const STATE_FILE = path.join(DATA_DIR, 'invader-state.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'invader-history.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'invader-config.json');
 
 const BOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 const USER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30dk
+function getIntervalMs() {
+  const cfg = readJson(CONFIG_FILE, {});
+  const min = parseInt(cfg.intervalMin, 10);
+  return (Number.isFinite(min) && min >= 1 ? min : 30) * 60 * 1000;
+}
 // Bildirim kanallari: grup (tum degisimler) + DM (sadece down<->up gecisi)
 const GROUP_CHAT = process.env.INVADER_TG_CHAT || '';
 const DM_USERS = ['8849693458', '8757169131']; // Burak + Turco
@@ -168,12 +174,41 @@ const captionOf = (r, prev = null) => [
 let state = readJson(STATE_FILE, {});
 let timer = null;
 
-async function runChecks() {
-  const sites = readJson(SITES_FILE, []);
+// Gecmis: her tur sonuclari kayitlanir (son 500 kayit tutulur)
+function recordHistory(results) {
+  const hist = readJson(HISTORY_FILE, []);
+  const ts = new Date().toISOString();
+  for (const r of results) {
+    hist.push({ ts, name: r.name, url: r.url, status: r.status, ustatus: r.ustatus, http: r.http });
+  }
+  writeJson(HISTORY_FILE, hist.slice(-500));
+}
+
+async function notifyResult(r, prev) {
+  const shotBot = await captureShot(r.url, BOT_UA, 'bot');
+  const shotUsr = await captureShot(r.url, USER_UA, 'usr');
+  const card = await buildSiteCard(r, shotBot, shotUsr);
+  const wasDown = prev?.status === 'DOWN';
+  const isDown = r.status === 'DOWN';
+  const cap = captionOf(r, prev);
+  if (GROUP_CHAT && card) await tgDmPhoto(card, cap, GROUP_CHAT);
+  if ((isDown || wasDown) && isDown !== wasDown) {
+    for (const dm of DM_USERS) {
+      if (card) await tgDmPhoto(card, cap, dm);
+      else await tgDm(cap, dm);
+    }
+  }
+}
+
+async function runChecks(onlyUrl = null) {
+  let sites = readJson(SITES_FILE, []);
+  if (onlyUrl) sites = sites.filter((s) => s.url === onlyUrl || s.name === onlyUrl);
   if (!sites.length) return;
   const changes = [];
+  const all = [];
   for (const site of sites) {
     const r = await checkSite(site);
+    all.push(r);
     const prev = state[r.name];
     if (!prev || prev.status !== r.status || prev.ustatus !== r.ustatus) {
       changes.push({ prev, r });
@@ -181,23 +216,12 @@ async function runChecks() {
     state[r.name] = { status: r.status, ustatus: r.ustatus, since: new Date().toISOString() };
   }
   writeJson(STATE_FILE, state);
+  recordHistory(all);
 
   // Degisen her site: gruba kart gorseli + sonuc (caption).
   // down<->up gecisi: Burak + Turco'ya DM de gider.
   for (const { prev, r } of changes) {
-    const shotBot = await captureShot(r.url, BOT_UA, 'bot');
-    const shotUsr = await captureShot(r.url, USER_UA, 'usr');
-    const card = await buildSiteCard(r, shotBot, shotUsr);
-    const wasDown = prev?.status === 'DOWN';
-    const isDown = r.status === 'DOWN';
-    const cap = captionOf(r, prev);
-    if (GROUP_CHAT && card) await tgDmPhoto(card, cap, GROUP_CHAT);
-    if ((isDown || wasDown) && isDown !== wasDown) {
-      for (const dm of DM_USERS) {
-        if (card) await tgDmPhoto(card, cap, dm);
-        else await tgDm(cap, dm);
-      }
-    }
+    await notifyResult(r, prev);
   }
 }
 
@@ -207,9 +231,16 @@ function initInvader() {
     console.log('[invader] site listesi bos (data/invader-sites.json); devre disi');
     return;
   }
-  timer = setInterval(() => runChecks().catch((e) => console.warn('[invader]', e.message)), CHECK_INTERVAL_MS);
+  // Aralik config'ten okunur (panelden degistirilebilir): her tur bitiminde
+  // bir sonraki tur su anki ayarla zamanlanir.
+  const schedule = () => {
+    timer = setTimeout(() => {
+      runChecks().catch((e) => console.warn('[invader]', e.message)).finally(schedule);
+    }, getIntervalMs());
+  };
+  schedule();
   setTimeout(() => runChecks().catch((e) => console.warn('[invader]', e.message)), 20000);
-  console.log(`[invader] aktif: ${sites.length} site, 30dk aralik, grup: ${GROUP_CHAT || '-'}, DM: ${DM_USERS.join(',')}`);
+  console.log(`[invader] aktif: ${sites.length} site, ${getIntervalMs() / 60000}dk aralik, grup: ${GROUP_CHAT || '-'}, DM: ${DM_USERS.join(',')}`);
 }
 
 // Site basina tek birlesik kanit gorseli: baslik + durum + iki gorunum
@@ -273,10 +304,38 @@ async function testAndNotify() {
   return results;
 }
 
+// Site yonetimi + aralik + gecmis (panel icin)
+function invaderAddSite({ name, url, expect }) {
+  const sites = readJson(SITES_FILE, []);
+  if (!url) return { error: 'url gerekli' };
+  if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+  const entry = { name: String(name || url).trim(), url, expect: String(expect || '').trim() };
+  if (!sites.some((s) => s.url === entry.url)) sites.push(entry);
+  writeJson(SITES_FILE, sites);
+  return { sites };
+}
+
+function invaderRemoveSite(name) {
+  const sites = readJson(SITES_FILE, []).filter((s) => s.name !== name && s.url !== name);
+  writeJson(SITES_FILE, sites);
+  return { sites };
+}
+
+function invaderSetInterval(min) {
+  const cfg = readJson(CONFIG_FILE, {});
+  cfg.intervalMin = parseInt(min, 10);
+  writeJson(CONFIG_FILE, cfg);
+  return { intervalMin: cfg.intervalMin };
+}
+
+function invaderHistory(limit = 50) {
+  return readJson(HISTORY_FILE, []).slice(-limit).reverse();
+}
+
 function getInvaderState() {
   const sites = readJson(SITES_FILE, []);
   state = readJson(STATE_FILE, state);
-  return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: 30 };
+  return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: getIntervalMs() / 60000 };
 }
 
-module.exports = { initInvader, runChecks, testAndNotify, getInvaderState };
+module.exports = { initInvader, runChecks, testAndNotify, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, notifyResult, checkSite };
