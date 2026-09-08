@@ -200,10 +200,11 @@ async function notifyResult(r, prev) {
   }
 }
 
-async function runChecks(onlyUrl = null) {
+async function runChecks(onlyUrl = null, forceNotify = false) {
   let sites = readJson(SITES_FILE, []);
   if (onlyUrl) sites = sites.filter((s) => s.url === onlyUrl || s.name === onlyUrl);
   if (!sites.length) return;
+  const prevState = { ...state };
   const changes = [];
   const all = [];
   for (const site of sites) {
@@ -218,10 +219,11 @@ async function runChecks(onlyUrl = null) {
   writeJson(STATE_FILE, state);
   recordHistory(all);
 
-  // Degisen her site: gruba kart gorseli + sonuc (caption).
-  // down<->up gecisi: Burak + Turco'ya DM de gider.
-  for (const { prev, r } of changes) {
-    await notifyResult(r, prev);
+  // Grup: HER taramada tum sonuclar bildirilir (degisim sarti yok).
+  // DM (Burak+Turco): sadece down<->up gecisinde.
+  for (const r of all) {
+    const prev = prevState[r.name];
+    await notifyResult(r, prev, true);
   }
 }
 
