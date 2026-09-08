@@ -237,32 +237,26 @@ async function buildSiteCard(r, shotBot, shotUsr) {
   return fs.existsSync(outPng) ? outPng : null;
 }
 
-// Manuel test: metin ozeti + her site icin TEK birlesik kart gorseli
+// Manuel test: her site TEK mesaj — kart gorseli + caption'da tam sonuc + link
 async function testAndNotify() {
   const sites = readJson(SITES_FILE, []);
   const results = [];
   for (const site of sites) results.push(await checkSite(site));
 
-  // 1) metin ozeti (temiz tasarim)
-  const lines = results.map((r) =>
-    `${EMOJI[r.status] || '❔'} <b>${esc(r.name)}</b>\n   🤖 Googlebot: <b>${r.status}</b> (HTTP ${r.http})\n   👤 Kullanıcı: <b>${r.ustatus}</b>` +
-    (r.expect ? `\n   🎯 beklenen: <code>${esc(r.expect)}</code>` : '')
-  );
-  await tgDm([
-    `🛡️ <b>Invader Control — tarama sonucu</b>`,
-    '─────────────────',
-    ...lines,
-    '─────────────────',
-    `🔍 ${results.length} hedef tarandı`,
+  const captionOf = (r) => [
+    `🛡️ <b>Invader Control</b> — ${EMOJI[r.status] || '❔'} <b>${r.status}</b>`,
+    `🔗 <b>Site:</b> <a href="${esc(r.url)}">${esc(r.name)}</a>`,
+    `🤖 <b>Googlebot:</b> ${r.status} (HTTP ${r.http})${r.note ? ` — ${esc(r.note)}` : ''}`,
+    `👤 <b>Kullanıcı:</b> ${r.ustatus}${r.unote ? ` — ${esc(r.unote)}` : ''}`,
+    ...(r.expect ? [`🎯 <b>Beklenen:</b> <code>${esc(r.expect)}</code>`] : []),
     `🕐 <i>${stamp()}</i>`
-  ].join('\n'));
+  ].join('\n');
 
-  // 2) her site icin tek kart gorseli
   for (const r of results) {
     const shotBot = await captureShot(r.url, BOT_UA, 'bot');
     const shotUsr = await captureShot(r.url, USER_UA, 'usr');
     const card = await buildSiteCard(r, shotBot, shotUsr);
-    if (card) await tgDmPhoto(card, `<b>${esc(r.name)}</b>`);
+    if (card) await tgDmPhoto(card, captionOf(r));
   }
   return results;
 }
