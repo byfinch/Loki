@@ -1968,7 +1968,10 @@ async function runLoopRound(loopId) {
     const webClient = getClient(loop.sessionId);
     const username = session.username;
     const maxWaitMs = 60 * 1000;
-    const checkIntervalMs = 2000;
+    // 2sn yerine 500ms yoklama: bitis->yeni tur boslugu ~1.5-2.5sn'ye iner.
+    // Daha sıkı yoklama upstream'i yormaz (hafif GET); ama slot doluyken
+    // erken basma 429/kismi launch dogurur — o yuzden bekleme korunuyor.
+    const checkIntervalMs = 500;
     const startedWaiting = Date.now();
     let stillActive = new Set(previousRoundIds);
 
