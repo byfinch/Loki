@@ -39,6 +39,16 @@ function stresseProxyConfig() {
   return { proxy: false, httpAgent: stresseProxyAgent, httpsAgent: stresseProxyAgent };
 }
 
+// stresse.st trafigini belirli bir yerel IPv4 adresinden cikarma (or. birincil IP
+// blackhole'dayken ikincil IP'ye gecis). Bos ise isletim sistemi secimi kullanilir.
+const STRESSE_BIND_IP = process.env.LOKI_STRESSE_BIND_IP || '';
+if (STRESSE_BIND_IP) {
+  console.log(`[net] stresse.st trafigi yerel IP'den cikiyor: ${STRESSE_BIND_IP}`);
+}
+function stresseBindConfig() {
+  return STRESSE_BIND_IP ? { localAddress: STRESSE_BIND_IP } : {};
+}
+
 initTelegram();
 
 // Node 20'nin "Happy Eyeballs" (autoSelectFamily) ozelligi, IPv6'si bozuk/eksik
@@ -1221,6 +1231,7 @@ function getClient(sessionId) {
     family: 4,
     maxRedirects: 5,
     ...stresseProxyConfig(),
+    ...stresseBindConfig(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*',
@@ -1283,6 +1294,7 @@ function getApiClient(sessionId) {
     maxRedirects: 5,
     timeout: 45000,
     ...stresseProxyConfig(),
+    ...stresseBindConfig(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*'
@@ -1313,6 +1325,7 @@ async function performKeyBasedLogin(sessionId, username) {
     family: 4,
     timeout: 15000,
     ...stresseProxyConfig(),
+    ...stresseBindConfig(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json, text/plain, */*'
