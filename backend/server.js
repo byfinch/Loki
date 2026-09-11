@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const { CookieJar } = require('tough-cookie');
 const net = require('net');
 const dns = require('dns');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
@@ -1151,6 +1152,35 @@ function getJar(sessionId) {
   return sessions[sessionId].jar;
 }
 
+// stresse.st anti-bot PoW challenge (/__cdn/challenge): sayfa 16 rastgele hex
+// (r) + 300sn'lik zaman penceresi (ts) + nonce ister; sha256("r:ts:nonce")
+// hash'inin ilk 16 biti sifir olmali. Sunucuda cozulebilir (~2^16 deneme).
+// Basarili POST sonrasi cookie jar'a yazilir ve web uclari acilir.
+function isStresseChallengePage(data) {
+  return typeof data === 'string' && data.includes('/__cdn/challenge');
+}
+
+async function solveStresseChallenge(client) {
+  const r = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  const ts = Math.floor(Date.now() / 1000 / 300);
+  const prefix = `${r}:${ts}:`;
+  let nonce = 0;
+  // Ortalama 65k deneme; ust sinir guvenligi icin 20m
+  for (; nonce < 20000000; nonce += 1) {
+    const h = crypto.createHash('sha256').update(prefix + nonce).digest();
+    if (h[0] === 0 && h[1] === 0) break;
+  }
+  const resp = await client.post('/__cdn/challenge', {
+    r,
+    ts: String(ts),
+    nonce: String(nonce),
+    sus: 0
+  }, { headers: { 'content-type': 'application/json' } });
+  if (!resp.data || !resp.data.ok) {
+    throw new Error(`stresse challenge reddedildi: ${(resp.data && resp.data.error) || 'bilinmiyor'}`);
+  }
+}
+
 function getClient(sessionId) {
   const jar = getJar(sessionId);
   if (!jar) {
@@ -1195,6 +1225,23 @@ function getClient(sessionId) {
   client.interceptors.response.use(storeCookies, async (err) => {
     if (err.response) await storeCookies(err.response);
     throw err;
+  });
+  // Anti-bot challenge sayfasi gelirse PoW'u coz ve orijinal istegi tekrarla.
+  // Ayni anda birden cok istek challenge'a takilirsa tek cozum paylasilir.
+  let challengeInflight = null;
+  client.interceptors.response.use(async (resp) => {
+    if (!isStresseChallengePage(resp.data)) return resp;
+    if (resp.config.__challengeRetried) return resp; // sonsuz dongu korumasi
+    try {
+      challengeInflight = challengeInflight
+        || solveStresseChallenge(client).finally(() => { challengeInflight = null; });
+      await challengeInflight;
+    } catch (challengeErr) {
+      console.warn(`[challenge] cozum basarisiz: ${challengeErr.message}`);
+      return resp; // challenge sayfasini oldugu gibi birak; ust katman hataya cevirir
+    }
+    resp.config.__challengeRetried = true;
+    return client.request(resp.config);
   });
   return client;
 }
@@ -3340,6 +3387,11 @@ async function liveHubTick(hub, username) {
         const note = resolveNoteForRow(username, item.target || item.host, item.method);
         return note ? { ...next, note } : next;
       });
+    }
+    // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi)
+    // client'i kirmamak icin son bilinen iyi veriyi koru; yoksa bos dizi.
+    if (!Array.isArray(ongoingData)) {
+      ongoingData = Array.isArray(hub.lastOngoing) ? hub.lastOngoing : [];
     }
     hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
