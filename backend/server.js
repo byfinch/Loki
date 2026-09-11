@@ -1437,6 +1437,11 @@ app.get('/api/stresse/methods', async (req, res) => {
     const client = getClient(sessionId);
     try {
       const response = await fetchWithRetry(() => client.get('/methods.json'), 'methods');
+      // Upstream anti-bot challenge sayfasi (HTML) dondurebilir; bunu cache'leme/
+      // servis etme yoksa frontend'e string gider ve panel coker (siyah ekran).
+      if (!Array.isArray(response.data) || !response.data.every((m) => m && typeof m === 'object' && m.method)) {
+        throw new Error('stresse.st methods beklenmeyen formatta (anti-bot sayfasi?)');
+      }
       methodsCache.data = response.data;
       methodsCache.fetchedAt = Date.now();
       return res.json(response.data);
