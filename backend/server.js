@@ -1224,14 +1224,59 @@ function getApiClient(sessionId) {
 // =====================
 
 /**
+ * Key-bazli yedek giris: stresse.st web login akisi (/w/login) kapaliyken
+ * bilinen hesaplar icin API key ile dogrudan oturum acar.
+ * Dogrulama: gecerli key /api'de 400 (Missing parameters) dondurur;
+ * gecersiz veya whitelist disi key 403/401 dondurur.
+ * Plan/user bilgisi onceki oturumlardan kalan cache'ten alinir.
+ */
+async function performKeyBasedLogin(sessionId, username) {
+  const apiToken = getFallbackApiToken(username);
+  if (!apiToken) {
+    const err = new Error('Hesap icin kayitli API key yok');
+    err.statusCode = 401;
+    throw err;
+  }
+  const verifier = axios.create({
+    baseURL: 'https://stresse.st',
+    family: 4,
+    timeout: 15000,
+    ...stresseProxyConfig(),
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json, text/plain, */*'
+    }
+  });
+  const resp = await verifier.get(`/api?key=${encodeURIComponent(apiToken)}`, { validateStatus: () => true });
+  if (resp.status === 401 || resp.status === 403) {
+    const err = new Error('stresse.st API key reddedildi (whitelist eksik?)');
+    err.statusCode = 401;
+    throw err;
+  }
+  const cached = Object.values(sessions).find(
+    (s) => s && s.username === username && s.plan && Object.keys(s.plan).length
+  );
+  sessions[sessionId] = {
+    jar: new CookieJar(),
+    username,
+    user: { username },
+    plan: cached ? cached.plan : {},
+    apiToken,
+    createdAt: new Date().toISOString()
+  };
+  saveState();
+  console.log(`[login] ${username} icin key-bazli oturum acildi (plan: ${sessions[sessionId].plan?.name || 'cache yok'})`);
+  return { user: sessions[sessionId].user, plan: sessions[sessionId].plan };
+}
+
+/**
  * stresse.st login akisini calistirir (GET /login -> POST /w/login ->
  * GET /vcookie -> GET /plan -> GET /getApiToken) ve session'i doldurur.
  * Hata durumunda gecici session'i temizleyip err.step bilgisiyle firlatir.
  * Hem /api/stresse/login hem /api/accounts/ensure kullanir.
  */
 async function performStresseLogin(sessionId, username, password) {
-  sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };
-  const client = getClient(sessionId);
+  sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };  const client = getClient(sessionId);
 
   let step = 'GET /login';
   try {
@@ -1330,6 +1375,16 @@ async function performStresseLogin(sessionId, username, password) {
 
     return { user: vcookieRes.data, plan: planData };
   } catch (stepErr) {
+    // Web login akisi kapaliysa (stresse /w/login'i engelliyor) ve hesap
+    // bilinen hesaplar listesinde dogru sifreyle geliyorsa, API key ile
+    // dogrudan oturum acmayi dene.
+    if (KNOWN_ACCOUNTS.get(username) === password) {
+      try {
+        return await performKeyBasedLogin(sessionId, username);
+      } catch (keyErr) {
+        console.warn(`[login] key-bazli giris de basarisiz: ${keyErr.message}`);
+      }
+    }
     // Basarisiz login durumunda olusturulan gecici session'i temizle
     delete sessions[sessionId];
     saveState();
