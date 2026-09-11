@@ -441,7 +441,8 @@ const LiveAttacks = () => {
         username,
         (data) => {
           sseConnected = true;
-          if (data.ongoing) {
+          // Backend normalize etse da savunma: array disi payload gelirse yoksay
+          if (Array.isArray(data.ongoing)) {
             setLiveAttacks(data.ongoing);
             updateTimeLefts(data.ongoing);
           }
