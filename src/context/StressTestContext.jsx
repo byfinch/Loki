@@ -37,7 +37,9 @@ function stressTestReducer(state, action) {
     case 'SET_PLAN':
       return { ...state, plan: action.payload };
     case 'SET_METHODS':
-      return { ...state, methods: action.payload };
+      // Upstream bozulursa (anti-bot HTML'i vb.) array disi veri gelmesin;
+      // aksi halde .filter cagrilari paneli cokertir (siyah ekran).
+      return { ...state, methods: Array.isArray(action.payload) ? action.payload : [] };
     case 'SET_LIVE_ATTACKS':
       return { ...state, liveAttacks: action.payload };
     case 'SET_ACTIVE_TAB':
