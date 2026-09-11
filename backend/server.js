@@ -2227,6 +2227,18 @@ async function runLoopRound(loopId) {
     await new Promise(r => setTimeout(r, 1000));
   }
 
+  // Basarisiz tur sonrasi ustel backoff: stresse.st anti-abuse'i IP'yi gecici
+  // blackhole'a alabiliyor; hizli retry firtinasi bunu tetikleyip uzatiyor.
+  // Ard arda hata varsa her tur 30sn x hataSayisi (max 3dk) ek bekleme.
+  if (roundSuccesses === 0 && loop.running) {
+    const backoffMs = Math.min(loop.consecutiveErrors || 1, 6) * 30000;
+    console.warn(`[loop ${loopId}] basarisiz tur backoff: ${backoffMs / 1000}sn bekleniyor`);
+    const backoffUntil = Date.now() + backoffMs;
+    while (loop.running && Date.now() < backoffUntil) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
   // Sonsuz loop degilse bu tek turdu, loop'u durdur
   if (!loop.params.infinite) {
     loop.running = false;
@@ -3435,7 +3447,8 @@ async function liveHubTick(hub, username) {
     liveHubBroadcast(hub, `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
   }
   if (hub.clients.size === 0) return; // close handler hub'i zaten temizledi
-  const delay = hub.consecutiveErrors >= 3 ? 10000 : 3000;
+  // Poll baskisi: 3sn agresyifti (stresse anti-abuse tetikliyor); 10sn yeterli.
+  const delay = hub.consecutiveErrors >= 3 ? 30000 : 10000;
   hub.timer = setTimeout(() => {
     liveHubTick(hub, username).catch((err) => console.error('[liveHub] beklenmeyen tick hatasi:', err));
   }, delay);
