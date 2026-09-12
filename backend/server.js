@@ -1937,7 +1937,9 @@ app.post('/api/stresse/test-api', async (req, res) => {
  * Verilen loopId icin loop motorunu calistirir.
  * startLoop ve loadState() tarafindan kullanilir.
  */
-const MAX_LOOP_CONSECUTIVE_ERRORS = 10;
+// stresse kesintilerinde loop'lar olmesin diye yuksek tolerans; ustel backoff
+// (30sn x hata, max 3dk) ile ~30 ardisik hata ~45-60dk kesintiye dayanir.
+const MAX_LOOP_CONSECUTIVE_ERRORS = 30;
 
 async function runLoop(loopId) {
   const loop = activeLoops[loopId];
