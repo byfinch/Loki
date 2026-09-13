@@ -1144,6 +1144,8 @@ function normalizeHost(host) {
 // -> "eightfy.com/?s=%%RAND%%". Edge/CDN cache'ini delmek (cache-bypass) icin
 // sorgulu URL'ler gerekiyor; %%RAND%% her stresse cagrisinda rastgele degerle
 // degistirilir (buildApiUrl). Bosluk iceren veya 200 karakteri asan girdi reddedilir.
+// Sondaki anlamsiz slash'lar silinir ("site.fr/" -> "site.fr"): rackghost gibi
+// kendisi slash ekleyen upstream'lerde "//", "///" cogalmasi olusuyordu.
 function normalizeL7Host(host) {
   if (!host || typeof host !== 'string') return '';
   const h = host.trim().replace(/^https?:\/\//i, '');
@@ -1151,7 +1153,7 @@ function normalizeL7Host(host) {
   const bare = normalizeHost(h);
   if (!bare) return '';
   const slashIdx = h.indexOf('/');
-  const rest = slashIdx >= 0 ? h.slice(slashIdx) : '';
+  const rest = slashIdx >= 0 ? h.slice(slashIdx).replace(/\/+$/, '') : '';
   const out = bare + rest;
   return out.length <= 200 ? out : '';
 }
