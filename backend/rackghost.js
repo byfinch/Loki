@@ -168,9 +168,12 @@ async function startAttack(params) {
     throw lastErr || new Error('RackGhost saldiri baslatamadi');
   }
   const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
-  // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur;
-  // gercek concurrent sayisi slots toplamidir.
-  const slotsTotal = items.reduce((sum, it) => sum + (parseInt(it.slots, 10) || 1), 0);
+  // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur; ancak start
+  // yanitindaki slots gonderilen degeri, ongoing/panel tuketimi (x carpan)
+  // gosterebilir. Titreme olmamasi icin gosterim degeri her zaman
+  // max(bildirilen, gonderilen x carpan) olsun.
+  const reportedSlots = items.reduce((sum, it) => sum + (parseInt(it.slots, 10) || 1), 0);
+  const slotsTotal = Math.max(reportedSlots, sendConc * mult);
   return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items, slotsTotal };
 }
 
@@ -259,5 +262,6 @@ module.exports = {
   getMethods,
   getStatus,
   isConfigured,
+  slotMultiplier,
   LIMITS
 };

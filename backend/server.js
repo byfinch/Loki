@@ -2222,9 +2222,14 @@ async function runLoopRound(loopId) {
       data = { status: 'success' };
       attackIds = rgResult.attackIds;
       elapsedSec = 0;
-      // RackGhost slots alanini ID->slots haritasina cevir (kayit concurrents icin)
+      // RackGhost slots alanini ID->slots haritasina cevir (kayit concurrents icin).
+      // start yaniti carpanli methodlarda dusuk bildirebilir; upstream ongoing
+      // tuketimi gosterir. Titreme olmamasi icin max(bildirilen, girilen x carpan).
       var rgSlotsById = {};
-      (rgResult.raw || []).forEach((it) => { rgSlotsById[String(it.id)] = parseInt(it.slots, 10) || 1; });
+      const rgMult = rackghost.slotMultiplier(loop.params.method);
+      (rgResult.raw || []).forEach((it) => {
+        rgSlotsById[String(it.id)] = Math.max(parseInt(it.slots, 10) || 1, (loop.params.concurrents || 1) * rgMult);
+      });
     } else {
       ({ data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId));
     }
