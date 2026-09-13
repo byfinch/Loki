@@ -52,9 +52,10 @@ const METHODS = [
 
 const LIMITS = { maxTime: 7200, maxConcurrents: 15 };
 
-// Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX 2x).
-// Kullanici tuketmek istedigi degeri girer; gonderilen deger sistemde bölünur.
-const METHOD_MULTIPLIERS = { HTTPSMIX: 2 };
+// Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX,
+// HTTPCUSTOM 2x). Kullanicinin girdigi deger upstream'e AYNEN gonderilir;
+// limit ve gosterim tuketim (girilen x carpan) uzerinden hesaplanir.
+const METHOD_MULTIPLIERS = { HTTPSMIX: 2, HTTPCUSTOM: 2 };
 
 function slotMultiplier(method) {
   return METHOD_MULTIPLIERS[String(method).toUpperCase()] || 1;
@@ -127,12 +128,15 @@ async function startAttack(params) {
   const method = String(params.method).toUpperCase();
   const mult = slotMultiplier(method);
   const wanted = parseInt(params.concurrents) || 1;
-  // Kullanicinin girdigi deger tuketilen slottur; carpan sadece upstream'e
-  // gonderilen birimi belirler (wanted/mult). Limit kullanici degeri uzerinden.
-  if (wanted > LIMITS.maxConcurrents) {
-    throw new Error(`RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
+  // Limit tuketim uzerinden: girilen deger x carpan 15'i asamaz
+  // (or. 2x methodda 8 girilirse 16 slot olurdu; baslatmadan reddet).
+  if (wanted * mult > LIMITS.maxConcurrents) {
+    throw new Error(mult > 1
+      ? `RackGhost: bu method ${mult}x slot tüketir; en fazla ${Math.floor(LIMITS.maxConcurrents / mult)} girebilirsiniz.`
+      : `RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
   }
-  const sendConc = Math.max(1, Math.floor(wanted / mult));
+  // Girilen deger upstream'e aynen gonderilir; tuketimi rackghost hesaplar.
+  const sendConc = wanted;
   // Rate limit gecici bir durumdur; turu tamamen kaybetmek yerine birkac
   // saniye icinde yeniden dene (kullanici bunu hissetmemeli).
   let data = null;
