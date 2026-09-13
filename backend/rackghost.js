@@ -52,6 +52,26 @@ const METHODS = [
 
 const LIMITS = { maxTime: 7200, maxConcurrents: 15 };
 
+// Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX 2x).
+// Kullanici tuketmek istedigi degeri girer; gonderilen deger sistemde bölünur.
+const METHOD_MULTIPLIERS = { HTTPSMIX: 2 };
+
+function slotMultiplier(method) {
+  return METHOD_MULTIPLIERS[String(method).toUpperCase()] || 1;
+}
+
+// Bilinen upstream hatalarini kisa Turkce mesaja cevir
+function normalizeRgError(msg) {
+  const m = String(msg || '');
+  if (/reached the limit of available slots/i.test(m)) {
+    return 'RackGhost slot limiti doldu; bir saldırıyı durdurup tekrar deneyin.';
+  }
+  if (/wait 1 second/i.test(m)) {
+    return 'RackGhost hız sınırı; birkaç saniye sonra kendiliğinden düzelir.';
+  }
+  return m;
+}
+
 let lastOkAt = null;
 let lastError = null;
 let serviceAlerted = false;
@@ -100,21 +120,38 @@ async function apiCall(payload) {
   }
 }
 
-/** Saldiri baslat. params: {host, port, time, concurrents, method} */
+/** Saldiri baslat. params: {host, port, time, concurrents, method}
+ *  concurrents: kullanicinin TUKETMEK istedigi slot; carpanli methodlarda
+ *  upstream'e bolunmus deger gonderilir. */
 async function startAttack(params) {
-  const data = await apiCall({
-    action: 'start',
-    api: 2,
-    params: {
-      host: params.host,
-      port: parseInt(params.port),
-      time: parseInt(params.time),
-      concurrents: parseInt(params.concurrents) || 1,
-      method: String(params.method).toUpperCase()
-    }
-  });
+  const method = String(params.method).toUpperCase();
+  const mult = slotMultiplier(method);
+  const wanted = parseInt(params.concurrents) || 1;
+  const effective = wanted * mult;
+  if (effective > LIMITS.maxConcurrents) {
+    throw new Error(mult > 1
+      ? `RackGhost: bu method ${mult}x slot tüketir; en fazla ${Math.floor(LIMITS.maxConcurrents / mult)} girebilirsiniz.`
+      : `RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
+  }
+  const sendConc = Math.max(1, Math.floor(wanted / mult));
+  let data;
+  try {
+    data = await apiCall({
+      action: 'start',
+      api: 2,
+      params: {
+        host: params.host,
+        port: parseInt(params.port),
+        time: parseInt(params.time),
+        concurrents: sendConc,
+        method
+      }
+    });
+  } catch (err) {
+    throw new Error(normalizeRgError(err.message));
+  }
   if (!data || !data.success) {
-    throw new Error(data?.message || data?.error || 'RackGhost saldiri baslatamadi');
+    throw new Error(normalizeRgError(data?.message || data?.error || 'RackGhost saldiri baslatamadi'));
   }
   const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
   // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur;

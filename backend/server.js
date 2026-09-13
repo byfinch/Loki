@@ -2297,11 +2297,21 @@ async function runLoopRound(loopId) {
   // /loop endpoint'i ilk turun launch sonucunu bekliyor olabilir; kalici
   // hatalarda loop olusumu bastan reddedilsin diye sonucu bildir.
   if (loop.resolveFirstRound) {
-    const permanent = !loop.running || /under maintenance/i.test(loop.lastError || '');
+    const errText = loop.lastError || '';
+    // Slot limiti gibi tekrar denemeyle duzelmeyecek hatalar kalici sayilir;
+    // loop hic olusmasin, kullanici gercek sebebi baslatma aninda gorsun.
+    const permanent = !loop.running
+      || /under maintenance|slot limiti|reached the limit|en fazla/i.test(errText);
+    if (roundSuccesses === 0 && permanent && loop.running) {
+      loop.stopReason = 'error';
+      loop.stopDetail = errText || 'İlk tur başarısız';
+      loop.running = false;
+      saveState();
+    }
     loop.resolveFirstRound({
       ok: roundSuccesses > 0,
       permanent: roundSuccesses === 0 && permanent,
-      message: roundSuccesses > 0 ? null : (loop.lastError || 'Tur başarısız')
+      message: roundSuccesses > 0 ? null : (errText || 'Tur başarısız')
     });
     loop.resolveFirstRound = null;
   }
@@ -3536,14 +3546,17 @@ async function liveHubTick(hub, username) {
     }
     // RackGhost aktif saldirilari canli listeye ekle (provider rozeti ile)
     if (rackghost.isConfigured()) {
+      const seenRg = new Set();
       try {
         const rgList = await rackghost.getOngoing();
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
           const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - Date.now()) / 1000)) : dur;
+          const id = `rg_${a.id}`;
+          seenRg.add(id);
           ongoingData.push({
-            attack_id: `rg_${a.id}`,
+            attack_id: id,
             target: `${a.host}:${a.port}`,
             method: a.method,
             timeLeft: String(tl),
@@ -3555,9 +3568,30 @@ async function liveHubTick(hub, username) {
         // Merge bu tick basarisiz: onceki rackghost satirlarini koru ki panelde
         // satir/rozet titremesi olmasin (oturum hatasi watchdog'da raporlanir).
         if (Array.isArray(hub.lastOngoing)) {
-          ongoingData.push(...hub.lastOngoing.filter((r) => r && r.provider === 'rackghost'));
+          hub.lastOngoing
+            .filter((r) => r && r.provider === 'rackghost')
+            .forEach((r) => { seenRg.add(r.attack_id); ongoingData.push(r); });
         }
       }
+      // Henuz upstream ongoing'e dusmemis taze rackghost kayitlari:
+      // baslatma aninda satir rozet ve adet (slots) ile dogru gorunur;
+      // upstream gorunur olunca ayni satir onunla devam eder.
+      Object.values(activeAttacks).forEach((a) => {
+        if (a.provider !== 'rackghost') return;
+        const id = `rg_${a.attackId}`;
+        if (seenRg.has(id)) return;
+        const expiresMs = new Date(a.expiresAt || 0).getTime();
+        const tlSec = Math.round((expiresMs - Date.now()) / 1000);
+        if (!Number.isFinite(tlSec) || tlSec <= 0) return;
+        ongoingData.push({
+          attack_id: id,
+          target: `${a.host}:${a.port}`,
+          method: a.method,
+          timeLeft: String(tlSec),
+          count: a.concurrents || 1,
+          provider: 'rackghost'
+        });
+      });
     }
     hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
