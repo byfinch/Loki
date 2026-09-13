@@ -107,6 +107,7 @@ def login():
     if not m:
         raise RuntimeError(f"csrf_token bulunamadi (HTTP {status})")
     tok = m.group(1)
+    time.sleep(1.2)  # rackghost rate limit: 1 istek/sn
     body = urllib.parse.urlencode({"csrf_token": tok, "email": EMAIL, "password": PASSWORD})
     status2, resp2, _ = _http(f"{BASE}/login", method="POST", data=body)
     if "PHPSESSID" not in _jar:
@@ -152,6 +153,7 @@ def api_call(payload):
             # Oturum dusmus olabilir: bir kez tazeleyip tekrar dene
             log("beklenmeyen yanit, oturum tazeleniyor...")
             if ensure_session(force=True):
+                time.sleep(1.2)
                 status, text, _ = _http(f"{BASE}{API_PATH}", method="POST", json_body=payload)
                 try:
                     return {"ok": True, "data": json.loads(text)}

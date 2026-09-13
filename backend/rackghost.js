@@ -58,11 +58,15 @@ let serviceAlerted = false;
 let watchdogTimer = null;
 let lastApiCallAt = 0;
 
-// RackGhost rate limit: 1 istek/sn. Servis cagrilari arasinda min 1.1sn birak.
+// RackGhost rate limit: 1 istek/sn. Slot ANINDA rezerve edilir; aksi halde
+// ayni milisaniyede gelen istekler (loop launch + canli liste + yoklama)
+// uykudan once okuyup birlikte cikar ve 1sn kuralini ihlal eder.
 async function throttle() {
-  const wait = 1100 - (Date.now() - lastApiCallAt);
+  const now = Date.now();
+  const at = Math.max(now, lastApiCallAt + 1100);
+  lastApiCallAt = at;
+  const wait = at - now;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastApiCallAt = Date.now();
 }
 
 async function apiCall(payload) {
