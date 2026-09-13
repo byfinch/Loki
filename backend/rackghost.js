@@ -55,7 +55,7 @@ const LIMITS = { maxTime: 7200, maxConcurrents: 15 };
 // Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX,
 // HTTPCUSTOM 2x). Kullanicinin girdigi deger upstream'e AYNEN gonderilir;
 // limit ve gosterim tuketim (girilen x carpan) uzerinden hesaplanir.
-const METHOD_MULTIPLIERS = { HTTPSMIX: 2, HTTPCUSTOM: 2 };
+const METHOD_MULTIPLIERS = { HTTPSMIX: 2, HTTPSCUSTOM: 2 };
 
 function slotMultiplier(method) {
   return METHOD_MULTIPLIERS[String(method).toUpperCase()] || 1;
