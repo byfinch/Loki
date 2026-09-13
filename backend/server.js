@@ -3552,7 +3552,11 @@ async function liveHubTick(hub, username) {
           });
         });
       } catch (rgErr) {
-        // Oturum hatasi watchdog'da raporlaniyor; canli akisi kesme.
+        // Merge bu tick basarisiz: onceki rackghost satirlarini koru ki panelde
+        // satir/rozet titremesi olmasin (oturum hatasi watchdog'da raporlanir).
+        if (Array.isArray(hub.lastOngoing)) {
+          ongoingData.push(...hub.lastOngoing.filter((r) => r && r.provider === 'rackghost'));
+        }
       }
     }
     hub.lastOngoing = ongoingData;

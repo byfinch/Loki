@@ -160,14 +160,16 @@ const LiveAttacks = () => {
       .forEach((attack) => {
         const key = sigOf(attack.target, attack.method);
         const existing = byKey.get(key);
+        // RackGhost tek kayit + slots dondurur; satir adedi slots uzerinden sayilir.
+        const rowCount = parseInt(attack.count, 10) || 1;
         if (existing) {
-          existing.count += 1;
+          existing.count += rowCount;
           existing.ids.push(attack.attack_id);
           // Grupta notu olan ilk saldirinin notu satira tasinir (salt-okunur)
           if (!existing.note && attack.note) existing.note = attack.note;
           if (attack.timeLeft > existing.timeLeft) existing.timeLeft = attack.timeLeft;
         } else {
-          byKey.set(key, { ...attack, count: 1, ids: [attack.attack_id] });
+          byKey.set(key, { ...attack, count: rowCount, ids: [attack.attack_id] });
         }
       });
     return [...byKey.values()].sort((a, b) => {
