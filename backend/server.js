@@ -2157,19 +2157,12 @@ async function runLoopRound(loopId) {
     let stillActive = new Set(previousRoundIds);
 
     if (isRackghost) {
-      // RackGhost: onceki tur ID'leri rackghost ongoing'den dusene kadar bekle.
-      // Rate limit 1 istek/sn oldugu icin yoklama 2.5sn'de bir.
-      while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
-        try {
-          const ongoingList = await rackghost.getOngoing();
-          const ongoingIds = new Set(ongoingList.map((a) => String(a.id || a.attack_id)));
-          stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(String(id))));
-          if (stillActive.size > 0) await new Promise((r) => setTimeout(r, 2500));
-        } catch (err) {
-          console.warn(`[loop ${loopId}] rackghost ongoing hatasi:`, err.message);
-          await new Promise((r) => setTimeout(r, 2500));
-        }
-      }
+      // RackGhost saldirilari 'time' dolunca kesin sonlanir; onceki turun
+      // dustugunu ongoing ile yoklamak gereksiz istek trafigidir (2+ loop'ta
+      // 1 istek/sn rate limit'ine dayaniyordu). Statik kisa buffer yeterli.
+      console.log(`[loop ${loopId}] rackghost: onceki tur buffer bekleniyor (3sn)`);
+      await new Promise((r) => setTimeout(r, 3000));
+      stillActive = new Set();
     } else {
       const webClient = getClient(loop.sessionId);
       const username = session.username;

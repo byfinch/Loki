@@ -164,10 +164,18 @@ async function stopAttack(id, host) {
   return apiCall({ action: 'stop', api: 2, id: String(id), host });
 }
 
-/** Aktif saldirilar */
+/** Aktif saldirilar (8sn paylasimli onbellek: canli liste + diger tuketiciler
+ *  ayni veriyi tekrar istemesin, rate limit'e bosuna yuk binmesin) */
+let ongoingCache = { at: 0, data: null };
+
 async function getOngoing() {
+  if (ongoingCache.data && Date.now() - ongoingCache.at < 8000) {
+    return ongoingCache.data;
+  }
   const data = await apiCall({ action: 'ongoing', api: 2 });
-  return data && Array.isArray(data.data) ? data.data : [];
+  const list = data && Array.isArray(data.data) ? data.data : [];
+  ongoingCache = { at: Date.now(), data: list };
+  return list;
 }
 
 function getMethods() {
