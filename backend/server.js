@@ -3539,6 +3539,18 @@ async function liveHubTick(hub, username) {
     }
     // RackGhost aktif saldirilari canli listeye ekle (provider rozeti ile)
     if (rackghost.isConfigured()) {
+      // RackGhost tek ortak hesap: kayit defterinde hangi saldiri hangi
+      // panel hesabindan baslatildi belli; akisi hesaba gore filtrele ki
+      // Yavrukurt1'in saldirisi Yavrukurt akisinda gorunmesin. Defterde
+      // olmayanlar (rackghost panelinden baslatilanlar) herkese gosterilir.
+      const rgOwnerById = {};
+      Object.values(activeAttacks).forEach((a) => {
+        if (a.provider === 'rackghost') rgOwnerById[`rg_${a.attackId}`] = a.username || sessions[a.sessionId]?.username || null;
+      });
+      const rgVisible = (row) => {
+        const owner = rgOwnerById[row.attack_id];
+        return !owner || owner === username;
+      };
       const seenRg = new Set();
       try {
         const rgList = await rackghost.getOngoing();
@@ -3550,21 +3562,22 @@ async function liveHubTick(hub, username) {
           seenRg.add(id);
           // Sondaki slash varyantlarini tekille ("site.fr", "site.fr///" ayni satir)
           const rgHost = String(a.host || '').replace(/\/+$/, '');
-          ongoingData.push({
+          const row = {
             attack_id: id,
             target: `${rgHost}:${a.port}`,
             method: a.method,
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
             provider: 'rackghost'
-          });
+          };
+          if (rgVisible(row)) ongoingData.push(row);
         });
       } catch (rgErr) {
         // Merge bu tick basarisiz: onceki rackghost satirlarini koru ki panelde
         // satir/rozet titremesi olmasin (oturum hatasi watchdog'da raporlanir).
         if (Array.isArray(hub.lastOngoing)) {
           hub.lastOngoing
-            .filter((r) => r && r.provider === 'rackghost')
+            .filter((r) => r && r.provider === 'rackghost' && rgVisible(r))
             .forEach((r) => { seenRg.add(r.attack_id); ongoingData.push(r); });
         }
       }
@@ -3575,6 +3588,8 @@ async function liveHubTick(hub, username) {
         if (a.provider !== 'rackghost') return;
         const id = `rg_${a.attackId}`;
         if (seenRg.has(id)) return;
+        const owner = a.username || sessions[a.sessionId]?.username || null;
+        if (owner && owner !== username) return; // baska hesabin saldirisi
         const expiresMs = new Date(a.expiresAt || 0).getTime();
         const tlSec = Math.round((expiresMs - Date.now()) / 1000);
         if (!Number.isFinite(tlSec) || tlSec <= 0) return;
