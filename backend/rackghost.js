@@ -25,7 +25,7 @@ const METHODS = [
   { value: 'SOUNDV2', label: 'SOUND-V2 (HTTP/HTTPS/HTTP2) [CF]', layer: 'L7' },
   { value: 'HTTPSCRYPTO', label: 'HTTPS-CRYPTO v2 (HTTPS2)', layer: 'L7' },
   { value: 'HTTPSFLOOD', label: 'HTTPS REQUEST-CUSTOM (HTTP/HTTP2)', layer: 'L7' },
-  { value: 'HTTPCUSTOM', label: 'HTTPS-CUSTOM v2 (Browser) [ENT]', layer: 'L7' },
+  { value: 'HTTPSCUSTOM', label: 'HTTPS-CUSTOM v2 (Browser) [ENT]', layer: 'L7' },
   { value: 'SOCKETV4', label: 'SOCKET V4 (HTTP/1.1)', layer: 'L7' },
   { value: 'SPAMMERV2', label: 'SPAMMER v2 (HTTPS/1.1)', layer: 'L7' },
   { value: 'WEBSOCKET-CUSTOM', label: 'WEBSOCKET-CUSTOM (WS/WSS)', layer: 'L7' },
