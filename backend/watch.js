@@ -303,7 +303,11 @@ async function scanAll(silent = false) {
     }
     if (cur) parts.push(cur);
     saveFullReport(scanId, parts);
-    await tg(msg.join('\n'), { inline_keyboard: [[{ text: '📄 Tam Sonuç', callback_data: `wr:${scanId}` }]] });
+    // Sessiz tur (boot/restart taramasi): bulgular ve rapor guncellenir ama
+    // gruba mesaj GITMEZ; aksi halde her deploy'da tarama sonucu spami olur.
+    if (!silent) {
+      await tg(msg.join('\n'), { inline_keyboard: [[{ text: '📄 Tam Sonuç', callback_data: `wr:${scanId}` }]] });
+    }
   } finally {
     scanning = false;
     // Otomatik tur bekliyorduysa simdi calistir
