@@ -57,6 +57,10 @@ let lastError = null;
 let serviceAlerted = false;
 let watchdogTimer = null;
 let lastApiCallAt = 0;
+let consecutiveUnhealthy = 0;
+// Kac ardisik sagliksiz tick'te alarm verilsin (5dk/tick): restart/login
+// pencereleri (CapSolver cozumu ~30-60sn) yanlis alarm uretmesin.
+const UNHEALTHY_ALERT_THRESHOLD = 3;
 
 // RackGhost rate limit: 1 istek/sn. Slot ANINDA rezerve edilir; aksi halde
 // ayni milisaniyede gelen istekler (loop launch + canli liste + yoklama)
@@ -148,31 +152,34 @@ function getStatus() {
 }
 
 async function watchdogTick() {
+  let healthy = false;
+  let detail = '';
   try {
     const res = await axios.get(`${SERVICE_URL}/health`, { timeout: 10000 });
     const h = res.data || {};
-    if (!h.ok) {
-      lastError = h.detail || `servis: ${h.state}`;
-      if (!serviceAlerted) {
-        serviceAlerted = true;
-        sendTelegram(
-          `⚠️ <b>RackGhost oturum servisi sorunlu</b>\n` +
-          `Durum: ${h.state || 'bilinmiyor'}${h.detail ? `\nDetay: ${h.detail}` : ''}\n` +
-          `CapSolver bakiyesi ve servis loglari kontrol edilmeli.`
-        ).catch(() => {});
-      }
-    } else {
-      serviceAlerted = false;
-    }
+    healthy = Boolean(h.ok);
+    detail = h.ok ? '' : (h.detail || `servis: ${h.state}`);
   } catch (err) {
-    lastError = 'oturum servisi kapali';
-    if (!serviceAlerted) {
-      serviceAlerted = true;
-      sendTelegram(
-        `⚠️ <b>RackGhost oturum servisi kapalı</b>\n` +
-        `127.0.0.1:3210 cevap vermiyor. rackghost-session servisi kontrol edilmeli.`
-      ).catch(() => {});
-    }
+    detail = 'oturum servisi kapali';
+  }
+
+  if (healthy) {
+    consecutiveUnhealthy = 0;
+    serviceAlerted = false;
+    return;
+  }
+
+  consecutiveUnhealthy += 1;
+  lastError = detail;
+  // Esik altindaki gecici durumlar (restart, CapSolver login penceresi) sessiz gecilir
+  if (consecutiveUnhealthy < UNHEALTHY_ALERT_THRESHOLD) return;
+  if (!serviceAlerted) {
+    serviceAlerted = true;
+    sendTelegram(
+      `⚠️ <b>RackGhost oturum servisi sorunlu</b>\n` +
+      `Durum: ${detail || 'bilinmiyor'} (${consecutiveUnhealthy} ardışık kontrol)\n` +
+      `CapSolver bakiyesi ve servis loglari kontrol edilmeli.`
+    ).catch(() => {});
   }
 }
 
