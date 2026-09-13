@@ -74,6 +74,22 @@ const AttackForm = () => {
   const [loopInterval, setLoopInterval] = useState(5);
   const [starting, setStarting] = useState(false);
 
+  // Provider: stresse.st veya rackghost (ikinci stresser kaynagi)
+  const [provider, setProvider] = useState('stresse');
+  const [rgMethods, setRgMethods] = useState([]);
+  const [rgLimits, setRgLimits] = useState({ maxTime: 7200, maxConcurrents: 15 });
+
+  // RackGhost method listesi ilk acilista cekilir
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    apiClient.getRackghostMethods()
+      .then((data) => {
+        setRgMethods(Array.isArray(data.methods) ? data.methods : []);
+        if (data.limits) setRgLimits(data.limits);
+      })
+      .catch(() => {});
+  }, [state.isAuthenticated]);
+
   const withMinimumLoading = async (fn, minMs = 1000) => {
     const start = Date.now();
     try {
@@ -125,9 +141,9 @@ const AttackForm = () => {
       }
     };
 
-    if (state.isAuthenticated) loadMethods();
+    if (state.isAuthenticated && provider === 'stresse') loadMethods();
     return () => { cancelled = true; };
-  }, [state.isAuthenticated, layer]);
+  }, [state.isAuthenticated, layer, provider]);
 
   // L4/L7 gecisinde port default'unu ayarla
   useEffect(() => {
@@ -173,16 +189,39 @@ const AttackForm = () => {
     }
   }, [method, layer]);
 
-  const filteredMethods = state.methods.filter(m => {
-    const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
-    const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
-    return isLayerMatch && !isFreeMethod;
-  });
+  const filteredMethods = provider === 'rackghost'
+    ? rgMethods
+        .filter((m) => (layer === 'L4' ? m.layer === 'L4' : m.layer === 'L7'))
+        .map((m) => ({ method: m.value, description: m.label, IsLayer4: m.layer === 'L4', IsLayer7: m.layer === 'L7' }))
+    : state.methods.filter(m => {
+      const isLayerMatch = layer === 'L4' ? m.IsLayer4 : m.IsLayer7;
+      const isFreeMethod = m.method?.toUpperCase().startsWith('FREE-') || m.IsFree;
+      return isLayerMatch && !isFreeMethod;
+    });
+
+  // Provider veya layer degisince method gecerli ilk elemana cekilir
+  useEffect(() => {
+    if (provider !== 'rackghost') return;
+    const list = rgMethods.filter((m) => (layer === 'L4' ? m.layer === 'L4' : m.layer === 'L7'));
+    setMethod((prev) => (list.some((m) => m.value === prev) ? prev : (list[0]?.value || '')));
+  }, [provider, rgMethods, layer]);
 
   const validateLimits = () => {
     const minTime = getMinTime(method, layer);
     if (time < minTime) {
       return { ok: false, message: `Minimum süre ${minTime} saniye (${method})` };
+    }
+
+    if (provider === 'rackghost') {
+      const maxTime = rgLimits.maxTime || 7200;
+      const maxConcurrents = rgLimits.maxConcurrents || 15;
+      if (time > maxTime) {
+        return { ok: false, message: `RackGhost maksimum süre ${maxTime} saniye` };
+      }
+      if (concurrents > maxConcurrents) {
+        return { ok: false, message: `RackGhost maksimum concurrent ${maxConcurrents}` };
+      }
+      return { ok: true };
     }
 
     if (!state.plan) return { ok: true };
@@ -288,6 +327,7 @@ const AttackForm = () => {
         method,
         subnet: '32',
         geo,
+        provider,
         group: group.trim() || undefined,
         concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval, 10),
@@ -367,22 +407,40 @@ const AttackForm = () => {
       </div>
 
       <div className="relative z-10 p-4 sm:p-5">
-        {/* L4/L7 secimi */}
-        <div className="mb-5 inline-flex overflow-hidden rounded-sm border border-green-500/30">
-          {['L4', 'L7'].map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setLayer(tab)}
-              className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
-                layer === tab
-                  ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
-                  : 'text-green-500/50 hover:text-green-400'
-              }`}
-            >
-              [{tab}]
-            </button>
-          ))}
+        {/* Provider + L4/L7 secimi */}
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <div className="inline-flex overflow-hidden rounded-sm border border-cyan-500/30">
+            {[['stresse', 'stresse.st'], ['rackghost', 'rackghost']].map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setProvider(val)}
+                className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
+                  provider === val
+                    ? 'bg-cyan-500/15 text-cyan-400 [text-shadow:0_0_8px_rgba(0,200,255,0.6)]'
+                    : 'text-cyan-500/50 hover:text-cyan-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex overflow-hidden rounded-sm border border-green-500/30">
+            {['L4', 'L7'].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setLayer(tab)}
+                className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
+                  layer === tab
+                    ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
+                    : 'text-green-500/50 hover:text-green-400'
+                }`}
+              >
+                [{tab}]
+              </button>
+            ))}
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -461,25 +519,27 @@ const AttackForm = () => {
               ref={concurrentsRef}
               type="number"
               min={1}
-              max={state.plan?.Concurrents || 80}
+              max={provider === 'rackghost' ? (rgLimits.maxConcurrents || 15) : (state.plan?.Concurrents || 80)}
               value={concurrents}
               onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
               className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; geo <span className="text-cyan-400/80">(opsiyonel)</span></label>
-            <select
-              value={geo}
-              onChange={(e) => setGeo(e.target.value)}
-              className="w-full appearance-none rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
-            >
-              {GEO_OPTIONS.map((g) => (
-                <option key={g.value} value={g.value}>{g.label}</option>
-              ))}
-            </select>
-          </div>
+          {provider === 'stresse' && (
+            <div>
+              <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; geo <span className="text-cyan-400/80">(opsiyonel)</span></label>
+              <select
+                value={geo}
+                onChange={(e) => setGeo(e.target.value)}
+                className="w-full appearance-none rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+              >
+                {GEO_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Not alani (opsiyonel) */}
           <div>

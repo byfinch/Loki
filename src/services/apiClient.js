@@ -413,5 +413,19 @@ export const apiClient = {
   async deleteGroup(name) {
     const res = await apiFetch(`${API_BASE}/groups/delete`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) });
     return handleResponse(res);
+  },
+
+  // ---- RackGhost provider ----
+  async getRackghostMethods() {
+    const res = await apiFetch(`${API_BASE}/rackghost/methods`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  async getRackghostStatus() {
+    const res = await apiFetch(`${API_BASE}/rackghost/status`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  async stopRackghostAttack(id, host) {
+    const res = await apiFetch(`${API_BASE}/rackghost/stop`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ id, host }) });
+    return handleResponse(res);
   }
 };
