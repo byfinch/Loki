@@ -821,10 +821,12 @@ const LiveAttacks = () => {
                           </div>
                         )}
                       </div>
-                      <span className="text-gray-200">{attack.method}</span>
-                      {attack.provider === 'rackghost' && (
-                        <span className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
-                      )}
+                      <span className="text-gray-200">
+                        {attack.method}
+                        {attack.provider === 'rackghost' && (
+                          <span className="ml-1 rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 align-middle text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
+                        )}
+                      </span>
                       <span className="font-bold text-green-400">{attack.timeLeft}s</span>
                       <span className="text-gray-400">x{attack.count}</span>
                       <div className="flex items-center justify-end gap-2">
