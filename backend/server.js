@@ -3685,6 +3685,10 @@ app.post('/api/rackghost/stop', async (req, res) => {
   }
 });
 
+// Loki Agent (Chrome eklentisi) uclari: is alma ve sonuc bildirme
+app.get('/api/rackghost/agent/poll', (req, res) => rackghost.handleAgentPoll(req, res));
+app.post('/api/rackghost/agent/result', express.json({ limit: '256kb' }), (req, res) => rackghost.handleAgentResult(req, res));
+
 // =====================
 // PHISHGUARD INTEGRATION (read-only SQLite)
 // =====================
