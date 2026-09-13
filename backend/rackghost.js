@@ -127,11 +127,10 @@ async function startAttack(params) {
   const method = String(params.method).toUpperCase();
   const mult = slotMultiplier(method);
   const wanted = parseInt(params.concurrents) || 1;
-  const effective = wanted * mult;
-  if (effective > LIMITS.maxConcurrents) {
-    throw new Error(mult > 1
-      ? `RackGhost: bu method ${mult}x slot tüketir; en fazla ${Math.floor(LIMITS.maxConcurrents / mult)} girebilirsiniz.`
-      : `RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
+  // Kullanicinin girdigi deger tuketilen slottur; carpan sadece upstream'e
+  // gonderilen birimi belirler (wanted/mult). Limit kullanici degeri uzerinden.
+  if (wanted > LIMITS.maxConcurrents) {
+    throw new Error(`RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
   }
   const sendConc = Math.max(1, Math.floor(wanted / mult));
   let data;
