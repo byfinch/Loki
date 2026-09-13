@@ -306,7 +306,12 @@ const LoopManager = () => {
                             </div>
                           )}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">{loop.params?.method?.toUpperCase()}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-200">
+                          {loop.params?.method?.toUpperCase()}
+                          {loop.params?.provider === 'rackghost' && (
+                            <span className="ml-1 rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 align-middle text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
                         <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.interval}s</td>
                         <td className="px-3 py-2.5 text-center font-bold text-cyan-400">{loop.roundCount || 0}</td>
