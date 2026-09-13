@@ -3548,9 +3548,11 @@ async function liveHubTick(hub, username) {
           const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - Date.now()) / 1000)) : dur;
           const id = `rg_${a.id}`;
           seenRg.add(id);
+          // Sondaki slash varyantlarini tekille ("site.fr", "site.fr///" ayni satir)
+          const rgHost = String(a.host || '').replace(/\/+$/, '');
           ongoingData.push({
             attack_id: id,
-            target: `${a.host}:${a.port}`,
+            target: `${rgHost}:${a.port}`,
             method: a.method,
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
@@ -3578,7 +3580,7 @@ async function liveHubTick(hub, username) {
         if (!Number.isFinite(tlSec) || tlSec <= 0) return;
         ongoingData.push({
           attack_id: id,
-          target: `${a.host}:${a.port}`,
+          target: `${String(a.host || '').replace(/\/+$/, '')}:${a.port}`,
           method: a.method,
           timeLeft: String(tlSec),
           count: a.concurrents || 1,

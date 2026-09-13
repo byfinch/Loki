@@ -71,6 +71,17 @@ function initImpact({ activeAttacks, activeLoops, sessions, getLoopOwner }) {
 
 // Aktif saldiri/loop kayitlarindan takip edilecek hedef setini cikarir.
 // Donus: Map(key -> { key, host, port, layer, isLoop, owner, startedAt, expiresAt|null })
+// Not: ayni sitenin slash varyantlari ("site.fr", "site.fr/", "site.fr///")
+// tek hedef sayilir; aksi halde ayni site 3 kez olculup gosteriliyordu.
+function normHost(h) {
+  return String(h || '')
+    .toLowerCase()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('?')[0]
+    .replace(/\/+$/, '');
+}
+
 function buildDesiredTargets() {
   const desired = new Map();
   const now = Date.now();
@@ -83,7 +94,7 @@ function buildDesiredTargets() {
     if (!owner) return;
     const layer = a.layer === 'L7' ? 'L7' : 'L4';
     const port = layer === 'L7' ? null : (parseInt(a.port) || null);
-    const key = `${owner}|${layer}|${a.host}|${port || ''}`;
+    const key = `${owner}|${layer}|${normHost(a.host)}|${port || ''}`;
     const startedAt = new Date(a.startedAt || Date.now()).getTime();
     const existing = desired.get(key);
     // Ayni hedefe birden cok saldiri varsa en erken baslangici baz al;
@@ -93,7 +104,7 @@ function buildDesiredTargets() {
       existing.expiresAt = Math.max(existing.expiresAt || 0, expires || 0) || null;
     } else {
       desired.set(key, {
-        key, host: a.host, port, layer, isLoop: false, owner,
+        key, host: normHost(a.host), port, layer, isLoop: false, owner,
         startedAt, expiresAt: expires || null
       });
     }
@@ -107,7 +118,7 @@ function buildDesiredTargets() {
     if (!owner) return;
     const layer = loop.params?.layer === 'L7' ? 'L7' : 'L4';
     const port = layer === 'L7' ? null : (parseInt(loop.params?.port) || null);
-    const key = `${owner}|${layer}|${host}|${port || ''}`;
+    const key = `${owner}|${layer}|${normHost(host)}|${port || ''}`;
     const startedAt = new Date(loop.startedAt || Date.now()).getTime();
     const existing = desired.get(key);
     if (existing) {
@@ -118,7 +129,7 @@ function buildDesiredTargets() {
       existing.startedAt = Math.min(existing.startedAt, startedAt);
     } else {
       desired.set(key, {
-        key, host, port, layer, isLoop: true, owner,
+        key, host: normHost(host), port, layer, isLoop: true, owner,
         startedAt, expiresAt: null
       });
     }
