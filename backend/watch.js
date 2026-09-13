@@ -49,13 +49,85 @@ let findings = readJson(FINDINGS_FILE, []); // {key, site, keyword, anchor, href
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
 
-async function tg(message) {
+async function tg(message, keyboard = null) {
   if (!TG_TOKEN || !TG_CHAT) return;
   try {
-    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-      chat_id: TG_CHAT, text: message, parse_mode: 'HTML', disable_web_page_preview: true
-    }, { timeout: 10000 });
+    const body = { chat_id: TG_CHAT, text: message, parse_mode: 'HTML', disable_web_page_preview: true };
+    if (keyboard) body.reply_markup = keyboard;
+    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, body, { timeout: 10000 });
   } catch (e) { console.warn('[watch-tg] gonderilemedi:', e.message); }
+}
+
+// ---- "Tam Sonuc" butonu altyapisi ----
+// Tarama mesajina inline buton eklenir; tiklayan kullaniciya tam sonuc
+// ozel mesajla (sadece ona) gonderilir. Raporlar watch-fullreports.json'da
+// son 5 tarama saklanir. Bot update'leri getUpdates ile yoklanir.
+const FULLREPORTS_FILE = path.join(DATA_DIR, 'watch-fullreports.json');
+let fullReports = readJson(FULLREPORTS_FILE, {}); // { scanId: [msgParcalari] }
+let updateOffset = readJson(path.join(DATA_DIR, 'watch-tg-offset.json'), { offset: 0 }).offset || 0;
+
+function saveFullReport(scanId, parts) {
+  fullReports[scanId] = parts;
+  // son 5 kaydi tut
+  const keys = Object.keys(fullReports).sort();
+  while (keys.length > 5) {
+    delete fullReports[keys.shift()];
+  }
+  writeJson(FULLREPORTS_FILE, fullReports);
+}
+
+async function tgApi(method, body) {
+  const r = await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, body, { timeout: 15000 });
+  return r.data;
+}
+
+// Kullaniciya ozelden tam sonuc gonder (4000 char sinirina gore parcala).
+async function sendFullReportToUser(userId, parts) {
+  for (const part of parts) {
+    await tgApi('sendMessage', {
+      chat_id: userId, text: part, parse_mode: 'HTML', disable_web_page_preview: true
+    });
+  }
+}
+
+async function pollUpdates() {
+  if (!TG_TOKEN) return;
+  try {
+    const r = await tgApi('getUpdates', { offset: updateOffset, timeout: 3 });
+    for (const u of (r.result || [])) {
+      updateOffset = u.update_id + 1;
+      if (u.callback_query) {
+        const cq = u.callback_query;
+        const data = cq.data || '';
+        if (data.startsWith('wr:')) {
+          const scanId = data.slice(3);
+          const parts = fullReports[scanId];
+          if (!parts) {
+            await tgApi('answerCallbackQuery', { callback_query_id: cq.id, text: 'Bu raporun süresi doldu (son 5 tarama saklanır)', show_alert: true });
+          } else {
+            try {
+              await sendFullReportToUser(cq.from.id, parts);
+              await tgApi('answerCallbackQuery', { callback_query_id: cq.id, text: '📩 Tam sonuç özel mesajla gönderildi' });
+            } catch (e) {
+              await tgApi('answerCallbackQuery', {
+                callback_query_id: cq.id,
+                text: 'Özel mesaj gönderemedim — önce bana /start yazmalısın',
+                show_alert: true
+              });
+            }
+          }
+        }
+      } else if (u.message && u.message.text === '/start') {
+        await tgApi('sendMessage', {
+          chat_id: u.message.chat.id,
+          text: '👋 Loki Monitor aktif. Gruptaki "📄 Tam Sonuç" butonuna bastığında tam tarama sonucunu buradan alırsın.'
+        });
+      }
+    }
+    writeJson(path.join(DATA_DIR, 'watch-tg-offset.json'), { offset: updateOffset });
+  } catch (e) {
+    console.warn('[watch-tg] update poll hatasi:', e.message);
+  }
 }
 
 function findPairs(html, site) {
@@ -210,7 +282,28 @@ async function scanAll(silent = false) {
     if ((newPairs.length || gonePairs.length) && MENTIONS.length) {
       msg.push('👥 ' + MENTIONS.map((m) => `<a href="tg://user?id=${m.id}">${esc(m.name)}</a>`).join(' '));
     }
-    await tg(msg.join('\n'));
+    // Tam sonuc raporu (buton icin): tum aktif ikililer keyword gruplu.
+    // Kisa mesaj degisiklik odakli kalir; detay isteyen butona basar.
+    const scanId = String(Date.now());
+    const fullLines = [`📄 <b>LOKI — TAM TARAMA SONUCU</b>`, '─────────────────'];
+    if (activePairs.length) {
+      fullLines.push(...groupByKw(activePairs).map((p) =>
+        p === null ? '───' : `🔗 <code>${esc(labelOf(p.keyword))}</code> → ${linkOf(p.href)}`
+      ));
+    } else {
+      fullLines.push('Aktif ikili yok.');
+    }
+    fullLines.push('─────────────────', `🔍 ${scannedOk.size}/${sites.length} site · ${activePairs.length} aktif ikili`, `🕐 <i>${stamp()}</i>`);
+    // Telegram mesaj sinirina gore parcala
+    const parts = [];
+    let cur = '';
+    for (const line of fullLines) {
+      if (cur && (cur + '\n' + line).length > 3800) { parts.push(cur); cur = line; }
+      else { cur = cur ? cur + '\n' + line : line; }
+    }
+    if (cur) parts.push(cur);
+    saveFullReport(scanId, parts);
+    await tg(msg.join('\n'), { inline_keyboard: [[{ text: '📄 Tam Sonuç', callback_data: `wr:${scanId}` }]] });
   } finally {
     scanning = false;
     // Otomatik tur bekliyorduysa simdi calistir
@@ -235,6 +328,8 @@ function initWatch() {
     }, next - now);
   };
   scheduleNext();
+  // Callback butonlari icin update yoklamasi (Tam Sonuc butonu + /start)
+  setInterval(() => { pollUpdates().catch(() => {}); }, 4000);
   setTimeout(() => {
     // Acilis taramasi sessiz: deploy/restart'ta gruba mesaj dusmez.
     if (scanning) queuedAuto = true; else scanAll(true).catch(() => {});
