@@ -41,18 +41,20 @@ let nextScanAt = null;
 
 const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
 
-/** Bir siteyi HTTP ile kontrol eder. 2xx/3xx = up, gerisi/erisilememe = down. */
+/** Bir siteyi HTTP ile kontrol eder. 2xx/3xx = up, gerisi/erisilememe = down.
+ *  Govde okunmaz: stream acilip header'lar alinir alinmaz kapatilir. */
 async function httpCheck(url) {
   const started = Date.now();
   try {
     const r = await axios.get(url, {
       timeout: CHECK_TIMEOUT_MS,
       maxRedirects: 3,
-      maxContentLength: 2048,
+      responseType: 'stream',
       headers: { 'User-Agent': 'Watcher/1.0 (uptime monitor)' },
       validateStatus: () => true
     });
     const ms = Date.now() - started;
+    r.data.destroy(); // govdeyi indirmeden kapat
     if (r.status >= 200 && r.status < 400) {
       return { status: 'up', ms, reason: `HTTP ${r.status}` };
     }
