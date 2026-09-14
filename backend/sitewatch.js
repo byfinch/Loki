@@ -107,15 +107,20 @@ async function tgText(chatId, text) {
 
 async function tgPhoto(chatId, photoBuf, caption) {
   try {
-    await tgApi('sendPhoto', {
-      chat_id: chatId,
-      caption,
-      parse_mode: 'HTML',
-      photo: photoBuf
-    }, true);
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+    // Dosya adi/content-type sart; aksi halde Telegram fotoyu reddeder
+    // ve bildirim sessizce metne duser (grup gorselsiz kalir).
+    form.append('photo', photoBuf, { filename: 'proof.png', contentType: 'image/png' });
+    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendPhoto`, form, {
+      headers: form.getHeaders(), timeout: 30000
+    });
     return true;
   } catch (e) {
-    console.warn('[sitewatch-tg] foto gidemedi:', e.message);
+    console.warn('[sitewatch-tg] foto gidemedi:', e.response?.data?.description || e.message);
     return false;
   }
 }
