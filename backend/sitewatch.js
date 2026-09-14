@@ -67,28 +67,24 @@ async function httpCheck(url) {
   }
 }
 
-/** thum.io ile kanit ekran goruntusu. Ilk istek placeholder GIF dondurur;
- *  bir kac denemeyle gercek PNG/JPEG alinir; basarisizsa null. */
-async function captureProof(siteUrl) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 7000));
-    try {
-      const r = await axios.get(PROOF_SERVICE + siteUrl, {
-        timeout: 60000,
-        responseType: 'arraybuffer',
-        headers: { 'User-Agent': 'Watcher/1.0 (uptime monitor)' },
-        validateStatus: () => true
-      });
-      const type = String(r.headers['content-type'] || '');
-      const isImage = type.includes('image/png') || type.includes('image/jpeg');
-      if (r.data && r.data.length > 10000 && isImage) {
-        return Buffer.from(r.data);
-      }
-    } catch (e) {
-      console.warn('[sitewatch] proof alinamadi:', e.message);
-    }
-  }
-  return null;
+/** Kanit ekran goruntusu: sunucudaki headless Chrome ile (thum.io dis servisi
+ *  bizi 403'luyor; dis bagimlilik kaldirildi). Basarisizsa null. */
+const { execFile } = require('child_process');
+const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
+const PROOF_DIR = path.join(DATA_DIR, 'sitewatch-proofs');
+const SHOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+function captureProof(siteUrl) {
+  if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
+  const out = path.join(PROOF_DIR, `${Date.now()}.png`);
+  return new Promise((resolve) => {
+    execFile(CHROME, [
+      '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+      '--window-size=1366,900', `--user-agent=${SHOT_UA}`, `--screenshot=${out}`, siteUrl
+    ], { timeout: 60000 }, (err) => {
+      resolve(err || !fs.existsSync(out) ? null : out);
+    });
+  });
 }
 
 async function tgApi(method, body, isFile = false) {
@@ -146,8 +142,11 @@ async function notifyScanResult(site, result, kind) {
 
   let sent = false;
   if (isUp) {
-    const proof = await captureProof(site.url);
-    if (proof) sent = await tgPhoto(TG_CHAT, proof, caption);
+    const proofPath = await captureProof(site.url);
+    if (proofPath) {
+      sent = await tgPhoto(TG_CHAT, fs.readFileSync(proofPath), caption);
+      try { fs.unlinkSync(proofPath); } catch { /* yoksay */ }
+    }
   }
   if (!sent) await tgText(TG_CHAT, caption);
 
