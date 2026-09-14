@@ -80,7 +80,11 @@ function captureProof(siteUrl) {
   return new Promise((resolve) => {
     execFile(CHROME, [
       '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
-      '--window-size=1366,900', `--user-agent=${SHOT_UA}`, `--screenshot=${out}`, siteUrl
+      '--window-size=1366,900', `--user-agent=${SHOT_UA}`,
+      // Sayfa agir JS ile gec yukleniyorsa diye: yuk sonrasi render icin
+      // sakinlesme butcesi (erken biterse beklemez, gecikirse 3sn tolerans)
+      '--timeout=15000', '--virtual-time-budget=3000',
+      `--screenshot=${out}`, siteUrl
     ], { timeout: 60000 }, (err) => {
       resolve(err || !fs.existsSync(out) ? null : out);
     });
