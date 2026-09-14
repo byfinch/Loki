@@ -1,0 +1,256 @@
+/**
+ * sitewatch.js — SiteWatcher (uptime izleme) Loki surumu
+ *
+ * Website-Watcher (PHP) aracinin Node portu: izlenen siteleri HTTP ile
+ * kontrol eder (2xx/3xx up), yarim saatte bir otomatik tur, telegram'a
+ * kanit ekran goruntusu ile bildirir; DOWN'da grup + admin DM alarmi.
+ *
+ * Veriler backend/data/sitewatch-sites.json dosyasinda tutulur (Loki kalibi).
+ */
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+
+const DATA_DIR = path.join(__dirname, 'data');
+const SITES_FILE = path.join(DATA_DIR, 'sitewatch-sites.json');
+
+const TG_TOKEN = process.env.SITEWATCH_TG_TOKEN || '***SITEWATCH-TOKEN***';
+const TG_CHAT = process.env.SITEWATCH_TG_CHAT || '-1004308931076';
+// DOWN alarmlari ozelden gidenler (Burak, Turco)
+const DM_USERS = (process.env.SITEWATCH_DM || '8849693458,8757169131').split(',').filter(Boolean);
+const PROOF_SERVICE = process.env.SITEWATCH_PROOF_SERVICE || 'https://image.thum.io/get/width/1024/';
+
+const CHECK_TIMEOUT_MS = 8000;
+const SCAN_INTERVAL_MS = 30 * 60 * 1000;
+const HISTORY_LIMIT = 50;
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function readJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+function writeJson(file, data) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+let sites = readJson(SITES_FILE, []); // {url, addedAt, status, ms, lastCheckedAt, downSince, history[]}
+let scanning = false;
+let nextScanAt = null;
+
+const stamp = () => new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
+
+/** Bir siteyi HTTP ile kontrol eder. 2xx/3xx = up, gerisi/erisilememe = down. */
+async function httpCheck(url) {
+  const started = Date.now();
+  try {
+    const r = await axios.get(url, {
+      timeout: CHECK_TIMEOUT_MS,
+      maxRedirects: 3,
+      maxContentLength: 2048,
+      headers: { 'User-Agent': 'Watcher/1.0 (uptime monitor)' },
+      validateStatus: () => true
+    });
+    const ms = Date.now() - started;
+    if (r.status >= 200 && r.status < 400) {
+      return { status: 'up', ms, reason: `HTTP ${r.status}` };
+    }
+    return { status: 'down', ms: null, reason: `HTTP ${r.status}` };
+  } catch (e) {
+    const reason = /timeout/i.test(e.message)
+      ? `bağlantı zaman aşımı (${CHECK_TIMEOUT_MS / 1000} sn)`
+      : `erişilemedi — ${e.message}`.slice(0, 90);
+    return { status: 'down', ms: null, reason };
+  }
+}
+
+/** thum.io ile kanit ekran goruntusu. Ilk istek placeholder GIF dondurur;
+ *  bir kac denemeyle gercek PNG/JPEG alinir; basarisizsa null. */
+async function captureProof(siteUrl) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 7000));
+    try {
+      const r = await axios.get(PROOF_SERVICE + siteUrl, {
+        timeout: 60000,
+        responseType: 'arraybuffer',
+        headers: { 'User-Agent': 'Watcher/1.0 (uptime monitor)' },
+        validateStatus: () => true
+      });
+      const type = String(r.headers['content-type'] || '');
+      const isImage = type.includes('image/png') || type.includes('image/jpeg');
+      if (r.data && r.data.length > 10000 && isImage) {
+        return Buffer.from(r.data);
+      }
+    } catch (e) {
+      console.warn('[sitewatch] proof alinamadi:', e.message);
+    }
+  }
+  return null;
+}
+
+async function tgApi(method, body, isFile = false) {
+  if (isFile) {
+    const FormData = require('form-data');
+    const form = new FormData();
+    Object.entries(body).forEach(([k, v]) => form.append(k, v));
+    return axios.post(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, form, {
+      headers: form.getHeaders(), timeout: 30000
+    });
+  }
+  return axios.post(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, body, { timeout: 15000 });
+}
+
+async function tgText(chatId, text) {
+  try {
+    await tgApi('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
+  } catch (e) { console.warn('[sitewatch-tg] mesaj gidemedi:', e.message); }
+}
+
+async function tgPhoto(chatId, photoBuf, caption) {
+  try {
+    await tgApi('sendPhoto', {
+      chat_id: chatId,
+      caption,
+      parse_mode: 'HTML',
+      photo: photoBuf
+    }, true);
+    return true;
+  } catch (e) {
+    console.warn('[sitewatch-tg] foto gidemedi:', e.message);
+    return false;
+  }
+}
+
+function humanDuration(sinceIso) {
+  const sec = Math.max(0, (Date.now() - new Date(sinceIso).getTime()) / 1000);
+  if (sec < 60) return `${Math.round(sec)} sn`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} dk`;
+  return `${Math.floor(min / 60)} sa ${min % 60} dk`;
+}
+
+/** Tarama sonucunu bildirir: UP -> grup+kanit; DOWN -> grup + admin DM. */
+async function notifyScanResult(site, result, kind) {
+  const label = kind === 'manuel' ? 'manuel tarama' : 'otomatik tarama';
+  const isUp = result.status === 'up';
+  let caption;
+  if (isUp) {
+    const backNote = site.downSince ? `\n⏱️ Kesinti süresi: ${humanDuration(site.downSince)}` : '';
+    caption = `🟢 <b>UP</b> — ${site.url}\n⚡ Yanıt: ${result.ms} ms\n🔁 Tür: ${label}${backNote}\n🕐 <i>${stamp()}</i>`;
+  } else {
+    caption = `🔴 <b>DOWN</b> — ${site.url}\n⚠️ Sebep: ${result.reason}\n🔁 Tür: ${label}\n🕐 <i>${stamp()}</i>`;
+  }
+
+  let sent = false;
+  if (isUp) {
+    const proof = await captureProof(site.url);
+    if (proof) sent = await tgPhoto(TG_CHAT, proof, caption);
+  }
+  if (!sent) await tgText(TG_CHAT, caption);
+
+  if (!isUp) {
+    for (const uid of DM_USERS) {
+      await tgText(uid, caption);
+    }
+  }
+}
+
+function recordResult(site, result) {
+  site.status = result.status;
+  site.ms = result.ms;
+  site.lastCheckedAt = new Date().toISOString();
+  site.history = site.history || [];
+  site.history.push({ at: site.lastCheckedAt, status: result.status, ms: result.ms, reason: result.reason });
+  if (site.history.length > HISTORY_LIMIT) site.history = site.history.slice(-HISTORY_LIMIT);
+  if (result.status === 'down') {
+    if (!site.downSince) site.downSince = site.lastCheckedAt;
+  } else {
+    site.downSince = null;
+  }
+}
+
+async function scanSite(site, kind, silent) {
+  const result = await httpCheck(site.url);
+  const prevStatus = site.status;
+  recordResult(site, result);
+  // Boot/sessiz turda mesaj yok; normal turda her site bildirir (orijinal davranis)
+  if (!silent) await notifyScanResult(site, result, kind);
+  return { url: site.url, prevStatus, ...result };
+}
+
+async function scanAll(kind = 'auto', silent = false) {
+  if (scanning) return { skipped: true };
+  scanning = true;
+  try {
+    for (const site of sites) {
+      await scanSite(site, kind, silent);
+    }
+    writeJson(SITES_FILE, sites);
+    if (!silent) {
+      const up = sites.filter((s) => s.status === 'up').length;
+      await tgText(TG_CHAT, `✅ <b>Tarama turu tamamlandı</b> — tüm siteler ayakta (${up}/${sites.length})`);
+    }
+    return { scanned: sites.length };
+  } finally {
+    scanning = false;
+  }
+}
+
+async function scanOne(url, silent = false) {
+  const site = sites.find((s) => s.url === url);
+  if (!site) return { error: 'site bulunamadi' };
+  await scanSite(site, 'manuel', silent);
+  writeJson(SITES_FILE, sites);
+  return { url, status: site.status, ms: site.ms };
+}
+
+function addSite(url) {
+  let u = String(url || '').trim();
+  if (!u) return { error: 'url gerekli' };
+  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+  u = u.replace(/\/+$/, '') + '/';
+  if (sites.some((s) => s.url === u)) return { error: 'site zaten izleniyor' };
+  const site = { url: u, addedAt: new Date().toISOString(), status: null, ms: null, lastCheckedAt: null, downSince: null, history: [] };
+  sites.push(site);
+  writeJson(SITES_FILE, sites);
+  return { ok: true, site };
+}
+
+function removeSite(url) {
+  const before = sites.length;
+  sites = sites.filter((s) => s.url !== url && s.url !== url.replace(/\/+$/, '') + '/');
+  writeJson(SITES_FILE, sites);
+  return { ok: sites.length < before };
+}
+
+function getState() {
+  return {
+    sites: sites.map((s) => ({
+      url: s.url, status: s.status, ms: s.ms,
+      lastCheckedAt: s.lastCheckedAt, downSince: s.downSince,
+      history: (s.history || []).slice(-20)
+    })),
+    nextScanAt,
+    scanning
+  };
+}
+
+function initSitewatch() {
+  // Otomatik turlar yarim saat dilimlerine hizali (:00/:30)
+  const scheduleNext = () => {
+    const now = Date.now();
+    const next = Math.ceil(now / SCAN_INTERVAL_MS) * SCAN_INTERVAL_MS;
+    nextScanAt = new Date(next).toISOString();
+    setTimeout(() => {
+      scanAll('auto').catch(() => {});
+      scheduleNext();
+    }, next - now);
+  };
+  scheduleNext();
+  // Boot taramasi sessiz (deploy'da grup spami olmaz — watch.js dersi)
+  setTimeout(() => { scanAll('auto', true).catch(() => {}); }, 20000);
+  console.log(`[sitewatch] baslatildi (${sites.length} site izleniyor)`);
+}
+
+module.exports = { initSitewatch, getState, addSite, removeSite, scanAll, scanOne };

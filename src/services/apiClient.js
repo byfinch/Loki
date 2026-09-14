@@ -427,5 +427,23 @@ export const apiClient = {
   async stopRackghostAttack(id, host) {
     const res = await apiFetch(`${API_BASE}/rackghost/stop`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ id, host }) });
     return handleResponse(res);
+  },
+
+  // ---- SiteWatcher (uptime izleme) ----
+  async getSitewatchState() {
+    const res = await apiFetch(`${API_BASE}/sitewatch/state`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  async addSitewatchSite(url) {
+    const res = await apiFetch(`${API_BASE}/sitewatch/sites`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ url }) });
+    return handleResponse(res);
+  },
+  async removeSitewatchSite(url) {
+    const res = await apiFetch(`${API_BASE}/sitewatch/sites/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ url }) });
+    return handleResponse(res);
+  },
+  async triggerSitewatchScan(url = null) {
+    const res = await apiFetch(`${API_BASE}/sitewatch/scan`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(url ? { url } : {}) });
+    return handleResponse(res);
   }
 };

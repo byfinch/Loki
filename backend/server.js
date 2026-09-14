@@ -19,6 +19,7 @@ const { initImpact, getImpactForUser } = require('./impact');
 const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 const rackghost = require('./rackghost');
+const sitewatch = require('./sitewatch');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -3753,6 +3754,45 @@ app.post('/api/rackghost/stop', async (req, res) => {
 });
 
 // =====================
+// SITEWATCHER (uptime izleme)
+// =====================
+
+app.get('/api/sitewatch/state', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  res.json(sitewatch.getState());
+});
+
+app.post('/api/sitewatch/sites', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const result = sitewatch.addSite(req.body?.url);
+  if (result.error) return res.status(400).json({ status: 'error', message: result.error });
+  res.json({ status: 'success' });
+});
+
+app.post('/api/sitewatch/sites/remove', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const result = sitewatch.removeSite(req.body?.url || '');
+  if (!result.ok) return res.status(404).json({ status: 'error', message: 'site bulunamadi' });
+  res.json({ status: 'success' });
+});
+
+app.post('/api/sitewatch/scan', async (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const url = req.body?.url;
+  if (url) {
+    const result = await sitewatch.scanOne(url);
+    if (result.error) return res.status(404).json({ status: 'error', message: result.error });
+    return res.json({ status: 'success', result });
+  }
+  sitewatch.scanAll('manuel').catch(() => {});
+  res.json({ status: 'success', message: 'Manuel tarama başlatıldı' });
+});
+
+// =====================
 // PHISHGUARD INTEGRATION (read-only SQLite)
 // =====================
 
@@ -3806,6 +3846,8 @@ initWatch();
 initInvader();
 // RackGhost provider (stresse.st alternatifi): CF relay session ile stresser_api
 rackghost.initRackghost();
+// SiteWatcher (uptime izleme): yarim saatlik tur + telegram kanit bildirimi
+sitewatch.initSitewatch();
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {

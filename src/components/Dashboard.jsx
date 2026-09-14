@@ -11,6 +11,7 @@ import AttackHistory from './AttackHistory';
 import PhishPanel from './PhishPanel';
 import LinkWatcher from './LinkWatcher';
 import InvaderPanel from './InvaderPanel';
+import SiteWatcher from './SiteWatcher';
 import ImpactMonitor from './ImpactMonitor';
 import ToastContainer from './ToastContainer';
 
@@ -78,6 +79,7 @@ const Dashboard = () => {
     { id: 'loops', label: 'Looplar' },
     { id: 'watch', label: 'Gözcü' },
     { id: 'invader', label: 'Invader' },
+    { id: 'sitewatch', label: 'Watcher' },
     { id: 'tools', label: 'Araçlar' },
     { id: 'history', label: 'Geçmiş' },
     { id: 'phish', label: 'Phish' }
@@ -104,6 +106,7 @@ const Dashboard = () => {
           { id: 'loops', icon: 'ph-repeat' },
           { id: 'watch', icon: 'ph-link' },
           { id: 'invader', icon: 'ph-shield-check' },
+          { id: 'sitewatch', icon: 'ph-pulse' },
           { id: 'tools', icon: 'ph-wrench' },
           { id: 'history', icon: 'ph-clock-counter-clockwise' },
           { id: 'phish', icon: 'ph-shield-warning' }
@@ -197,6 +200,10 @@ const Dashboard = () => {
 
           {state.activeTab === 'invader' && (
             <InvaderPanel />
+          )}
+
+          {state.activeTab === 'sitewatch' && (
+            <SiteWatcher />
           )}
         </div>
       </main>
