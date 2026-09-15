@@ -104,6 +104,12 @@ function startGroup(loopIds, time) {
   }
   const t = parseInt(time, 10);
   if (!Number.isFinite(t) || t < 10) return { error: 'Geçerli bir süre gir (en az 10 saniye)' };
+  // Tur suresi en uzun loop'un saldiri suresinden kisa olamaz: aksi halde
+  // saldirilar turdan tasip ust uste biner (slot sisirmesi + plan limiti hatasi).
+  const maxLoopTime = Math.max(0, ...loopIds.map((id) => parseInt(deps.activeLoops[id]?.params?.time, 10) || 0));
+  if (t < maxLoopTime) {
+    return { error: `Tur süresi seçilen loop'ların en uzun saldırı süresinden (${maxLoopTime}s) kısa olamaz` };
+  }
   const cap = validateCapacity(loopIds);
   if (!cap.ok) return { error: cap.message };
 
