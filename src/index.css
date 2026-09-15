@@ -468,6 +468,14 @@ body {
     display: block;
     padding-bottom: 4px;
   }
+  /* Islem hucreleri (edit/Cikar butonlari) mobilde kendi satirinda */
+  .mcard-table td:last-child {
+    display: block;
+    padding-top: 4px;
+  }
+  .mcard-table td:last-child > div {
+    justify-content: flex-start !important;
+  }
 }
 
 /* Mobil form: dokunma hedefleri */

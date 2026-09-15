@@ -474,18 +474,18 @@ const LoopManager = () => {
       />
 
       {/* Title bar */}
-      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+      <div className="relative z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-green-500/20 bg-green-500/5 px-3 sm:px-4 py-2.5 text-xs text-green-400">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
         <span className="text-green-300/90">root@loki:~/aktif-looplar</span>
-        <span className="text-green-500/60">$ watch -n3 loopctl list --count={loops.length}</span>
+        <span className="hidden sm:inline text-green-500/60">$ watch -n3 loopctl list --count={loops.length}</span>
         <span className="animate-pulse">▊</span>
         {loops.length > 0 && (
           <button
             onClick={handleStopAll}
             disabled={loading === '__ALL__'}
-            className="ml-auto inline-flex h-7 items-center justify-center rounded-sm border border-red-500/30 px-3 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="ml-auto inline-flex h-7 shrink-0 items-center justify-center rounded-sm border border-red-500/30 px-3 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading === '__ALL__' ? (
               <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
