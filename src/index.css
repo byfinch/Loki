@@ -499,12 +499,13 @@ body {
     position: relative;
   }
 
-  /* Invader: bot+kullanici rozetleri her zaman kartin saginda, ayni satirda */
-  .invader-tbl td:nth-child(4) { order: 90; margin-left: auto; }
+  /* Invader kart duzeni: tarih kendi satirinda; alt satirda rozetler solda,
+     islem butonlari sagda — her kartta birebir ayni duzen. */
+  .invader-tbl td:nth-child(6) { order: 89; flex-basis: 100%; }
+  .invader-tbl td:nth-child(4) { order: 90; }
   .invader-tbl td:nth-child(5) { order: 91; }
-  .invader-tbl td:nth-child(6) { order: 50; }
-  .invader-tbl td:last-child  { order: 92; display: inline-block; padding-top: 0; }
-  .invader-tbl td:last-child > div { justify-content: flex-start !important; }
+  .invader-tbl td:last-child  { order: 92; margin-left: auto; display: inline-block; padding-top: 0; }
+  .invader-tbl td:last-child > div { justify-content: flex-end !important; }
 
   /* Bulgular: durum rozeti sagda, tarihler orta blokta, kopya butonu en sagda */
   .lw-tbl td:nth-child(3) { order: 40; }
