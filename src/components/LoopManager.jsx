@@ -48,7 +48,8 @@ const LoopManager = () => {
   // Secilenlerin en uzun tur suresini oner (kisa saldirilar tura yetissin)
   const suggestedTime = () => {
     let max = 10;
-    state.loops.forEach((l) => {
+    // state.loops map seklinde (loopId -> loop); forEach yerine Object.values
+    Object.values(state.loops || {}).forEach((l) => {
       if (selected.has(l.loopId)) {
         const t = parseInt(l.params?.time, 10) || 0;
         if (t > max) max = t;
