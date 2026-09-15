@@ -84,6 +84,14 @@ Backend degisikligi: `pm2 restart loki-backend`. ecosystem degisikligi:
 Yan servisler: `systemctl restart rackghost-session` (rackghost oturumu),
 `phishguard-xvfb` (goruntu birimi, DISPLAY=:99).
 
+Dikkat:
+- `ecosystem.config.cjs` repoda TRACK EDILMEZ (gizli degerler sunucuda);
+  sunucuda `git reset --hard` yapmadan once yedekle: gerekirse eski commit'ten
+  `git show <eski-commit>:ecosystem.config.cjs > ecosystem.config.cjs` ile geri alinir.
+- `backend/rg_service.py` sunucuda `/opt/rackghost/rg_service.py` olarak AYRI
+  kopya calisir; degisiklikte repo disina da scp ile senkronla.
+- Yan servis gizli degerleri `/etc/rackghost/rg.env` (600 izin) icinde.
+
 ## Kod Stili
 
 - Yorumlar Turkce, teknik terimler Ingilizce. Girinti 2 bosluk.
