@@ -219,8 +219,8 @@ const LinkWatcher = () => {
           <span className="self-center text-[10px] text-gray-600 font-mono">{filtered.length} kayıt</span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="px-1">
+          <table className="mcard-table w-full text-xs">
             <thead>
               <tr className="text-left text-gray-600 text-[10px] uppercase tracking-wider border-b border-green-500/15">
                 <th className="px-2 py-2">&gt; Keyword</th>

@@ -158,12 +158,12 @@ const AttackHistory = () => {
       />
 
       {/* Title bar */}
-      <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+      <div className="relative z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-green-500/20 bg-green-500/5 px-3 sm:px-4 py-2.5 text-xs text-green-400">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
         <span className="text-green-300/90">root@loki:~/saldiri-gecmisi</span>
-        <span className="text-green-500/60">$ tail -f --lines={state.attackHistory.length}</span>
+        <span className="hidden sm:inline text-green-500/60">$ tail -f --lines={state.attackHistory.length}</span>
         <span className="animate-pulse">▊</span>
       </div>
 

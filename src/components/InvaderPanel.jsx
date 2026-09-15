@@ -97,9 +97,9 @@ const InvaderPanel = () => {
           <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
           <span className="text-green-300/90">root@loki:~/invader-control</span>
-          <span className="text-green-500/60">$ watch --both-views</span>
+          <span className="hidden sm:inline text-green-500/60">$ watch --both-views</span>
           <span className="animate-pulse">▊</span>
-          <span className="ml-auto flex items-center gap-3">
+          <span className="ml-auto flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
               aralık:
               <input
@@ -109,12 +109,12 @@ const InvaderPanel = () => {
                 onKeyDown={(e) => e.key === 'Enter' && saveInterval()}
               />
               dk
-              <button onClick={saveInterval} className="px-2 py-1 rounded-sm border border-green-500/30 bg-green-500/10 text-green-400 text-[10px] hover:bg-green-500/20">kaydet</button>
+              <button onClick={saveInterval} className="shrink-0 px-2 py-1 rounded-sm border border-green-500/30 bg-green-500/10 text-green-400 text-[10px] hover:bg-green-500/20">kaydet</button>
             </span>
             <button
               onClick={manualScan}
               disabled={scanning}
-              className="px-4 py-1.5 rounded-sm text-xs font-bold tracking-wider bg-green-500/15 border border-green-500/40 text-green-400 hover:bg-green-500/25 transition disabled:opacity-40"
+              className="shrink-0 px-4 py-1.5 rounded-sm text-xs font-bold tracking-wider bg-green-500/15 border border-green-500/40 text-green-400 hover:bg-green-500/25 transition disabled:opacity-40"
             >
               ŞİMDİ TARA
             </button>
@@ -132,8 +132,8 @@ const InvaderPanel = () => {
           {data.sites.length === 0 ? (
             <div className="py-10 text-center text-green-500/50"><p>izlenen site yok.</p></div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="px-1">
+              <table className="mcard-table w-full text-xs">
                 <thead>
                   <tr className="text-left text-gray-600 text-[10px] uppercase tracking-wider border-b border-green-500/15">
                     <th className="px-2 py-2">&gt; Etiket</th>
