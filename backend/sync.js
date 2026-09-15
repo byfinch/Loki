@@ -59,9 +59,10 @@ async function syncTick(groupId) {
   // Faz 1 — paralel drain: tum loop'larin onceki tur saldirilari upstream'den
   // dusene kadar birlikte bekle (hesap basina tek poll). Sirayla beklemek
   // ilk loop'un atesini geciktirip hizayi bozardi; bu sekilde atesleme ani
-  // tum loop'lar icin ayni kalir.
+  // tum loop'lar icin ayni kalir. Ust sinir 120s: gecis doneminde onceki
+  // uzun saldirilarin olmesi beklenebilir, zombie satirlarda ise akis kilitlenmez.
   if (deps.waitLoopsDrained) {
-    await deps.waitLoopsDrained(runningIds, 90000);
+    await deps.waitLoopsDrained(runningIds, 120000);
   }
   for (const loopId of runningIds) {
     // Bagimsiz turu hala havada olan loop'u bu turda atla: ayni loop'un iki
@@ -73,7 +74,9 @@ async function syncTick(groupId) {
       continue;
     }
     try {
-      await deps.fireLoopRound(loopId);
+      // skipDrain: bekleme faz 1'de toplu yapildi; loop bazinda tekrar
+      // beklemek atislari sirayla geciktirip senkronu bozar.
+      await deps.fireLoopRound(loopId, { skipDrain: true });
     } catch (err) {
       console.error(`[sync ${groupId}] ${loopId} tur hatasi:`, err.message);
       // Grup asla toplu retry yapmaz; hatali loop kendi backoff'unda, saat devam eder.

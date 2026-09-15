@@ -2263,7 +2263,7 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
   }
 }
 
-async function fireLoopRound(loopId) {
+async function fireLoopRound(loopId, { skipDrain = false } = {}) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return;
 
@@ -2293,16 +2293,18 @@ async function fireLoopRound(loopId) {
   // Onceki turun saldirilari kendi time suresi doldugunda stresse.st tarafindan
   // otomatik sonlanir. Yeni tur baslatmadan once onceki turun dustugunu
   // dogrulariz (ID ile; ID yoksa imza ile) — boylece concurrent limitini asmayiz.
+  // Senkron turlarda bekleme syncTick'in paralel fazinda toplu yapilir; burada
+  // tekrar beklemek loop'lari sirayla kilitleyip hizayi bozar (skipDrain).
   const previousRoundIds = loop.roundAttackIds || [];
   if (isRackghost) {
-    if (previousRoundIds.length > 0) {
+    if (previousRoundIds.length > 0 && !skipDrain) {
       // RackGhost saldirilari 'time' dolunca kesin sonlanir; onceki turun
       // dustugunu ongoing ile yoklamak gereksiz istek trafigidir (2+ loop'ta
       // 1 istek/sn rate limit'ine dayaniyordu). Statik kisa buffer yeterli.
       console.log(`[loop ${loopId}] rackghost: onceki tur buffer bekleniyor (3sn)`);
       await new Promise((r) => setTimeout(r, 3000));
     }
-  } else {
+  } else if (!skipDrain) {
     await waitLoopsDrained([loopId], 60000);
   }
   previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
