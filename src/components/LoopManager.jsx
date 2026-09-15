@@ -28,6 +28,61 @@ const LoopManager = () => {
   const [editDraft, setEditDraft] = useState({ note: '', time: 0, interval: 0, concurrents: 1, geo: 'worldwide', group: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // ---- Senkron Tur secim durumu ----
+  const [syncMode, setSyncMode] = useState(false);       // secim modu acik mi
+  const [selected, setSelected] = useState(new Set());   // secili loopId'ler
+  const [sheetOpen, setSheetOpen] = useState(false);     // sure diyalogu (bottom sheet)
+  const [syncTime, setSyncTime] = useState(60);
+  const [syncBusy, setSyncBusy] = useState(false);
+
+  const toggleSelect = (loopId) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(loopId)) next.delete(loopId); else next.add(loopId);
+      return next;
+    });
+  };
+
+  const exitSyncMode = () => { setSyncMode(false); setSelected(new Set()); };
+
+  // Secilenlerin en uzun tur suresini oner (kisa saldirilar tura yetissin)
+  const suggestedTime = () => {
+    let max = 10;
+    state.loops.forEach((l) => {
+      if (selected.has(l.loopId)) {
+        const t = parseInt(l.params?.time, 10) || 0;
+        if (t > max) max = t;
+      }
+    });
+    return max;
+  };
+
+  const handleStartSync = async () => {
+    setSyncBusy(true);
+    try {
+      await apiClient.startSync([...selected], parseInt(syncTime, 10) || 60);
+      showToast(`${selected.size} loop senkronize edildi (${syncTime}s tur)`, 'success');
+      addLog(`Senkron tur başlatıldı: ${selected.size} loop, ${syncTime}s`);
+      setSheetOpen(false);
+      exitSyncMode();
+      await refreshLoops();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleStopSync = async (groupId) => {
+    try {
+      await apiClient.stopSync(groupId);
+      showToast('Senkron bozuldu; loop\'lar bağımsız saatlerine döndü', 'success');
+      await refreshLoops();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const startEdit = (loopId, loop) => {
     setEditingLoopId(loopId);
     setEditDraft({
@@ -268,12 +323,22 @@ const LoopManager = () => {
   const renderLoopRow = (loopId, loop, isMember = false) => (
   
                     <React.Fragment key={loopId}>
-                      <tr className={`border-b border-dashed border-green-500/10 transition-colors duration-300 hover:bg-green-500/5 ${isMember ? 'bg-green-500/[0.02] shadow-[inset_2px_0_0_rgba(0,255,65,0.25)]' : ''} ${flash.id === loopId ? (flash.kind === 'added' ? 'shadow-[inset_0_0_0_1px_rgba(0,255,65,0.7)] bg-green-500/10' : 'shadow-[inset_2px_0_0_#fbbf24] bg-amber-500/10') : ''}`}>
+                      <tr
+                        onClick={() => syncMode && !loop.syncGroup && toggleSelect(loopId)}
+                        className={`border-b border-dashed border-green-500/10 transition-colors duration-300 hover:bg-green-500/5 ${isMember ? 'bg-green-500/[0.02] shadow-[inset_2px_0_0_rgba(0,255,65,0.25)]' : ''} ${flash.id === loopId ? (flash.kind === 'added' ? 'shadow-[inset_0_0_0_1px_rgba(0,255,65,0.7)] bg-green-500/10' : 'shadow-[inset_2px_0_0_#fbbf24] bg-amber-500/10') : ''} ${syncMode && !loop.syncGroup ? 'cursor-pointer' : ''} ${syncMode && selected.has(loopId) ? 'bg-cyan-500/10 shadow-[inset_2px_0_0_rgba(0,212,255,0.7)]' : ''}`}
+                      >
                         <td className="px-3 py-2.5 align-middle">
                           <div className="flex items-center gap-2">
+                            {syncMode && !loop.syncGroup && (
+                              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border text-[11px] transition-all ${
+                                selected.has(loopId)
+                                  ? 'border-cyan-400 bg-cyan-500/20 text-cyan-300'
+                                  : 'border-cyan-500/30 text-transparent'
+                              }`}>✓</span>
+                            )}
                             <span
                               title="URL'yi kopyala"
-                              onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                              onClick={(e) => { if (!syncMode) { e.stopPropagation(); handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer); } }}
                               className="inline-block w-[210px] cursor-pointer truncate text-left text-green-200 transition-colors hover:text-green-400"
                             >
                               {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
@@ -310,6 +375,15 @@ const LoopManager = () => {
                           {loop.params?.method?.toUpperCase()}
                           {loop.params?.provider === 'rackghost' && (
                             <span className="ml-1 rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 align-middle text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
+                          )}
+                          {loop.syncGroup && (
+                            <span
+                              className="ml-1 cursor-pointer rounded-sm border border-cyan-400/50 bg-cyan-500/15 px-1 align-middle text-[8px] font-bold tracking-wider text-cyan-300"
+                              title={`Senkron grup (${loop.syncSize} loop, ${loop.syncTime}s tur) — bozmak için tıkla`}
+                              onClick={(e) => { e.stopPropagation(); handleStopSync(loop.syncGroup); }}
+                            >
+                              ⏱{loop.syncTime}s
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
@@ -481,6 +555,19 @@ const LoopManager = () => {
         <span className="text-green-300/90">root@loki:~/aktif-looplar</span>
         <span className="hidden sm:inline text-green-500/60">$ watch -n3 loopctl list --count={loops.length}</span>
         <span className="animate-pulse">▊</span>
+        {loops.length > 1 && (
+          <button
+            onClick={() => (syncMode ? exitSyncMode() : setSyncMode(true))}
+            className={`inline-flex h-7 shrink-0 items-center justify-center rounded-sm border px-3 text-[11px] transition-all ${
+              syncMode
+                ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300 shadow-[0_0_10px_rgba(0,212,255,0.3)]'
+                : 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10'
+            }`}
+            title="Seçili loop'ları aynı saatle çalıştır"
+          >
+            {syncMode ? 'Seçimden Çık' : '⏱ Senkron'}
+          </button>
+        )}
         {loops.length > 0 && (
           <button
             onClick={handleStopAll}
@@ -623,6 +710,65 @@ const LoopManager = () => {
           </div>
         )}
       </div>
+
+      {/* Senkron secim: yapiskan alt bar (mobil+d masaustu ortak) */}
+      {syncMode && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-cyan-500/30 bg-black/95 px-4 py-3 backdrop-blur flex items-center justify-between gap-3">
+          <span className="text-[12px] text-cyan-300">{selected.size} loop seçili</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setSyncTime(suggestedTime()); setSheetOpen(true); }}
+              disabled={selected.size < 2}
+              className="rounded-sm border border-cyan-500/50 bg-cyan-500/15 px-4 py-2 text-[12px] font-bold text-cyan-300 transition hover:bg-cyan-500/25 disabled:opacity-40"
+            >
+              Seçilenleri Senkronize Et{selected.size >= 2 ? ` (${selected.size})` : ''}
+            </button>
+            <button
+              onClick={exitSyncMode}
+              className="rounded-sm border border-white/15 px-4 py-2 text-[12px] text-gray-400 transition hover:bg-white/5"
+            >
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sure diyalogu: bottom sheet (mobil-dogru kalip) */}
+      {sheetOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" onClick={() => setSheetOpen(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl border-t border-cyan-500/30 bg-[#041208] p-5 shadow-[0_0_40px_rgba(0,212,255,0.15)]">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15" />
+            <div className="text-[13px] font-bold text-cyan-300 mb-1">⏱ Ortak tur süresi</div>
+            <p className="text-[11px] text-gray-500 mb-3">
+              {selected.size} loop aynı anda başlayıp aynı anda bitecek. Seçilenlerin en uzunu: {suggestedTime()}s.
+            </p>
+            <label className="mb-1 block text-[10px] tracking-wider text-cyan-500/60">&gt; sure_sn</label>
+            <input
+              type="number"
+              min={10}
+              value={syncTime}
+              onChange={(e) => setSyncTime(e.target.value)}
+              className="mb-4 w-full min-h-[46px] rounded-sm border border-cyan-500/40 bg-black px-3 py-2.5 text-[15px] text-cyan-300 focus:outline-none focus:shadow-[0_0_12px_rgba(0,212,255,0.2)]"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleStartSync}
+                disabled={syncBusy || (parseInt(syncTime, 10) || 0) < 10}
+                className="flex-1 min-h-[46px] rounded-sm border border-cyan-500/50 bg-cyan-500/20 text-[13px] font-bold text-cyan-200 transition hover:bg-cyan-500/30 disabled:opacity-40"
+              >
+                {syncBusy ? 'Başlatılıyor...' : 'Senkronize Et'}
+              </button>
+              <button
+                onClick={() => setSheetOpen(false)}
+                className="min-h-[46px] rounded-sm border border-white/15 px-5 text-[13px] text-gray-400 transition hover:bg-white/5"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

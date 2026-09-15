@@ -445,5 +445,19 @@ export const apiClient = {
   async triggerSitewatchScan(url = null) {
     const res = await apiFetch(`${API_BASE}/sitewatch/scan`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(url ? { url } : {}) });
     return handleResponse(res);
+  },
+
+  // ---- Senkron Tur ----
+  async startSync(loopIds, time) {
+    const res = await apiFetch(`${API_BASE}/stresse/sync/start`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ loopIds, time }) });
+    return handleResponse(res);
+  },
+  async stopSync(groupId) {
+    const res = await apiFetch(`${API_BASE}/stresse/sync/stop`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ groupId }) });
+    return handleResponse(res);
+  },
+  async removeLoopFromSync(loopId) {
+    const res = await apiFetch(`${API_BASE}/stresse/sync/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ loopId }) });
+    return handleResponse(res);
   }
 };
