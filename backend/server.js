@@ -503,6 +503,16 @@ function buildTargetUrl(host, port) {
   return port ? `${cleanHost}:${port}` : cleanHost;
 }
 
+// Kayit defteri <-> upstream satir eslemesi icin normalize imza.
+// stresse /ongoing bazi satirlari attack_id: null donduruyor; ID tekillestirmesi
+// bu satirlari yakalayamadigindan ayni saldiri iki kez sayiliyordu. Hedef+yontem
+// imzasiyla butceleme yapilir: protokol ve sondaki slash'lar atilir, kucuk harf.
+function rowSigKey(target, method) {
+  const t = String(target || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (!t || !method) return null;
+  return `${t}|${String(method).toUpperCase()}`;
+}
+
 async function stopAttackApi(apiClient, apiToken, attackId) {
   const url = `https://stresse.st/stop?id=${encodeURIComponent(attackId)}&key=${encodeURIComponent(apiToken)}`;
   const res = await apiClient.get(url);
@@ -1681,6 +1691,17 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       }
     });
 
+    // Upstream'in attack_id'siz (null) satirlari ID tekillestirmesinden kacar;
+    // ayni fiziksel saldiri hem upstream hem kayit defteri satiri olarak IKI KEZ
+    // sayilmamasin diye hedef+yontem bazinda butcele: her null-id'li upstream
+    // satiri, ayni imzali bir kayit defteri satirini "yer".
+    const nullIdBudget = new Map();
+    ongoing.forEach((item) => {
+      if (item.attack_id || item.id) return;
+      const sig = rowSigKey(item.target || item.host, item.method);
+      if (sig) nullIdBudget.set(sig, (nullIdBudget.get(sig) || 0) + 1);
+    });
+
     Object.values(activeAttacks).forEach((attack) => {
       // Sadece ayni session'a ait saldirilari ekle (diger kullanicilarin saldirilarini karistirma)
       if (attack.sessionId !== sessionId) return;
@@ -1688,6 +1709,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       if (attack.username && attack.username !== username) return;
       // Zaten listede varsa tekrar ekleme
       if (existingIds.has(attack.attackId)) return;
+      // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
+      const sig = rowSigKey(buildTargetUrl(attack.host, attack.port), attack.method);
+      if (sig && (nullIdBudget.get(sig) || 0) > 0) {
+        nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
+        return;
+      }
 
       const expires = new Date(attack.expiresAt || 0).getTime();
       const timeLeft = Math.max(0, Math.round((expires - now) / 1000));
@@ -3724,15 +3751,29 @@ async function liveHubTick(hub, username) {
     {
       const nowMs = Date.now();
       const seenIds = new Set(ongoingData.map((r) => String(r.attack_id || '')));
+      // Upstream'in attack_id'siz (null) satirlari ID tekillestirmesinden kacar;
+      // ayni saldiri iki kez sayilmasin diye hedef+yontem butcesi uygulanir.
+      const nullIdBudget = new Map();
+      ongoingData.forEach((r) => {
+        if (r.attack_id) return;
+        const sig = rowSigKey(r.target || r.host, r.method);
+        if (sig) nullIdBudget.set(sig, (nullIdBudget.get(sig) || 0) + 1);
+      });
       Object.values(activeAttacks).forEach((a) => {
         if (a.provider === 'rackghost') return; // onlar yukaridaki blokta
         const owner = a.username || sessions[a.sessionId]?.username;
         if (owner !== username) return;
         const id = String(a.attackId);
         if (seenIds.has(id)) return;
+        const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
+        // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
+        const sig = rowSigKey(target, a.method);
+        if (sig && (nullIdBudget.get(sig) || 0) > 0) {
+          nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
+          return;
+        }
         const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
         if (!Number.isFinite(tlSec) || tlSec <= 0) return;
-        const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
         ongoingData.push({
           attack_id: id,
           target,
@@ -3998,7 +4039,7 @@ rackghost.initRackghost();
 // SiteWatcher (uptime izleme): yarim saatlik tur + telegram kanit bildirimi
 sitewatch.initSitewatch();
 // Senkron Tur Koordinatoru: paylasilan saatli loop gruplari (restart'ta geri yuklenir)
-sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState });
+sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds });
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {

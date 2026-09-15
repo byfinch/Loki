@@ -20,7 +20,7 @@ const GROUPS_FILE = path.join(DATA_DIR, 'sync-groups.json');
 
 const STAGGER_MS = 400; // launch'lar arasi bosluk (burst yumusatma)
 
-let deps = null;           // { activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState }
+let deps = null;           // { activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds }
 let groups = {};           // { id: { loopIds, time, createdAt, roundCount, timer } }
 
 function readJson(file, fallback) {
@@ -55,6 +55,14 @@ async function syncTick(groupId) {
   g.roundCount += 1;
   console.log(`[sync ${groupId}] tur ${g.roundCount}: ${runningIds.length} loop atesleniyor (${g.time}s)`);
   for (const loopId of runningIds) {
+    // Bagimsiz turu hala havada olan loop'u bu turda atla: ayni loop'un iki
+    // turu ust uste binip slot tuketimini ikiye katlamasin (senkron baslarken
+    // kuyruktaki son tur henuz bitmemis olabilir). Saat sasilmaz; loop
+    // sonraki turda yakalar.
+    if (deps.activeLoopRounds?.has(loopId)) {
+      console.log(`[sync ${groupId}] ${loopId} onceki turu hala calisiyor, bu tur atlaniyor`);
+      continue;
+    }
     try {
       await deps.fireLoopRound(loopId);
     } catch (err) {
