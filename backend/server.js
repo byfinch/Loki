@@ -20,6 +20,7 @@ const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invader
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 const rackghost = require('./rackghost');
 const sitewatch = require('./sitewatch');
+const sync = require('./sync');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -2021,7 +2022,9 @@ async function processLoopQueue() {
   while (loopQueue.length > 0) {
     const loopId = loopQueue.shift();
     const loop = activeLoops[loopId];
-    if (!loop || !loop.running) continue;
+    // Senkronlu loop'lar koordinatorun paylasilan saatiyle calisir; kuyruk
+    // bunlara dokunmaz (senkron bozulunca bagimsiz kuyruka donerler).
+    if (!loop || !loop.running || loop.syncGroup) continue;
 
     // Ayni loopId'den ayni anda sadece 1 tur calissin; aktif turu varsa bekle.
     if (activeLoopRounds.has(loopId)) {
@@ -2139,7 +2142,10 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
   }
 }
 
-async function runLoopRound(loopId) {
+// Tur atesleme cekirdegi: onceki tur beklemesi + launch + kayit + hata sayaci.
+// runLoopRound (kendi saati) ve senkron koordinatoru (paylasilan saat) ortak kullanir.
+// Donus: turda basarili saldiri sayisi (0 = tamamen basarisiz).
+async function fireLoopRound(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return;
 
@@ -2316,9 +2322,18 @@ async function runLoopRound(loopId) {
     }
   }
 
+  return roundSuccesses;
+}
+
+// Loop'un kendi saatiyle calisan tur dongusu (senkron disi): cekirdek turu
+// atesler, ilk-tur sonucunu bildirir, time + backoff bekler.
+async function runLoopRound(loopId) {
+  const loop = activeLoops[loopId];
+  const roundSuccesses = await fireLoopRound(loopId);
+
   // /loop endpoint'i ilk turun launch sonucunu bekliyor olabilir; kalici
   // hatalarda loop olusumu bastan reddedilsin diye sonucu bildir.
-  if (loop.resolveFirstRound) {
+  if (loop && loop.resolveFirstRound) {
     const errText = loop.lastError || '';
     // Slot limiti gibi tekrar denemeyle duzelmeyecek hatalar kalici sayilir;
     // loop hic olusmasin, kullanici gercek sebebi baslatma aninda gorsun.
@@ -3296,13 +3311,54 @@ app.get('/api/stresse/loops', async (req, res) => {
       if (owner !== sessionUser) return;
       // Ham sessionId'yi disari sizdirma; yerine owner koy.
       const { sessionId: _sid, resolveFirstRound: _r, ...publicLoop } = value;
-      loops.push({ loopId: key, ...publicLoop, owner });
+      const syncInfo = sync.getGroupOf(key);
+      loops.push({ loopId: key, ...publicLoop, owner, ...(syncInfo ? { syncGroup: syncInfo.id, syncTime: syncInfo.time, syncSize: syncInfo.size } : {}) });
     });
 
-    res.json({ status: 'success', count: loops.length, loops });
+    res.json({ status: 'success', count: loops.length, loops, syncGroups: sync.getState() });
   } catch (error) {
     handleEndpointError(res, error, 'Loop list error');
   }
+});
+
+// ---- Senkron Tur (paylasilan saatli loop gruplari) ----
+
+// Senkron baslat: { loopIds: [...], time: saniye }
+app.post('/api/stresse/sync/start', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const sessionUser = sessions[sessionId]?.username;
+  if (!sessionUser) return res.status(401).json({ status: 'error', message: 'Session user not found' });
+
+  const { loopIds, time } = req.body || {};
+  // Sadece kendi loop'lari senkronlanabilir
+  const owned = (Array.isArray(loopIds) ? loopIds : []).filter((id) => {
+    const loop = activeLoops[id];
+    return loop && getLoopOwner(loop) === sessionUser;
+  });
+  const result = sync.startGroup(owned, time);
+  if (result.error) return res.status(400).json({ status: 'error', message: result.error });
+  res.json({ status: 'success', groupId: result.groupId });
+});
+
+// Senkron boz: { groupId }
+app.post('/api/stresse/sync/stop', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const { groupId } = req.body || {};
+  const result = sync.stopGroup(groupId);
+  if (result.error) return res.status(404).json({ status: 'error', message: result.error });
+  res.json({ status: 'success' });
+});
+
+// Tek loop'u senkrondan cikar: { loopId }
+app.post('/api/stresse/sync/remove', (req, res) => {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+  const { loopId } = req.body || {};
+  const result = sync.removeLoop(loopId);
+  if (result.error) return res.status(404).json({ status: 'error', message: result.error });
+  res.json({ status: 'success' });
 });
 
 /**
@@ -3941,6 +3997,8 @@ initInvader();
 rackghost.initRackghost();
 // SiteWatcher (uptime izleme): yarim saatlik tur + telegram kanit bildirimi
 sitewatch.initSitewatch();
+// Senkron Tur Koordinatoru: paylasilan saatli loop gruplari (restart'ta geri yuklenir)
+sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState });
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
