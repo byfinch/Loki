@@ -1830,7 +1830,16 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
           registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined }, null, parseInt(slots?.slots, 10) || 1);
         });
         addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: count });
-        return res.json({ status: 'success', message: `${result.slotsTotal || result.attackIds.length} saldırı başlatıldı (RackGhost)`, attackIds: result.attackIds });
+        // Frontend stresse cevap seklini bekler (successCount/failCount/total);
+        // bunlar olmadan basarili saldiri hata gibi gosteriliyordu.
+        return res.json({
+          status: 'success',
+          total: count,
+          successCount: result.attackIds.length,
+          failCount: count - result.attackIds.length,
+          message: `${result.slotsTotal || result.attackIds.length} saldırı başlatıldı (RackGhost)`,
+          attackIds: result.attackIds
+        });
       } catch (err) {
         return res.status(err.sessionExpired ? 503 : 502).json({ status: 'error', message: `RackGhost: ${err.message}` });
       }
