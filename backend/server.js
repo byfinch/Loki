@@ -2172,6 +2172,39 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
 // Tur atesleme cekirdegi: onceki tur beklemesi + launch + kayit + hata sayaci.
 // runLoopRound (kendi saati) ve senkron koordinatoru (paylasilan saat) ortak kullanir.
 // Donus: turda basarili saldiri sayisi (0 = tamamen basarisiz).
+// Hesap basina paylasilan /ongoing onbellegi: eszamanli drain bekleyen
+// duzinece loop ayni veriyi paylasir; aksi halde her loop kendi poll'unu
+// acar ve stresse 429 (rate limit) ile karsilar. Anahtar username'dir —
+// ayni hesabin farkli oturumlari ayni listeyi gorur.
+const ongoingShared = new Map(); // username -> { at, list, inflight }
+const ONGOING_SHARED_MS = 2000;
+async function getOngoingShared(sessionId) {
+  const session = sessions[sessionId];
+  if (!session) return [];
+  const key = session.username;
+  const now = Date.now();
+  const entry = ongoingShared.get(key) || { at: 0, list: [], inflight: null };
+  ongoingShared.set(key, entry);
+  if (entry.inflight) return entry.inflight;
+  if (now - entry.at < ONGOING_SHARED_MS) return entry.list;
+  entry.inflight = (async () => {
+    try {
+      const client = getClient(sessionId);
+      const res = await client.get(`/ongoing/${key}`);
+      entry.list = Array.isArray(res.data) ? res.data : (res.data?.attacks || []);
+    } catch (err) {
+      // Hata (429 dahil): bayat veriyi koru; 'at' guncellenir ki hemen
+      // tekrar denenmesin — ONGOING_SHARED_MS kadar dogal backoff.
+      console.warn(`[drain] /ongoing hatasi (${key}):`, err.message);
+    } finally {
+      entry.at = Date.now();
+      entry.inflight = null;
+    }
+    return entry.list;
+  })();
+  return entry.inflight;
+}
+
 // Yeni tur oncesi onceki turun saldirilarinin upstream'den dustugunu bekler.
 // Dogrulanmis loop'lar attack_id ile; ID'siz (dogrulanamayan tur) loop'lar
 // hedef+yontem imzasinin /ongoing satir sayisi sifira inene kadar bekler —
@@ -2204,15 +2237,7 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
     for (const [sessionId, sLoopIds] of bySession) {
       const session = sessions[sessionId];
       if (!session) { sLoopIds.forEach((id) => pending.delete(id)); continue; }
-      let list;
-      try {
-        const client = getClient(sessionId);
-        const res = await client.get(`/ongoing/${session.username}`);
-        list = Array.isArray(res.data) ? res.data : (res.data?.attacks || []);
-      } catch (err) {
-        console.warn(`[drain] /ongoing hatasi (${session.username}):`, err.message);
-        continue; // bu hesabi bu tur atla; dis dongu 1sn sonra tekrar dener
-      }
+      const list = await getOngoingShared(sessionId);
       const ongoingIds = new Set(list.map((a) => a.attack_id || a.id));
       const sigCounts = new Map();
       list.forEach((a) => {
