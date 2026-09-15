@@ -3611,6 +3611,32 @@ async function liveHubTick(hub, username) {
         });
       });
     }
+    // Taze kayitli stresse saldirilari: upstream /ongoing gec guncellenir (5-15sn);
+    // kullanici sayfayi yenilemek zorunda kalmasin diye baslatma aninda kayit
+    // defterinden goster; upstream gorunur olunca ayni satir onunla devam eder.
+    {
+      const nowMs = Date.now();
+      const seenIds = new Set(ongoingData.map((r) => String(r.attack_id || '')));
+      Object.values(activeAttacks).forEach((a) => {
+        if (a.provider === 'rackghost') return; // onlar yukaridaki blokta
+        const owner = a.username || sessions[a.sessionId]?.username;
+        if (owner !== username) return;
+        const id = String(a.attackId);
+        if (seenIds.has(id)) return;
+        const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
+        if (!Number.isFinite(tlSec) || tlSec <= 0) return;
+        const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
+        ongoingData.push({
+          attack_id: id,
+          target,
+          method: a.method,
+          timeLeft: String(tlSec),
+          count: a.concurrents || 1,
+          ...(a.loopId ? { loopId: a.loopId } : {}),
+          ...(a.group ? { group: a.group } : {})
+        });
+      });
+    }
     hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
     hub.consecutiveErrors = 0;
