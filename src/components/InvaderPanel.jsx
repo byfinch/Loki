@@ -99,7 +99,7 @@ const InvaderPanel = () => {
           <span className="text-green-300/90">root@loki:~/invader-control</span>
           <span className="hidden sm:inline text-green-500/60">$ watch --both-views</span>
           <span className="animate-pulse">▊</span>
-          <span className="ml-auto flex flex-wrap items-center gap-2">
+          <span className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
             <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
               aralık:
               <input
