@@ -64,25 +64,28 @@ async function syncTick(groupId) {
   if (deps.waitLoopsDrained) {
     await deps.waitLoopsDrained(runningIds, 120000);
   }
-  for (const loopId of runningIds) {
-    // Bagimsiz turu hala havada olan loop'u bu turda atla: ayni loop'un iki
-    // turu ust uste binip slot tuketimini ikiye katlamasin (senkron baslarken
-    // kuyruktaki son tur henuz bitmemis olabilir). Saat sasilmaz; loop
-    // sonraki turda yakalar.
-    if (deps.activeLoopRounds?.has(loopId)) {
-      console.log(`[sync ${groupId}] ${loopId} onceki turu hala calisiyor, bu tur atlaniyor`);
-      continue;
-    }
-    try {
+  // Faz 2 — atesleme: await YOK. fireLoopRound icindeki ID dogrulama pollamasi
+  // (~10s, L4'te hic ID gelmedigi icin hep zamana dayali) sirayla await
+  // edilirse her loop ~10s arayla ateslenir ve senkron dagilir. Atislar kucuk
+  // kademeyle paralel baslatilir; sonuc/hata yonetimi loop'un kendi icinde.
+  runningIds.forEach((loopId, i) => {
+    setTimeout(() => {
+      const loop = deps.activeLoops[loopId];
+      // Ates aninda hala grupta ve calisir durumda mi? (arada senkron
+      // bozulduysa/loop durduysa bagimsiz turu biz ateslemeyelim)
+      if (!loop?.running || loop.syncGroup !== groupId) return;
+      // Bagimsiz turu hala havada olan loop'u bu turda atla: ayni loop'un
+      // iki turu ust uste binip slot tuketimini ikiye katlamasin.
+      if (deps.activeLoopRounds?.has(loopId)) {
+        console.log(`[sync ${groupId}] ${loopId} onceki turu hala calisiyor, bu tur atlaniyor`);
+        return;
+      }
       // skipDrain: bekleme faz 1'de toplu yapildi; loop bazinda tekrar
       // beklemek atislari sirayla geciktirip senkronu bozar.
-      await deps.fireLoopRound(loopId, { skipDrain: true });
-    } catch (err) {
-      console.error(`[sync ${groupId}] ${loopId} tur hatasi:`, err.message);
-      // Grup asla toplu retry yapmaz; hatali loop kendi backoff'unda, saat devam eder.
-    }
-    await new Promise((r) => setTimeout(r, STAGGER_MS));
-  }
+      deps.fireLoopRound(loopId, { skipDrain: true })
+        .catch((err) => console.error(`[sync ${groupId}] ${loopId} tur hatasi:`, err.message));
+    }, i * STAGGER_MS);
+  });
   persistGroups();
   g.timer = setTimeout(() => syncTick(groupId).catch((e) => console.error(`[sync ${groupId}] tick hatasi:`, e)), g.time * 1000);
 }
