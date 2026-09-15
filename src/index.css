@@ -487,3 +487,28 @@ body {
     min-height: 42px;
   }
 }
+
+/* Mobil kartlarda sabit slot ahengi: her kartta ayni sey ayni yerde.
+   Rozetler/islem butonlari kartin sag-alt kosesinde siralanir. */
+@media (max-width: 767px) {
+  .mcard-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 10px;
+    position: relative;
+  }
+
+  /* Invader: bot+kullanici rozetleri her zaman kartin saginda, ayni satirda */
+  .invader-tbl td:nth-child(4) { order: 90; margin-left: auto; }
+  .invader-tbl td:nth-child(5) { order: 91; }
+  .invader-tbl td:nth-child(6) { order: 50; }
+  .invader-tbl td:last-child  { order: 92; display: inline-block; padding-top: 0; }
+  .invader-tbl td:last-child > div { justify-content: flex-start !important; }
+
+  /* Bulgular: durum rozeti sagda, tarihler orta blokta, kopya butonu en sagda */
+  .lw-tbl td:nth-child(3) { order: 40; }
+  .lw-tbl td:nth-child(4) { order: 50; display: inline-block; width: 100%; }
+  .lw-tbl td:nth-child(5) { order: 90; margin-left: auto; }
+  .lw-tbl td:nth-child(6) { order: 91; }
+}

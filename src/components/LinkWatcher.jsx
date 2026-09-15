@@ -220,7 +220,7 @@ const LinkWatcher = () => {
         </div>
 
         <div className="px-1">
-          <table className="mcard-table w-full text-xs">
+          <table className="mcard-table lw-tbl w-full text-xs">
             <thead>
               <tr className="text-left text-gray-600 text-[10px] uppercase tracking-wider border-b border-green-500/15">
                 <th className="px-2 py-2">&gt; Keyword</th>
