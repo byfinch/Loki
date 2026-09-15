@@ -2284,7 +2284,7 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
     host: loop.params.host,
     port: loop.params.port,
     method: loop.params.method,
-    time: loop.params.time,
+    time: loop.syncTime || loop.params.time, // senkronlu loop'ta etkin sure senkron suresidir
     layer: loop.params.layer,
     concurrents: loop.params.concurrents,
     hasSession: !!session
