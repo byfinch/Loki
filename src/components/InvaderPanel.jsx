@@ -92,7 +92,7 @@ const InvaderPanel = () => {
       {/* izlenen siteler */}
       <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
         <div className="pointer-events-none absolute inset-0 z-0" style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,65,0.015) 0 1px, transparent 1px 3px)' }} />
-        <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <div className="relative z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-green-500/20 bg-green-500/5 px-3 sm:px-4 py-2.5 text-xs text-green-400">
           <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
@@ -184,7 +184,7 @@ const InvaderPanel = () => {
 
       {/* gecmis */}
       <div className="relative w-full overflow-hidden rounded border border-green-500/25 bg-[#020a04]/80 font-mono shadow-[0_0_40px_rgba(0,255,65,0.06)]">
-        <div className="relative z-10 flex items-center gap-2.5 border-b border-green-500/20 bg-green-500/5 px-4 py-2.5 text-xs text-green-400">
+        <div className="relative z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-green-500/20 bg-green-500/5 px-3 sm:px-4 py-2.5 text-xs text-green-400">
           <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
