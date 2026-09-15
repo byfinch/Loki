@@ -2311,6 +2311,10 @@ async function fireLoopRound(loopId) {
   loop.lastRoundAt = new Date().toISOString();
   const round = loop.roundCount;
 
+  // Senkronlu loop'larin saldiri suresi senkron suresidir (kullanici secti);
+  // boylece grup gercekten ayni anda baslayip ayni anda biter.
+  const effectiveParams = loop.syncTime ? { ...loop.params, time: loop.syncTime } : loop.params;
+
   // Yeni tur ID'lerini temizle
   loop.roundAttackIds = [];
 
@@ -2324,11 +2328,11 @@ async function fireLoopRound(loopId) {
     if (loop.params.provider === 'rackghost') {
       // RackGhost: stresse launch akisindan bagimsiz, dogrudan adapter uzerinden.
       const rgResult = await rackghost.startAttack({
-        host: loop.params.host,
-        port: loop.params.port,
-        time: loop.params.time,
-        concurrents: loop.params.concurrents,
-        method: loop.params.method
+        host: effectiveParams.host,
+        port: effectiveParams.port,
+        time: effectiveParams.time,
+        concurrents: effectiveParams.concurrents,
+        method: effectiveParams.method
       });
       data = { status: 'success' };
       attackIds = rgResult.attackIds;
@@ -2342,14 +2346,14 @@ async function fireLoopRound(loopId) {
         rgSlotsById[String(it.id)] = Math.max(parseInt(it.slots, 10) || 1, (loop.params.concurrents || 1) * rgMult);
       });
     } else {
-      ({ data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, loop.params, loop.params.concurrents, loopId));
+      ({ data, attackIds, elapsedSec } = await launchAttacksGet(loop.sessionId, effectiveParams, effectiveParams.concurrents, loopId));
     }
     if (attackIds.length > 0) {
       roundSuccesses = attackIds.length;
       loop.roundAttackIds = attackIds;
       attackIds.forEach((attackId) => {
         const slots = isRackghost && typeof rgSlotsById !== 'undefined' ? (rgSlotsById[String(attackId)] || 1) : 1;
-        registerAttack(attackId, loop.sessionId, loop.params, loopId, slots, elapsedSec || 0);
+        registerAttack(attackId, loop.sessionId, effectiveParams, loopId, slots, elapsedSec || 0);
       });
       const successCount = isRackghost && typeof rgSlotsById !== 'undefined'
         ? Object.values(rgSlotsById).reduce((a, b) => a + b, 0)
@@ -2401,7 +2405,7 @@ async function fireLoopRound(loopId) {
     // Basarili tur sonrasi loop history'sinin expiresAt'ini uzat; yoksa cleanup
     // uzun suren loop'larda kaydi erken "completed" isaretleyebilir.
     if (loop.historyId && attackHistory[loop.historyId]) {
-      attackHistory[loop.historyId].expiresAt = new Date(Date.now() + loop.params.time * 1000).toISOString();
+      attackHistory[loop.historyId].expiresAt = new Date(Date.now() + (parseInt(effectiveParams.time, 10) || 0) * 1000).toISOString();
     }
   }
 

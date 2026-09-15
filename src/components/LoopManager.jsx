@@ -387,7 +387,11 @@ const LoopManager = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.time}s</td>
+                        <td className="px-3 py-2.5 text-center text-gray-400">
+                          {loop.syncGroup ? (
+                            <span className="text-cyan-300" title={`Senkron süresi: saldırılar ${loop.syncTime}s sürer (kendi süresi: ${loop.params?.time}s)`}>{loop.syncTime}s</span>
+                          ) : `${loop.params?.time}s`}
+                        </td>
                         <td className="px-3 py-2.5 text-center text-gray-400">{loop.params?.interval}s</td>
                         <td className="px-3 py-2.5 text-center font-bold text-cyan-400">{loop.roundCount || 0}</td>
                         <td className="px-3 py-2.5 text-center">
@@ -742,7 +746,7 @@ const LoopManager = () => {
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15" />
             <div className="text-[13px] font-bold text-cyan-300 mb-1">⏱ Ortak tur süresi</div>
             <p className="text-[11px] text-gray-500 mb-3">
-              {selected.size} loop aynı anda başlayıp aynı anda bitecek. Seçilenlerin en uzunu: {suggestedTime()}s.
+              {selected.size} loop aynı anda başlayıp aynı anda bitecek; girilen süre senkron boyunca saldırı süresi olur. Senkron bozulunca loop'lar kendi sürelerine döner.
             </p>
             <label className="mb-1 block text-[10px] tracking-wider text-cyan-500/60">&gt; sure_sn</label>
             <input

@@ -2,7 +2,9 @@
  * sync.js — Senkron Tur Koordinatoru
  *
  * Secili loop'lari tek paylasilan saatle calistirir: ayni anda basla,
- * ayni anda bitir, ayni anda tekrar basla. Ortak tur suresini kullanici belirler.
+ * ayni anda bitir, ayni anda tekrar basla. Kullanicinin girdigi sure senkron
+ * boyunca loop'larin SALDIRI SURESI olur (loop.syncTime); senkron bozulunca
+ * loop'lar kendi params.time degerlerine doner.
  *
  * stresse dostu tasarim:
  * - Kademeli atesleme (launch'lar 400sn aralikla) — sert burst yok.
@@ -111,12 +113,6 @@ function startGroup(loopIds, time) {
   }
   const t = parseInt(time, 10);
   if (!Number.isFinite(t) || t < 10) return { error: 'Geçerli bir süre gir (en az 10 saniye)' };
-  // Tur suresi en uzun loop'un saldiri suresinden kisa olamaz: aksi halde
-  // saldirilar turdan tasip ust uste biner (slot sisirmesi + plan limiti hatasi).
-  const maxLoopTime = Math.max(0, ...loopIds.map((id) => parseInt(deps.activeLoops[id]?.params?.time, 10) || 0));
-  if (t < maxLoopTime) {
-    return { error: `Tur süresi seçilen loop'ların en uzun saldırı süresinden (${maxLoopTime}s) kısa olamaz` };
-  }
   const cap = validateCapacity(loopIds);
   if (!cap.ok) return { error: cap.message };
 
@@ -124,7 +120,9 @@ function startGroup(loopIds, time) {
   groups[id] = { loopIds: [...loopIds], time: t, createdAt: new Date().toISOString(), roundCount: 0, timer: null };
   loopIds.forEach((loopId) => {
     const loop = deps.activeLoops[loopId];
-    if (loop) loop.syncGroup = id;
+    // syncTime: senkron suresince loop'un saldiri suresi BU deger olur —
+    // kullanicinin girdigi sure baslangic/bitis hizasinin temelidir.
+    if (loop) { loop.syncGroup = id; loop.syncTime = t; }
   });
   persistGroups();
   deps.saveState();
@@ -143,6 +141,7 @@ function stopGroup(groupId) {
     const loop = deps.activeLoops[loopId];
     if (loop && loop.running) {
       delete loop.syncGroup;
+      delete loop.syncTime;
       deps.runLoop(loopId).catch(() => {});
     }
   });
@@ -161,6 +160,7 @@ function removeLoop(loopId) {
     const loop = deps.activeLoops[loopId];
     if (loop) {
       delete loop.syncGroup;
+      delete loop.syncTime;
       if (loop.running) deps.runLoop(loopId).catch(() => {});
     }
     if (g.loopIds.length < 2) {
@@ -194,7 +194,7 @@ function initSync(d) {
     const validIds = (g.loopIds || []).filter((loopId) => deps.activeLoops[loopId]?.running);
     if (validIds.length >= 2) {
       groups[id] = { ...g, loopIds: validIds, timer: null };
-      validIds.forEach((loopId) => { deps.activeLoops[loopId].syncGroup = id; });
+      validIds.forEach((loopId) => { deps.activeLoops[loopId].syncGroup = id; deps.activeLoops[loopId].syncTime = g.time; });
       syncTick(id).catch(() => {});
       console.log(`[sync ${id}] geri yuklendi (${validIds.length} loop, tur: ${g.time}s)`);
     }
