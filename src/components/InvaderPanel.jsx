@@ -36,10 +36,17 @@ const InvaderPanel = () => {
     return () => clearInterval(t);
   }, [refresh, refreshHistory]);
 
-  const badge = (st) => {
+  const badge = (st, label) => {
     const map = { OK: ['text-green-400 border-green-500/30 bg-green-500/10'], DOWN: ['text-red-400 border-red-500/30 bg-red-500/10'], BLOCKED: ['text-yellow-400 border-yellow-500/30 bg-yellow-500/10'], OBSERVED: ['text-sky-300 border-sky-500/30 bg-sky-500/10'] };
     const [cls] = map[st] || ['text-gray-400 border-white/10 bg-white/5'];
-    return <span className={`px-2 py-0.5 rounded-sm border text-[10px] font-bold ${cls}`}>{st || '—'}</span>;
+    // Mobil kartlarda tablo basligi gizli oldugundan rozetler anlam tasimali:
+    // "OK OK" yerine "bot: OK" / "kullanıcı: OK" gorunur.
+    return (
+      <span className="inline-flex items-center gap-1">
+        {label && <span className="text-[9px] uppercase tracking-wide text-gray-600">{label}</span>}
+        <span className={`px-2 py-0.5 rounded-sm border text-[10px] font-bold ${cls}`}>{st || '—'}</span>
+      </span>
+    );
   };
 
   const manualScan = async () => {
@@ -151,8 +158,8 @@ const InvaderPanel = () => {
                       <td className="px-2 py-2.5 text-green-300">{s.name}</td>
                       <td className="px-2 py-2.5"><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{s.url}</a></td>
                       <td className="px-2 py-2.5 text-cyan-300/80">{s.expect || '—'}</td>
-                      <td className="px-2 py-2.5">{badge(s.status)}</td>
-                      <td className="px-2 py-2.5">{badge(s.ustatus)}</td>
+                      <td className="px-2 py-2.5">{badge(s.status, 'bot')}</td>
+                      <td className="px-2 py-2.5">{badge(s.ustatus, 'kullanıcı')}</td>
                       <td className="px-2 py-2.5 text-[10px] text-gray-500">{s.since ? new Date(s.since).toLocaleString('tr-TR') : '—'}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex gap-1.5">
@@ -210,8 +217,8 @@ const InvaderPanel = () => {
                   <tr key={i} className="border-b border-dashed border-green-500/10">
                     <td className="px-2 py-2 text-[10px] text-gray-500 whitespace-nowrap">{new Date(h.ts).toLocaleString('tr-TR')}</td>
                     <td className="px-2 py-2 text-green-300">{h.name}</td>
-                    <td className="px-2 py-2">{badge(h.status)}</td>
-                    <td className="px-2 py-2">{badge(h.ustatus)}</td>
+                    <td className="px-2 py-2">{badge(h.status, 'bot')}</td>
+                    <td className="px-2 py-2">{badge(h.ustatus, 'kullanıcı')}</td>
                   </tr>
                 ))}
               </tbody>

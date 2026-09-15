@@ -309,7 +309,8 @@ const AttackHistory = () => {
                   </tr>
                 ))}
                 {Array.from({ length: Math.max(0, itemsPerPage - paginatedRecords.length) }).map((_, idx) => (
-                  <tr key={`empty-${idx}`} className="h-10 border-b border-dashed border-green-500/10">
+                  // Bos dolgu satirlari: mobilde kart gibi gorunmesin (bos kutu kirliligi)
+                  <tr key={`empty-${idx}`} className="hidden md:table-row h-10 border-b border-dashed border-green-500/10">
                     <td className="px-3 py-2.5" colSpan={10}></td>
                   </tr>
                 ))}

@@ -251,11 +251,14 @@ const LinkWatcher = () => {
                           className="ml-1.5 px-1 py-px rounded-sm text-[9px] bg-green-500/10 text-green-400/80 border border-green-500/20 cursor-help align-middle"
                           title={`Diğer siteler: ${f.sites.filter((s) => s !== f.site).join(', ')}`}
                         >
-                          +{f.sites.length - 1}
+                          +{f.sites.length - 1} site
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-2.5 text-[10px] text-gray-500 whitespace-nowrap">{fmt(f.firstSeen)}<br />{fmt(f.lastSeen)}</td>
+                    <td className="px-2 py-2.5 text-[10px] text-gray-500 whitespace-nowrap">
+                      <span className="text-gray-700">ilk:</span> {fmt(f.firstSeen)}<br />
+                      <span className="text-gray-700">son:</span> {fmt(f.lastSeen)}
+                    </td>
                     <td className="px-2 py-2.5">
                       {f.gone
                         ? <span className="px-1.5 py-0.5 rounded-sm text-[10px] bg-red-500/15 text-red-400 border border-red-500/25">KAYBOLDU</span>
