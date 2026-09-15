@@ -124,7 +124,10 @@ async function pollUpdates() {
         });
       }
     }
-    writeJson(path.join(DATA_DIR, 'watch-tg-offset.json'), { offset: updateOffset });
+    // Offset'i sadece gercekten update islendiginde diske yaz (disk churn onlemi)
+    if ((r.result || []).length) {
+      writeJson(path.join(DATA_DIR, 'watch-tg-offset.json'), { offset: updateOffset });
+    }
   } catch (e) {
     console.warn('[watch-tg] update poll hatasi:', e.message);
   }

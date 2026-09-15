@@ -92,8 +92,10 @@ function getAllowedOrigins() {
 }
 
 function isOriginAllowed(origin) {
-  // Bazı proxy/geliştirme durumlarında origin undefined gelebilir; bu durumda izin ver.
-  if (!origin || origin === 'undefined' || origin === 'null') return true;
+  // Tarayici disi istemcilerde origin hic olmayabilir; onlara izin ver.
+  // Ancak 'undefined'/'null' STRING'i (sandboxed iframe senaryolari) kabul edilmez.
+  if (!origin) return true;
+  if (origin === 'undefined' || origin === 'null') return false;
   const { defaults, envOrigins } = getAllowedOrigins();
   if (defaults.some((re) => re.test(origin))) return true;
   if (envOrigins.includes(origin)) return true;
@@ -176,12 +178,8 @@ let attackGroups = (() => {
 })();
 
 function saveGroups() {
-  try {
-    ensureDataDir();
-    fs.writeFileSync(GROUPS_FILE, JSON.stringify(attackGroups, null, 2));
-  } catch (err) {
-    console.warn('[groups] kaydedilemedi:', err.message);
-  }
+  // Atomic yazma (safeWriteJson kalibi): yazim ortasinda crash gruplari bozmaz
+  safeWriteJson(GROUPS_FILE, attackGroups);
 }
 
 // Ismiyle grup bul veya olustur; grup adi dondurur (null = grupsuz).
@@ -972,6 +970,9 @@ function cleanupExpiredAttacks() {
 
   if (removed > 0) {
     console.log(`[cleanup] Removed ${removed} expired attack(s)`);
+    // Restart penceresinde expired kayitlar geri yuklenip hayalet gorunmesin
+    // diye bellek-diski hemen esitle (30sn auto-save beklenmez).
+    saveState();
     checkSlotsEmpty();
   }
 }
@@ -1495,7 +1496,7 @@ app.post('/api/stresse/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Username and password required' });
     }
 
-    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `sess_${Date.now()}_${crypto.randomBytes(12).toString('base64url')}`;
     try {
       const { user, plan } = await performStresseLogin(sessionId, username, password);
       res.json({
@@ -1757,7 +1758,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     if (attackIds.length > 0) {
       attackIds.forEach((attackId) => {
-        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group) || undefined });
+        registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined });
       });
       addAttackHistory(sessionId, { host, port, method, time, layer, note }, {
         concurrents: 1,
@@ -1815,7 +1816,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
         const result = await rackghost.startAttack({ host, port: parseInt(port), time: parseInt(time), concurrents: count, method });
         result.attackIds.forEach((attackId) => {
           const slots = (result.raw || []).find((it) => String(it.id) === String(attackId));
-          registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group) || undefined }, null, parseInt(slots?.slots, 10) || 1);
+          registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, provider: 'rackghost', group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined }, null, parseInt(slots?.slots, 10) || 1);
         });
         addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: count });
         return res.json({ status: 'success', message: `${result.slotsTotal || result.attackIds.length} saldırı başlatıldı (RackGhost)`, attackIds: result.attackIds });
@@ -1867,7 +1868,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     attackIds.forEach((attackId) => {
-      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group) || undefined });
+      registerAttack(attackId, sessionId, { host, port: parseInt(port), method, time, layer, group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined });
     });
 
     const successCount = attackIds.length;
@@ -2678,9 +2679,13 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
       const batchResults = await runWithConcurrency(batch, stopSingle, concurrent);
       results.push(...batchResults);
 
-      // Durdurulan ID'leri ilgili loop'larin round listelerinden cikar;
-      // loop'lar kendi intervaliyle devam etsin. Sadece bu hesabin loop'lari.
+      // Sadece upstream'in basariyla durdurdugu ID'leri loop round
+      // listelerinden cikar; reddedilenler listede kalsin.
+      const batchStopped = new Set(
+        batchResults.filter((r) => r.status === 'success').map((r) => String(r.id))
+      );
       batch.forEach((id) => {
+        if (!batchStopped.has(String(id))) return;
         Object.keys(activeLoops).forEach((key) => {
           const loop = activeLoops[key];
           if (getLoopOwner(loop) !== sessionUser) return;
@@ -2723,9 +2728,15 @@ app.post('/api/stresse/stop/bulk', async (req, res) => {
     saveState();
 
     // Durdurulan tum ID'leri kayittan sil ve history'yi guncelle.
+    // Sadece upstream'in BASARILI durdurdugu ID'ler silinir; upstream'in
+    // reddettigi ID'ler kayitta kalir (hayalet saldiri olusmasin).
     // Atlanan (baska hesaba ait) ID'lere dokunma.
+    const upstreamStopped = new Set(
+      results.filter((r) => r.status === 'success').map((r) => String(r.id))
+    );
     const stoppedLoopIds = new Set();
     allowedIds.forEach((id) => {
+      if (!upstreamStopped.has(String(id))) return;
       const attackRecord = activeAttacks[id];
       const loopIdOfAttack = attackRecord?.loopId;
       unregisterAttack(id);
@@ -2806,9 +2817,23 @@ const loopEditHandler = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Bekleme 0 veya daha buyuk olmali' });
     }
 
-    const planCheck = checkPlanLimits(sessionId, newTime, newConcurrents, loopId);
-    if (!planCheck.ok) {
-      return res.status(403).json({ status: 'error', message: planCheck.message });
+    // Provider'a gore limit dogrulamasi: rackghost loop'ta stresse plani
+    // uygulanmaz; rackghost LIMITS + slot carpani (girilen x carpan) gecerli.
+    if (p.provider === 'rackghost') {
+      const rgMult = rackghost.slotMultiplier(p.method);
+      if (newConcurrents * rgMult > rackghost.LIMITS.maxConcurrents) {
+        return res.status(403).json({ status: 'error', message: rgMult > 1
+          ? `RackGhost: bu method ${rgMult}x slot tüketir; en fazla ${Math.floor(rackghost.LIMITS.maxConcurrents / rgMult)} girebilirsiniz.`
+          : `RackGhost: en fazla ${rackghost.LIMITS.maxConcurrents} concurrent girebilirsiniz.` });
+      }
+      if (newTime > rackghost.LIMITS.maxTime) {
+        return res.status(403).json({ status: 'error', message: `RackGhost maksimum süre ${rackghost.LIMITS.maxTime} saniye` });
+      }
+    } else {
+      const planCheck = checkPlanLimits(sessionId, newTime, newConcurrents, loopId);
+      if (!planCheck.ok) {
+        return res.status(403).json({ status: 'error', message: planCheck.message });
+      }
     }
 
     p.time = newTime;
@@ -3004,7 +3029,7 @@ app.post('/api/accounts/ensure', async (req, res) => {
       return res.json({ status: 'success', username, sessionId: live });
     }
 
-    const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newSessionId = `sess_${Date.now()}_${crypto.randomBytes(12).toString('base64url')}`;
     await performStresseLogin(newSessionId, username, KNOWN_ACCOUNTS.get(username));
     console.log(`[accounts] Arka planda login: ${username}`);
     res.json({ status: 'success', username, sessionId: newSessionId });
@@ -3023,9 +3048,9 @@ app.post('/api/invader/scan', (req, res) => {
   res.json({ status: 'success', message: 'Tarama baslatildi' });
 });
 
-app.post('/api/invader/sites', (req, res) => {
+app.post('/api/invader/sites', async (req, res) => {
   if (!watchAuth(req, res)) return;
-  const r = invaderAddSite(req.body || {});
+  const r = await invaderAddSite(req.body || {});
   if (r.error) return res.status(400).json({ status: 'error', message: r.error });
   res.json({ status: 'success', sites: r.sites });
 });
@@ -3371,6 +3396,8 @@ app.get('/api/stresse/loop/:loopId', async (req, res) => {
  */
 app.get('/api/check-host', async (req, res) => {
   try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
     const { host, type = 'ping' } = req.query;
     if (!host) return res.status(400).json({ status: 'error', message: 'host required' });
 
@@ -3447,6 +3474,8 @@ app.get('/api/impact', (req, res) => {
  */
 app.get('/api/ping-pe', async (req, res) => {
   try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
     const { host } = req.query;
     if (!host) return res.status(400).json({ status: 'error', message: 'host required' });
 
@@ -3466,6 +3495,8 @@ app.get('/api/ping-pe', async (req, res) => {
  */
 app.get('/api/fofa', async (req, res) => {
   try {
+    const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+    if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
     const { query, email, key, size = 10 } = req.query;
     if (!query) return res.status(400).json({ status: 'error', message: 'query required' });
     if (!email || !key) {
@@ -3640,12 +3671,19 @@ async function liveHubTick(hub, username) {
     hub.lastOngoing = ongoingData;
     if (user) hub.lastUser = user.data;
     hub.consecutiveErrors = 0;
+    // Basarili tick: bu session calisiyor demektir; iyi bilinen session olarak isle.
+    hub.lastGoodSessionId = hub.sessionId;
     // user yoksa payload'a koyma; client'lar son user'i kullanmaya devam eder.
     const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
     if (user) payload.user = hub.lastUser;
     liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
   } catch (err) {
     hub.consecutiveErrors += 1;
+    // Session hatasi variysa (401/gecersiz oturum) son calisan session'a don;
+    // bayat sekmenin session'i tum hub'i bozmasin.
+    if (hub.lastGoodSessionId && hub.sessionId !== hub.lastGoodSessionId) {
+      hub.sessionId = hub.lastGoodSessionId;
+    }
     liveHubBroadcast(hub, `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
   }
   if (hub.clients.size === 0) return; // close handler hub'i zaten temizledi
@@ -3688,6 +3726,7 @@ app.get('/api/stresse/live/:username', (req, res) => {
     hub = {
       clients: new Set(),
       sessionId,
+      lastGoodSessionId: null,
       timer: null,
       lastOngoing: null,
       lastUser: null,
@@ -3696,8 +3735,11 @@ app.get('/api/stresse/live/:username', (req, res) => {
     };
     liveHubs.set(username, hub);
   }
-  // Son gelen session gecerli (ortak panel: herkes herkesi izleyebilir).
+  // Yeni baglanan client'in session'i aday olarak alinir; ilk BASARILI tick'te
+  // lastGood'a yazilir. Bayat/gecersiz session'li sekme hub'i bozamaz:
+  // hata durumunda calisan son iyi session'a geri donulur.
   hub.sessionId = sessionId;
+  if (!hub.lastGoodSessionId) hub.lastGoodSessionId = sessionId;
   hub.clients.add(res);
 
   if (!hub.timer) {
@@ -3738,14 +3780,6 @@ app.get('/api/rackghost/status', (req, res) => {
 });
 
 // Cookie/proxy guncelleme (CF relay oturumu yenileme)
-app.post('/api/rackghost/config', (req, res) => {
-  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
-  if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
-  const { cfClearance, sessionId: rgSession, userAgent, proxy, api } = req.body || {};
-  const status = rackghost.updateConfig({ cfClearance, sessionId: rgSession, userAgent, proxy, api });
-  res.json({ status: 'success', ...status });
-});
-
 // Method listesi (L4/L7 etiketli)
 app.get('/api/rackghost/methods', (req, res) => {
   const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
@@ -3769,8 +3803,21 @@ app.get('/api/rackghost/ongoing', async (req, res) => {
 app.post('/api/rackghost/stop', async (req, res) => {
   const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
   if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
-  const { id, host } = req.body || {};
-  if (!id || !host) return res.status(400).json({ status: 'error', message: 'id ve host gerekli' });
+  const sessionUser = sessions[sessionId]?.username;
+  if (!sessionUser) return res.status(401).json({ status: 'error', message: 'Session user not found' });
+
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
+
+  // Sahiplik kontrolu: baska hesaba ait rackghost saldirisi durdurulamaz
+  // (stresse /stop ile ayni izolasyon). host istemciden degil kayittan cozulur.
+  const record = activeAttacks[String(id)];
+  if (record && record.username && record.username !== sessionUser) {
+    return res.status(403).json({ status: 'error', message: 'Bu saldırı sizin hesabınıza ait değil' });
+  }
+  const host = record?.host || req.body.host;
+  if (!host) return res.status(400).json({ status: 'error', message: 'host cozulemedi' });
+
   try {
     const data = await rackghost.stopAttack(id, host);
     res.json({ status: 'success', data });
@@ -3789,10 +3836,10 @@ app.get('/api/sitewatch/state', (req, res) => {
   res.json(sitewatch.getState());
 });
 
-app.post('/api/sitewatch/sites', (req, res) => {
+app.post('/api/sitewatch/sites', async (req, res) => {
   const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
   if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
-  const result = sitewatch.addSite(req.body?.url);
+  const result = await sitewatch.addSite(req.body?.url);
   if (result.error) return res.status(400).json({ status: 'error', message: result.error });
   res.json({ status: 'success' });
 });

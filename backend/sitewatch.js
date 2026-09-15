@@ -10,12 +10,14 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { isPublicHost } = require('./netutil');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SITES_FILE = path.join(DATA_DIR, 'sitewatch-sites.json');
 
-const TG_TOKEN = process.env.SITEWATCH_TG_TOKEN || '***SITEWATCH-TOKEN***';
-const TG_CHAT = process.env.SITEWATCH_TG_CHAT || '-1004308931076';
+// Token koda GOMMEZ; ecosystem (LOKI_SITEWATCH_TG_TOKEN) uzerinden gelir.
+const TG_TOKEN = process.env.LOKI_SITEWATCH_TG_TOKEN || process.env.SITEWATCH_TG_TOKEN || '';
+const TG_CHAT = process.env.LOKI_SITEWATCH_TG_CHAT || process.env.SITEWATCH_TG_CHAT || '';
 // DOWN alarmlari ozelden gidenler (Burak, Turco)
 const DM_USERS = (process.env.SITEWATCH_DM || '8849693458,8757169131').split(',').filter(Boolean);
 const PROOF_SERVICE = process.env.SITEWATCH_PROOF_SERVICE || 'https://image.thum.io/get/width/1024/';
@@ -92,6 +94,7 @@ function captureProof(siteUrl) {
 }
 
 async function tgApi(method, body, isFile = false) {
+  if (!TG_TOKEN || !TG_CHAT) return; // token yoksa bildirimler sessizce devre disi
   if (isFile) {
     const FormData = require('form-data');
     const form = new FormData();
@@ -215,10 +218,13 @@ async function scanOne(url, silent = false) {
   return { url, status: site.status, ms: site.ms };
 }
 
-function addSite(url) {
+async function addSite(url) {
   let u = String(url || '').trim();
   if (!u) return { error: 'url gerekli' };
   if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+  // SSRF korumasi: loopback/RFC1918/link-local/metadata hostlari reddet
+  const host = u.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+  if (!(await isPublicHost(host))) return { error: 'Bu adres izlenemez (özel/iç ağ adresi)' };
   u = u.replace(/\/+$/, '') + '/';
   if (sites.some((s) => s.url === u)) return { error: 'site zaten izleniyor' };
   const site = { url: u, addedAt: new Date().toISOString(), status: null, ms: null, lastCheckedAt: null, downSince: null, history: [] };
@@ -247,6 +253,9 @@ function getState() {
 }
 
 function initSitewatch() {
+  if (!TG_TOKEN || !TG_CHAT) {
+    console.warn('[sitewatch] TG token/chat tanimli degil; telegram bildirimleri devre disi');
+  }
   // Otomatik turlar yarim saat dilimlerine hizali (:00/:30)
   const scheduleNext = () => {
     const now = Date.now();

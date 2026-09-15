@@ -20,13 +20,23 @@ import urllib.request
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-EMAIL = "***RG-EMAIL***"
-PASSWORD = "***RG-PASSWORD***"
-CAPSOLVER_KEY = "***CAPSOLVER-KEY***"
-PROXY = "http://***PROXY-CREDS***@63.125.93.57:50100"
+# Kimlikler koda GOMMEZ; systemd unit Environment satirlarindan okunur.
+# (rg_service.py repoda durdugu icin duz metin sifre geçmişi temizlendi.)
+import os
+EMAIL = os.environ.get("RG_EMAIL", "")
+PASSWORD = os.environ.get("RG_PASSWORD", "")
+CAPSOLVER_KEY = os.environ.get("RG_CAPSOLVER_KEY", "")
+PROXY = os.environ.get("RG_PROXY", "")
 BASE = "https://rackghost.com"
 API_PATH = "/panel/stresser_api.php"
 LOGIN_RENEW_BEFORE_SEC = 20 * 60  # oturumu bu surede bir tazele
+
+if not all([EMAIL, PASSWORD, CAPSOLVER_KEY, PROXY]):
+    raise SystemExit("[rg_service] RG_EMAIL/RG_PASSWORD/RG_CAPSOLVER_KEY/RG_PROXY env tanimli degil")
+
+# Loopback'te bile auth: SSRF/zincirleme erisimde servisin RackGhost hesabi
+# kotuye kullanilmasin diye paylasilan gizli deger (EnvironmentFile'dan).
+LOCAL_TOKEN = os.environ.get("RG_LOCAL_TOKEN", "")
 
 _state = {"state": "kapali", "detail": "", "lastOk": None}
 _lock = threading.Lock()
@@ -39,7 +49,17 @@ def log(m):
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 
+_last_rg_req = [0.0]
+
+
 def _http(url, method="GET", data=None, json_body=None, timeout=30):
+    # RackGhost rate limit (1 istek/sn): login zinciri dahil HER istek
+    # arasina zorunlu bosluk. api_call _lock altinda cagildigi icin
+    # zaman damgasi yarissiz ilerler.
+    wait = 1.15 - (time.time() - _last_rg_req[0])
+    if wait > 0:
+        time.sleep(wait)
+    _last_rg_req[0] = time.time()
     proxy_handler = urllib.request.ProxyHandler({"http": PROXY, "https": PROXY})
     opener = urllib.request.build_opener(proxy_handler)
     headers = {"User-Agent": _ua, "Accept": "*/*"}
@@ -178,7 +198,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _auth_ok(self):
+        return LOCAL_TOKEN and self.headers.get("x-rg-token") == LOCAL_TOKEN
+
     def do_GET(self):
+        if not self._auth_ok():
+            self._send(401, {"error": "unauthorized"})
+            return
         if self.path == "/health":
             self._send(200, {
                 "ok": _state["state"] == "hazir",
@@ -190,6 +216,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        if not self._auth_ok():
+            self._send(401, {"error": "unauthorized"})
+            return
         if self.path != "/api":
             self._send(404, {"error": "not found"})
             return

@@ -14,6 +14,8 @@ const axios = require('axios');
 const { sendTelegram } = require('./telegram');
 
 const SERVICE_URL = 'http://127.0.0.1:3210';
+// Loopback servis paylasilan gizli degeri (SSRF/zincirleme kotuye kullanim onlemi)
+const SERVICE_TOKEN = process.env.LOKI_RG_LOCAL_TOKEN || '';
 const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
 
 const METHODS = [
@@ -97,7 +99,7 @@ async function throttle() {
 async function apiCall(payload) {
   try {
     await throttle();
-    const res = await axios.post(`${SERVICE_URL}/api`, payload, { timeout: 120000 });
+    const res = await axios.post(`${SERVICE_URL}/api`, payload, { timeout: 120000, headers: { 'x-rg-token': SERVICE_TOKEN } });
     const data = res.data;
     if (!data || !data.ok) {
       const err = new Error((data && data.error) || 'servis hatasi');
@@ -217,7 +219,7 @@ async function watchdogTick() {
   let healthy = false;
   let detail = '';
   try {
-    const res = await axios.get(`${SERVICE_URL}/health`, { timeout: 10000 });
+    const res = await axios.get(`${SERVICE_URL}/health`, { timeout: 10000, headers: { 'x-rg-token': SERVICE_TOKEN } });
     const h = res.data || {};
     healthy = Boolean(h.ok);
     detail = h.ok ? '' : (h.detail || `servis: ${h.state}`);

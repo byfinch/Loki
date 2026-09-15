@@ -13,6 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const { isPublicHost } = require('./netutil');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SITES_FILE = path.join(DATA_DIR, 'invader-sites.json');
@@ -307,10 +308,13 @@ async function testAndNotify() {
 }
 
 // Site yonetimi + aralik + gecmis (panel icin)
-function invaderAddSite({ name, url, expect }) {
+async function invaderAddSite({ name, url, expect }) {
   const sites = readJson(SITES_FILE, []);
   if (!url) return { error: 'url gerekli' };
   if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+  // SSRF korumasi: loopback/RFC1918/link-local/metadata hostlari reddet
+  const host = url.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+  if (!(await isPublicHost(host))) return { error: 'Bu adres izlenemez (özel/iç ağ adresi)' };
   const entry = { name: String(name || url).trim(), url, expect: String(expect || '').trim() };
   if (!sites.some((s) => s.url === entry.url)) sites.push(entry);
   writeJson(SITES_FILE, sites);
