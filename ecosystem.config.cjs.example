@@ -1,0 +1,24 @@
+// Loki backend pm2 ecosystem sablonu.
+// Gercek degerler SUNUCUDA tutulur; bu dosya repoya gizli deger icermeden ornektir.
+module.exports = {
+  apps: [{
+    name: 'loki-backend',
+    script: 'backend/server.js',
+    env: {
+      PORT: 3001,
+      LOKI_TELEGRAM_BOT_TOKEN: '<panel-bildirim-bot-token>',
+      LOKI_TELEGRAM_CHAT_ID: '<panel-bildirim-chat-id>',
+      LOKI_WATCH_TG_TOKEN: '<link-monitor-bot-token>',
+      LOKI_WATCH_TG_CHAT: '<link-monitor-chat-id>',
+      LOKI_WATCH_MENTIONS: '<id:ad,id:ad>',
+      LOKI_KNOWN_ACCOUNTS: '<user1:pass1,user2:pass2>',
+      LOKI_STRESSE_PROXY: '',
+      LOKI_STRESSE_BIND_IP: '135.181.60.97',
+      LOKI_SITEWATCH_TG_TOKEN: '<sitewatcher-bot-token>',
+      LOKI_SITEWATCH_TG_CHAT: '<sitewatcher-chat-id>',
+      LOKI_RG_LOCAL_TOKEN: '<yerel-servis-paylasilan-gizli>',
+      INVADER_TG_TOKEN: '<invader-bot-token>',
+      INVADER_TG_CHAT: '<invader-chat-id>'
+    }
+  }]
+};

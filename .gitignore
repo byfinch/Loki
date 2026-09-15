@@ -47,3 +47,4 @@ rrt_body.txt
 dbg-*.png
 .rrt-profile/
 rrt-*.py
+ecosystem.config.cjs
