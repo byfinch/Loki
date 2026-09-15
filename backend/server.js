@@ -43,12 +43,23 @@ function stresseProxyConfig() {
 
 // stresse.st trafigini belirli bir yerel IPv4 adresinden cikarma (or. birincil IP
 // blackhole'dayken ikincil IP'ye gecis). Bos ise isletim sistemi secimi kullanilir.
+// NOT: axios'un top-level `localAddress` opsiyonu bu surumde yok sayiliyor
+// (kaynak IP testiyle kanitlandi); bind, ozel https.Agent ile yapilmali.
 const STRESSE_BIND_IP = process.env.LOKI_STRESSE_BIND_IP || '';
+let stresseBindAgent = null;
 if (STRESSE_BIND_IP) {
+  const http = require('http');
+  const https = require('https');
+  stresseBindAgent = {
+    httpAgent: new http.Agent({ localAddress: STRESSE_BIND_IP }),
+    httpsAgent: new https.Agent({ localAddress: STRESSE_BIND_IP })
+  };
   console.log(`[net] stresse.st trafigi yerel IP'den cikiyor: ${STRESSE_BIND_IP}`);
 }
 function stresseBindConfig() {
-  return STRESSE_BIND_IP ? { localAddress: STRESSE_BIND_IP } : {};
+  if (!stresseBindAgent) return {};
+  // Bind varsa axios'un kendi proxy mantigini da kapat (agent yolunda kalsin).
+  return { proxy: false, ...stresseBindAgent };
 }
 
 initTelegram();
