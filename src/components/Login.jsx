@@ -46,14 +46,14 @@ const Login = () => {
 
       <div className="w-full max-w-md relative z-10">
         {/* Logo */}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-5 sm:mb-6">
           <img
             src="/logo.png"
             alt="Loki Panel"
             width="112"
             height="112"
             loading="eager"
-            className="h-24 w-24 sm:h-28 sm:w-28 drop-shadow-[0_0_25px_rgba(0,255,65,0.35)]"
+            className="h-20 w-20 sm:h-28 sm:w-28 drop-shadow-[0_0_25px_rgba(0,255,65,0.35)]"
           />
         </div>
 
@@ -69,7 +69,7 @@ const Login = () => {
         </div>
 
         {/* Form kartı */}
-        <div className="glass-panel rounded-2xl p-6 sm:p-8 neon-border relative overflow-hidden">
+        <div className="glass-panel rounded-2xl p-5 sm:p-8 neon-border relative overflow-hidden">
           <div className="scan-sweep"></div>
 
           {error && (
@@ -92,9 +92,11 @@ const Login = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-black/60 border border-white/10 rounded-lg px-4 py-3 font-mono text-white placeholder-gray-600 transition-all duration-300 focus:border-green-400/60 focus:outline-none focus:shadow-[0_0_18px_rgba(0,255,65,0.2)] focus:bg-black/80 hover:border-white/20"
+                className="w-full min-h-[46px] bg-black/60 border border-white/10 rounded-lg px-4 py-3 text-base font-mono text-white placeholder-gray-600 transition-all duration-300 focus:border-green-400/60 focus:outline-none focus:shadow-[0_0_18px_rgba(0,255,65,0.2)] focus:bg-black/80 hover:border-white/20"
                 placeholder="Yavrukurt"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
                 required
               />
             </div>
@@ -108,7 +110,7 @@ const Login = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/60 border border-white/10 rounded-lg px-4 py-3 font-mono text-white placeholder-gray-600 transition-all duration-300 focus:border-green-400/60 focus:outline-none focus:shadow-[0_0_18px_rgba(0,255,65,0.2)] focus:bg-black/80 hover:border-white/20"
+                className="w-full min-h-[46px] bg-black/60 border border-white/10 rounded-lg px-4 py-3 text-base font-mono text-white placeholder-gray-600 transition-all duration-300 focus:border-green-400/60 focus:outline-none focus:shadow-[0_0_18px_rgba(0,255,65,0.2)] focus:bg-black/80 hover:border-white/20"
                 placeholder="••••••••"
                 autoComplete="current-password"
                 required
@@ -118,7 +120,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-bold font-mono py-3 rounded-lg tracking-wider uppercase transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+              className="w-full min-h-[48px] bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-bold font-mono py-3 rounded-lg tracking-wider uppercase transition-all duration-300 hover:shadow-[0_0_25px_rgba(0,255,65,0.35)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
