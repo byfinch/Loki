@@ -604,7 +604,7 @@ const LoopManager = () => {
                     </div>
                     <div className={`rw ${isOpen ? '' : 'closed'}`}>
                       <div className="rw-inner">
-                        <table className="mcard-table w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
+                        <table className="mcard-table loop-tbl w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
                           <tbody>
                             {members.map(([loopId, loop]) => renderLoopRow(loopId, loop, true))}
                           </tbody>
@@ -615,7 +615,7 @@ const LoopManager = () => {
                 );
               })}
 
-            <table className="mcard-table w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
+            <table className="mcard-table loop-tbl w-full table-fixed text-xs"><colgroup><col style={{ width: '34%' }} /><col style={{ width: '12%' }} /><col style={{ width: '9%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '19%' }} /></colgroup>
               <tbody>
                 {ungroupedLoops.map(([loopId, loop]) => renderLoopRow(loopId, loop))}
               </tbody>

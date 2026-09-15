@@ -517,3 +517,19 @@ body {
   .lw-tbl td:nth-child(5) { order: 50; margin-left: auto; }
   .lw-tbl td:nth-child(6) { order: 51; }
 }
+
+/* Loop kart duzeni: hedef tam satir; parametreler tek satir (method/sure/aralik/tur/hata);
+   islem butonlari alt satirda solda — her kartta ayni. */
+@media (max-width: 767px) {
+  .loop-tbl td:nth-child(1) { order: 10; flex-basis: 100%; }
+  .loop-tbl td:nth-child(2) { order: 20; }
+  .loop-tbl td:nth-child(3) { order: 21; }
+  .loop-tbl td:nth-child(4) { order: 22; }
+  .loop-tbl td:nth-child(5) { order: 23; }
+  .loop-tbl td:nth-child(5)::before { content: 'tur: '; color: #4b5563; font-size: 9px; }
+  .loop-tbl td:nth-child(6) { order: 24; }
+  .loop-tbl td:nth-child(6)::before { content: 'hata: '; color: #4b5563; font-size: 9px; }
+  .loop-tbl tr::after { content: ''; order: 45; flex-basis: 100%; height: 0; }
+  .loop-tbl td:last-child  { order: 50; display: inline-block; padding-top: 0; }
+  .loop-tbl td:last-child > div { justify-content: flex-start !important; }
+}
