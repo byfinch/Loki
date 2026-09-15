@@ -508,9 +508,12 @@ body {
   .invader-tbl td:last-child  { order: 52; margin-left: auto; display: inline-block; padding-top: 0; }
   .invader-tbl td:last-child > div { justify-content: flex-end !important; }
 
-  /* Bulgular: durum rozeti sagda, tarihler orta blokta, kopya butonu en sagda */
-  .lw-tbl td:nth-child(3) { order: 40; }
-  .lw-tbl td:nth-child(4) { order: 50; display: inline-block; width: 100%; }
-  .lw-tbl td:nth-child(5) { order: 90; margin-left: auto; }
-  .lw-tbl td:nth-child(6) { order: 91; }
+  /* Bulgular kart duzeni: her alan tam satir (keyword, link, site, tarih),
+     durum+kopya alt satirda sagda — icerik genisliginden bagimsiz sabit. */
+  .lw-tbl td:nth-child(1) { order: 10; flex-basis: 100%; }
+  .lw-tbl td:nth-child(2) { order: 20; flex-basis: 100%; }
+  .lw-tbl td:nth-child(3) { order: 30; flex-basis: 100%; }
+  .lw-tbl td:nth-child(4) { order: 40; flex-basis: 100%; }
+  .lw-tbl td:nth-child(5) { order: 50; margin-left: auto; }
+  .lw-tbl td:nth-child(6) { order: 51; }
 }
