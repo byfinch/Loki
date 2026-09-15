@@ -20,7 +20,7 @@ const GROUPS_FILE = path.join(DATA_DIR, 'sync-groups.json');
 
 const STAGGER_MS = 400; // launch'lar arasi bosluk (burst yumusatma)
 
-let deps = null;           // { activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds }
+let deps = null;           // { activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds, waitLoopsDrained }
 let groups = {};           // { id: { loopIds, time, createdAt, roundCount, timer } }
 
 function readJson(file, fallback) {
@@ -54,6 +54,13 @@ async function syncTick(groupId) {
   }
   g.roundCount += 1;
   console.log(`[sync ${groupId}] tur ${g.roundCount}: ${runningIds.length} loop atesleniyor (${g.time}s)`);
+  // Faz 1 — paralel drain: tum loop'larin onceki tur saldirilari upstream'den
+  // dusene kadar birlikte bekle (hesap basina tek poll). Sirayla beklemek
+  // ilk loop'un atesini geciktirip hizayi bozardi; bu sekilde atesleme ani
+  // tum loop'lar icin ayni kalir.
+  if (deps.waitLoopsDrained) {
+    await deps.waitLoopsDrained(runningIds, 90000);
+  }
   for (const loopId of runningIds) {
     // Bagimsiz turu hala havada olan loop'u bu turda atla: ayni loop'un iki
     // turu ust uste binip slot tuketimini ikiye katlamasin (senkron baslarken
