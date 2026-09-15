@@ -458,7 +458,7 @@ const AttackForm = () => {
             />
           </div>
 
-          <div className={`grid gap-3 ${layer === 'L7' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <div className={`grid gap-3 grid-cols-1 ${layer === 'L7' ? '' : 'sm:grid-cols-2'}`}>
             <div>
               <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; sure_sn</label>
               <input

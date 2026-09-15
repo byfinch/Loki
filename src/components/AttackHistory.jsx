@@ -215,11 +215,12 @@ const AttackHistory = () => {
             <p>kayit bulunamadi.</p>
           </div>
         ) : (
-          <div className="-mx-2 overflow-x-auto px-2">
+          <div className="px-2">
             {/* table-fixed + yuzde genislikler: tablo her zaman konteynere
                 oturur (yatay scroll olmaz) ve her sayfa ayni boyutta kalir;
-                satirlar sabit yukseklikte (bos dolgu satirlari dahil) */}
-            <table className="w-full table-fixed text-xs">
+                satirlar sabit yukseklikte (bos dolgu satirlari dahil).
+                Mobil: mcard-table ile satirlar kartlasir (baslik gizli). */}
+            <table className="mcard-table w-full table-fixed text-xs">
               <colgroup>
                 <col className="w-[20%]" />
                 <col className="w-[15%]" />

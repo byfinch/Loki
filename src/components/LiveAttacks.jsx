@@ -43,10 +43,9 @@ const AttackRow = ({ phase, initialOpen = false, child = false, children }) => {
     <div className={`rw${closed ? ' closed' : ''}`}>
       <div className="rw-inner">
         <div
-          className={`grid items-center gap-2 border-b border-dashed border-green-500/10 px-3 py-2.5 transition-[background,transform,opacity] duration-300 ${
+          className={`grid items-center gap-x-2 gap-y-1 border-b border-dashed border-green-500/10 px-3 py-2.5 transition-[background,transform,opacity] duration-300 grid-cols-[1fr_auto_auto] md:grid-cols-[minmax(0,1fr)_150px_110px_60px_180px] ${
             dying ? 'bg-[#ff2d2d]/[0.06] shadow-[inset_2px_0_0_#ff2d2d]' : 'hover:bg-green-500/5'
           } ${phase === 'exit' ? 'translate-x-7 opacity-0' : ''} ${child ? 'bg-green-500/[0.03] shadow-[inset_2px_0_0_rgba(0,255,65,0.25)]' : ''}`}
-          style={{ gridTemplateColumns: 'minmax(0,1fr) 150px 110px 60px 180px' }}
         >
           {children}
         </div>
@@ -743,7 +742,7 @@ const LiveAttacks = () => {
                     const g = row.group;
                     return (
                       <AttackRow key={row.key} initialOpen>
-                        <div className="flex items-center gap-2">
+                        <div className="col-span-3 flex items-center gap-2 md:col-span-1">
                           <span className="inline-block max-w-[230px] truncate text-left text-green-200/70">
                             {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
                           </span>
@@ -751,7 +750,7 @@ const LiveAttacks = () => {
                         <span className="text-gray-400">{g.method}</span>
                         <span className="font-bold text-cyan-400/80">[..] tur arası</span>
                         <span className="text-gray-500">x{g.count}</span>
-                        <div />
+                        <div className="hidden md:block" />
                       </AttackRow>
                     );
                   }
@@ -762,7 +761,7 @@ const LiveAttacks = () => {
                     const g = row.group;
                     return (
                       <AttackRow key={row.key} phase={r.phase} initialOpen>
-                        <div className="flex items-center gap-2">
+                        <div className="col-span-3 flex items-center gap-2 md:col-span-1">
                           <span className="inline-block max-w-[230px] truncate text-left text-gray-500">
                             {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
                           </span>
@@ -770,7 +769,7 @@ const LiveAttacks = () => {
                         <span className="text-gray-600">{g.method}</span>
                         <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
                         <span className="text-gray-600">x{g.count}</span>
-                        <div />
+                        <div className="hidden md:block" />
                       </AttackRow>
                     );
                   }
@@ -786,7 +785,7 @@ const LiveAttacks = () => {
   
                   return (
                     <AttackRow key={rowKey} child={!!row.__child}>
-                      <div>
+                      <div className="col-span-3 md:col-span-1">
                         <div className="flex items-center gap-2">
                           <span
                             title="URL'yi kopyala"
@@ -831,7 +830,7 @@ const LiveAttacks = () => {
                       </span>
                       <span className="font-bold text-green-400">{attack.timeLeft}s</span>
                       <span className="text-gray-400">x{attack.count}</span>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="col-span-3 flex items-center justify-start gap-2 md:col-span-1 md:justify-end">
                         <button
                           onClick={() => handleStopSingle(firstId, rowKey, sigOf(attack.target, attack.method))}
                           disabled={isFirstStopping}
@@ -929,11 +928,11 @@ const LiveAttacks = () => {
             {lastUpdate && <p className="mt-2 text-[11px] text-green-500/30"># son guncelleme: {lastUpdate.toLocaleTimeString()}</p>}
           </div>
         ) : (
-          <div className="-mx-2 overflow-x-auto px-2">
-            <div className="min-w-[780px]">
-              {/* Baslik satiri */}
+          <div>
+            <div>
+              {/* Baslik satiri (mobilde gizli; satirlar kart duzeninde) */}
               <div
-                className="grid gap-2 border-b border-green-500/25 px-3 pb-2 text-[10px] text-green-500/50"
+                className="hidden md:grid gap-2 border-b border-green-500/25 px-3 pb-2 text-[10px] text-green-500/50"
                 style={{ gridTemplateColumns: 'minmax(0,1fr) 150px 110px 60px 180px' }}
               >
                 <span>&gt; Hedef</span>

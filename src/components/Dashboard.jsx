@@ -54,6 +54,20 @@ const Dashboard = () => {
   // Backend'deki hesap listesinden secim: once siber temali gecis overlay'i
   // oynatilir (~2.5sn), sonra aktif oturum degisip sayfa yeniden yuklenir.
   const [switchTarget, setSwitchTarget] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Mobil cekmece + masaustu tab etiketleri ortak kaynak
+  const NAV_ITEMS = [
+    { id: 'attack', icon: 'ph-lightning', label: 'Saldırı' },
+    { id: 'loops', icon: 'ph-repeat', label: 'Looplar' },
+    { id: 'watch', icon: 'ph-link', label: 'Gözcü' },
+    { id: 'invader', icon: 'ph-shield-check', label: 'Invader' },
+    { id: 'sitewatch', icon: 'ph-pulse', label: 'Watcher' },
+    { id: 'tools', icon: 'ph-wrench', label: 'Araçlar' },
+    { id: 'history', icon: 'ph-clock-counter-clockwise', label: 'Geçmiş' },
+    { id: 'phish', icon: 'ph-shield-warning', label: 'Phish' }
+  ];
+
   const handleSwitchAccount = useCallback((account) => {
     if (!account?.sessionId || !account?.username) return;
     addLog(`Hesaba geçiliyor: ${account.username}`);
@@ -73,17 +87,6 @@ const Dashboard = () => {
     apiClient.logout();
     logout();
   };
-
-  const tabs = [
-    { id: 'attack', label: 'Saldırı' },
-    { id: 'loops', label: 'Looplar' },
-    { id: 'watch', label: 'Gözcü' },
-    { id: 'invader', label: 'Invader' },
-    { id: 'sitewatch', label: 'Watcher' },
-    { id: 'tools', label: 'Araçlar' },
-    { id: 'history', label: 'Geçmiş' },
-    { id: 'phish', label: 'Phish' }
-  ];
 
   return (
     <div className="min-h-screen bg-black text-white cyber-grid">
@@ -136,24 +139,52 @@ const Dashboard = () => {
         </button>
       </aside>
 
+      {/* Mobil: hamburger + soldan kayan cekmece navigasyon */}
+      <button
+        onClick={() => setDrawerOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-lg glass-panel flex items-center justify-center text-green-400 shadow-[0_0_15px_rgba(0,255,65,0.2)]"
+        title="Menü"
+        aria-label="Menüyü aç"
+      >
+        <i className="ph ph-list text-xl"></i>
+      </button>
+      {drawerOpen && (
+        <>
+          <div className="md:hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
+          <aside className="md:hidden fixed top-0 left-0 bottom-0 z-50 w-64 glass-panel border-r border-green-500/25 bg-black/95 flex flex-col py-4 px-3 gap-1 overflow-y-auto">
+            <div className="flex items-center justify-between px-2 pb-3 border-b border-green-500/20 mb-2">
+              <span className="text-[11px] font-bold tracking-widest text-green-400">LOKİ · MENÜ</span>
+              <button onClick={() => setDrawerOpen(false)} className="text-gray-500 hover:text-red-400 text-lg leading-none" aria-label="Kapat">×</button>
+            </div>
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
+                className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all ${
+                  state.activeTab === item.id
+                    ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.5)]'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-green-300'
+                }`}
+              >
+                <i className={`ph ${item.icon} text-lg`}></i>
+                <span className="text-[13px] font-medium">{item.label}</span>
+              </button>
+            ))}
+            <div className="mt-auto pt-3 border-t border-white/10">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-lg px-3 py-3 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition w-full text-left"
+              >
+                <i className="ph ph-sign-out text-lg"></i>
+                <span className="text-[13px] font-medium">Çıkış</span>
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
       {/* Main Content */}
-      <main className="pt-8 pb-12 px-6 md:pl-20 max-w-7xl mx-auto">
-        {/* Mobile Tabs */}
-        <div className="md:hidden flex gap-2 overflow-x-auto pb-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
-                state.activeTab === tab.id
-                  ? 'bg-green-500 text-black shadow-[0_0_15px_rgba(0,255,65,0.3)]'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      <main className="pt-8 pb-12 px-3 sm:px-6 md:pl-20 max-w-7xl mx-auto">
 
         {/* Tablo kartlari (LiveAttacks, LoopManager, AttackHistory) tum sutunlari
             yatay scroll olmadan gosterebilsin diye dikey stack + tam genislik;
