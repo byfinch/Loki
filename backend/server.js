@@ -620,6 +620,18 @@ async function fetchOngoingSigCount(sessionId, params) {
   }
 }
 
+// Imza kurtarmayi birkaç kez dene: upstream /ongoing 5-15sn gecikmeli
+// guncellenir; tek bakista 0 gormek yanlis negatif (ve retry -> cift launch)
+// dogurur.
+async function sigSalvage(sessionId, params) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const n = await fetchOngoingSigCount(sessionId, params);
+    if (n > 0) return n;
+  }
+  return 0;
+}
+
 async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const session = sessions[sessionId];
   if (!session || !session.apiToken) {
@@ -674,7 +686,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       // Son care: imza sayisi — satir varsa saldirilar upstream'te baslamistir;
       // hata saymak backoff retry'i tetikler ve ayni launch IKINCI KEZ gider
       // (10 istenen HTTP-REST'in 19/20 gorunmesinin sebebi buydu).
-      const sigCount = await fetchOngoingSigCount(sessionId, params);
+      const sigCount = await sigSalvage(sessionId, params);
       if (sigCount > 0) {
         console.log(`[launchAttacksGet] timeout ama upstream'te ${sigCount} satir var (imza kurtarma); yeniden launch EDILMIYOR`);
         return {
@@ -690,8 +702,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       // baslamis olabilir. Imza sayisiyla dogrula — baslamissa hata sayma,
       // yoksa retry cift launch uretir.
       console.warn(`[launchAttacksGet] GET /api ${err.response.status}; imza kurtarma deneniyor...`);
-      await new Promise((r) => setTimeout(r, 4000));
-      const sigCount = await fetchOngoingSigCount(sessionId, params);
+      const sigCount = await sigSalvage(sessionId, params);
       if (sigCount > 0) {
         console.log(`[launchAttacksGet] ${err.response.status}'e ragmen upstream'te ${sigCount} satir var; yeniden launch EDILMIYOR`);
         return {
