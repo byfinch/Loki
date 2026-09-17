@@ -632,11 +632,26 @@ async function sigSalvage(sessionId, params) {
   return 0;
 }
 
+// Bazi stresse methodlari istegin concurrents degerinin 2 katini baslatir
+// (HTTP-REST: conc=10 -> 20 saldiri/20 slot, canli olcumle dogrulandi).
+// Kullanici girdigi kadar saldiri VE slot tuketsin diye upstream'e yarisi
+// gonderilir (tek sayida yukari yuvarlanir: 7 -> 4 gonder, 8 acilir).
+const STRESSE_DOUBLE_LAUNCH = new Set(['http-rest']);
+function stresseSendConc(method, conc) {
+  const c = parseInt(conc, 10) || 1;
+  return STRESSE_DOUBLE_LAUNCH.has(String(method || '').toLowerCase())
+    ? Math.max(1, Math.ceil(c / 2))
+    : c;
+}
+
 async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const session = sessions[sessionId];
   if (!session || !session.apiToken) {
     throw new Error('API token not available');
   }
+
+  // 2x methodlarda upstream'e yarisi gonderilir; dogrulama esikleri de buna gore.
+  const sendConc = stresseSendConc(params.method, concurrents);
 
   // Once /ongoing'den mevcut ID'leri al.
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
@@ -650,7 +665,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     data = await startAttackApi(getApiClient(sessionId), {
       apiToken: session.apiToken,
       ...params,
-      concurrents
+      concurrents: sendConc
     });
   } catch (err) {
     // API key stresse.st'te yenilenmisse (Generate Token) eski key 401 verir.
@@ -665,7 +680,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       data = await startAttackApi(getApiClient(sessionId), {
         apiToken: freshToken,
         ...params,
-        concurrents
+        concurrents: sendConc
       });
     } else if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
       // Timeout'ta istek bizden dustu ama stresse.st saldirilari baslatmis olabilir.
@@ -673,7 +688,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       console.warn(`[launchAttacksGet] GET /api timeout; /ongoing'den kurtarma deneniyor...`);
       await new Promise((r) => setTimeout(r, 4000));
       const salvageIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
-      const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, concurrents);
+      const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, sendConc);
       if (recovered.length > 0) {
         console.log(`[launchAttacksGet] timeout'a ragmen ${recovered.length} saldiri kurtarildi`);
         return {
@@ -755,7 +770,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     newIds = [...retryIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
   }
 
-  console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents}`);
+  console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents} sent=${sendConc}`);
 
   if (newIds.length === 0) {
     // Mevcut akis aynen kalir (tekil /attack status:'error' doner, loop turu hata
@@ -765,16 +780,16 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
 
   // Congestion signal: full launch clears the flag, a partial launch (fewer
   // IDs than requested) marks the method as busy.
-  if (newIds.length >= concurrents) {
+  if (newIds.length >= sendConc) {
     markMethodOk(params.method);
   } else if (newIds.length > 0) {
-    console.warn(`[launchAttacksGet] kismi launch: method=${params.method} requested=${concurrents} got=${newIds.length} -> congested`);
+    console.warn(`[launchAttacksGet] kismi launch: method=${params.method} sent=${sendConc} got=${newIds.length} -> congested`);
     markMethodBusy(params.method);
   }
 
   return {
     data,
-    attackIds: newIds.slice(0, concurrents),
+    attackIds: newIds.slice(0, sendConc),
     elapsedSec: 0
   };
 }
@@ -2422,8 +2437,13 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
         ? Object.values(rgSlotsById).reduce((a, b) => a + b, 0)
         : attackIds.length;
       console.log(`[loop ${loopId}] round ${round} basarili: ${successCount} saldiri (istenen: ${loop.params.concurrents})`);
-      if (successCount !== loop.params.concurrents) {
-        console.warn(`[loop ${loopId}] round ${round} UYARI: ${isRackghost ? 'rackghost' : 'stresse.st'} ${loop.params.concurrents} yerine ${successCount} attackId dondurdu`);
+      // 2x methodlarda (HTTP-REST) upstream'e yarisi gonderilir; beklenti esigi
+      // gonderilen degerdir, kullanicinin girdigi degil.
+      const expectedLaunch = isRackghost
+        ? (parseInt(loop.params.concurrents, 10) || 1)
+        : stresseSendConc(loop.params.method, effectiveParams.concurrents);
+      if (successCount !== expectedLaunch) {
+        console.warn(`[loop ${loopId}] round ${round} UYARI: ${isRackghost ? 'rackghost' : 'stresse.st'} ${expectedLaunch} yerine ${successCount} attackId dondurdu`);
       }
     } else if (data?.status === 'success' || data?.message === 'Attack started') {
       // Dogrulanamayan basari: stresse.st success diyor ama /ongoing JSON'u bu
