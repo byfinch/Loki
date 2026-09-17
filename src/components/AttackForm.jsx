@@ -575,7 +575,7 @@ const AttackForm = () => {
                 }
               }}
             />
-            <p className="mt-0.5 text-[9px] text-gray-600"># yeni isim yazarsan grup otomatik oluşur; mevcut grup adını seçersen ona eklenir</p>
+            <p className="mt-0.5 text-[9px] text-gray-600"># listeden seç veya "＋ yeni grup oluştur" deyip isim yaz (✓/Enter onaylar); saldırı o gruba eklenir</p>
           </div>
 
           {/* Loop toggle: terminal checkbox */}
