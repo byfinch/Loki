@@ -524,6 +524,11 @@ const AttackForm = () => {
               onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
               className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
             />
+            {/* Bazi stresse methodlari girilen degerin 2 katini baslatir
+                (canli olcumle dogrulandi: HTTP-REST conc=10 -> 20 saldiri) */}
+            {provider === 'stresse' && ['HTTP-REST'].includes(method?.toUpperCase()) && (
+              <p className="mt-0.5 text-[9px] text-amber-500/80"># {method.toUpperCase()} stresse tarafında 2× başlatır: {concurrents} girersen {concurrents * 2} saldırı açılır</p>
+            )}
           </div>
 
           {provider === 'stresse' && (

@@ -44,6 +44,10 @@ Iki saglayici vardir; `provider` alaniyla ayristirilir ('stresse' | 'rackghost')
 - Bazi RackGhost methodlari girilen concurrents'in kati slot tuketir
   (HTTPSMIX, HTTPSCUSTOM = 2x). Limit tuketim uzerinden (girilen x carpan <= 15)
   dogrulanir; gosterim de tuketimi yansitir.
+- stresse tarafinda da benzeri var: **HTTP-REST girilen concurrents'in 2 katini
+  baslatir** (conc=10 -> 20 saldiri, canli olcumle dogrulandi). Panelde
+  concurrents alaninin altinda uyari gosterilir; baska methodlarda gozlemlenirse
+  AttackForm'daki listeye ekle.
 
 ## Loop Motoru (server.js)
 
