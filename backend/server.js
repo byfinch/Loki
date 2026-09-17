@@ -984,7 +984,10 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
   activeAttacks[attackId] = {
     attackId,
     sessionId,
-    username: sessions[sessionId]?.username,
+    // Session sonradan silinirse/exire olursa username undefined kalir; bu
+    // durumda RG canli filtresi "sahipsiz" sayip satiri tum hesaplara
+    // gosteriyordu (hesap sizintisi). Loop'un kalici owner'ina dus.
+    username: sessions[sessionId]?.username || (loopId ? getLoopOwner(activeLoops[loopId]) : null),
     host: params.host,
     port: params.port,
     method: params.method,
@@ -997,7 +1000,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
   };
-  const attackOwner = sessions[sessionId]?.username;
+  const attackOwner = activeAttacks[attackId].username;
   if (attackOwner) lastAttackCountByUser.set(attackOwner, countAttacksForUser(attackOwner));
   saveState();
 }
@@ -3836,11 +3839,23 @@ async function liveHubTick(hub, username) {
       // Yavrukurt1'in saldirisi Yavrukurt akisinda gorunmesin. Defterde
       // olmayanlar (rackghost panelinden baslatilanlar) herkese gosterilir.
       const rgOwnerById = {};
+      // Imza fallback'i: loop turlarinda eski kayit yeni launch'tan once silinir;
+      // o bostluk penceresinde (veya launch hatasinda) ID eslesmesi kacar ve
+      // satir tum hesaplara sizar. Hedef+method imzasiyla da sahip cozulsun.
+      const rgOwnerBySig = {};
       Object.values(activeAttacks).forEach((a) => {
-        if (a.provider === 'rackghost') rgOwnerById[`rg_${a.attackId}`] = a.username || sessions[a.sessionId]?.username || null;
+        if (a.provider !== 'rackghost') return;
+        const owner = a.username || sessions[a.sessionId]?.username || null;
+        rgOwnerById[`rg_${a.attackId}`] = owner;
+        const h = String(a.host || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+        if (h && a.method) rgOwnerBySig[`${h}|${String(a.method).toUpperCase()}`] = owner;
       });
       const rgVisible = (row) => {
-        const owner = rgOwnerById[row.attack_id];
+        let owner = rgOwnerById[row.attack_id];
+        if (owner === undefined) {
+          const h = String(row.target || '').split(':')[0].toLowerCase();
+          owner = rgOwnerBySig[`${h}|${String(row.method || '').toUpperCase()}`];
+        }
         return !owner || owner === username;
       };
       const seenRg = new Set();
