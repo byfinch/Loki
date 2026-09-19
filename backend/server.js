@@ -52,15 +52,54 @@ if (STRESSE_BIND_IP) {
   const http = require('http');
   const https = require('https');
   stresseBindAgent = {
-    httpAgent: new http.Agent({ localAddress: STRESSE_BIND_IP }),
-    httpsAgent: new https.Agent({ localAddress: STRESSE_BIND_IP })
+    httpAgent: new http.Agent({ localAddress: STRESSE_BIND_IP, lookup: (...a) => stresseLookup(...a) }),
+    httpsAgent: new https.Agent({ localAddress: STRESSE_BIND_IP, lookup: (...a) => stresseLookup(...a) })
   };
   console.log(`[net] stresse.st trafigi yerel IP'den cikiyor: ${STRESSE_BIND_IP}`);
+  // DNS guard baslat: ilk olcum hemen, sonra dakikada bir.
+  refreshStresseGoodIps().catch(() => {});
+  setInterval(() => refreshStresseGoodIps().catch(() => {}), 60000);
 }
 function stresseBindConfig() {
   if (!stresseBindAgent) return {};
   // Bind varsa axios'un kendi proxy mantigini da kapat (agent yolunda kalsin).
   return { proxy: false, ...stresseBindAgent };
+}
+
+// stresse.st DNS flapping korumasi: DNS bazen OLU IP donduruyor (connection
+// timeout). Arka planda A kayitlarini olcup canli olanlari tutariz; agent'larin
+// lookup'i canli IP'lere sabitlenir. Yoksa /ongoing, login, launch rastgele
+// olu IP'ye dusup timeout oluyordu (bugunku hastaligin koku).
+const stresseGoodIps = { ips: [], at: 0 };
+async function refreshStresseGoodIps() {
+  try {
+    const dnsP = require('dns').promises;
+    const ips = await dnsP.resolve4('stresse.st');
+    const https = require('https');
+    const good = [];
+    await Promise.all(ips.map(async (ip) => {
+      try {
+        await axios.get('https://stresse.st/', {
+          timeout: 6000, family: 4, proxy: false, maxRedirects: 0, validateStatus: () => true,
+          httpsAgent: new https.Agent({ localAddress: STRESSE_BIND_IP || undefined, lookup: (h, o, cb) => cb(null, ip, 4) })
+        });
+        good.push(ip);
+      } catch { /* olu IP */ }
+    }));
+    if (good.length) {
+      const changed = good.join(',') !== stresseGoodIps.ips.join(',');
+      stresseGoodIps.ips = good;
+      stresseGoodIps.at = Date.now();
+      if (changed) console.log('[dns-guard] stresse.st canli IP' + (good.length > 1 ? "'ler" : '') + ':', good.join(', '));
+    }
+  } catch { /* sessiz */ }
+}
+function stresseLookup(hostname, options, callback) {
+  if (hostname === 'stresse.st' && stresseGoodIps.ips.length) {
+    const ip = stresseGoodIps.ips[Math.floor(Math.random() * stresseGoodIps.ips.length)];
+    return callback(null, ip, 4);
+  }
+  return dns.lookup(hostname, options, callback);
 }
 
 initTelegram();
