@@ -761,7 +761,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         data: { status: 'success', recovered: true, timeoutAssumed: true },
         attackIds: [],
         elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+        // Pending YOK: dogrulanmamis varsayim satir uretmez (hayalet sinifi).
+        pendingIds: []
       };
     } else if (err.response && err.response.status >= 500) {
       // 502/503/504: stresse gateway yuk altinda; istek islenmis ve saldirilar
@@ -783,7 +784,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         data: { status: 'success', recovered: true, timeoutAssumed: true },
         attackIds: [],
         elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+        pendingIds: []
       };
     } else {
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
@@ -1901,6 +1902,8 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       if (attack.username && attack.username !== username) return;
       // Zaten listede varsa tekrar ekleme
       if (existingIds.has(attack.attackId)) return;
+      // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
+      if (!registryRowVisible(attack, new Set([...existingIds].map(String)), now)) return;
       // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
       const sig = rowSigKey(buildTargetUrl(attack.host, attack.port), attack.method);
       if (sig && (nullIdBudget.get(sig) || 0) > 0) {
@@ -3979,12 +3982,27 @@ function liveHubBroadcast(hub, chunk) {
 // Paylasimli poller tick'i: /ongoing her tick, /user sadece ilk tick ve her
 // 10. tickte cekilir. 3 ardisik hatadan sonra aralik 10sn'ye duser (backoff),
 // ilk basarida 3sn'ye doner.
+// Kayit defteri satirinin gorunurluk kurali: upstream satirlari TEK gercek
+// kaynaktir; defter satiri sadece launch boslugunu doldurur. 45sn, upstream
+// listeleme gecikmesinin (hasta donemde ~40sn) ust siniridir. Daha yasli ve
+// upstream'de karsiligi olmayan kayit HAYALETTIR (hic baslamamis/yanlis
+// varsayim) — gosterilmez. Boylece Aktif sayisi gercek saldiri sayisina kitlenir.
+const FRESH_ROW_WINDOW_MS = 45000;
+function registryRowVisible(a, upstreamIds, nowMs) {
+  const startedMs = new Date(a.startedAt || 0).getTime();
+  if (Number.isFinite(startedMs) && nowMs - startedMs > FRESH_ROW_WINDOW_MS) {
+    return upstreamIds.has(String(a.attackId));
+  }
+  return true;
+}
+
 // Taze kayit defteri satirlarini (stresse pending/dogrulanmis + rackghost)
 // listeye ekler. liveHubTick ve pokeLiveHub ortak kullanir: upstream
 // beklenmeden satirin aninda dusmesinin ozu budur. null-id butcesiyle cift
 // satir engellenir; sahiplik (owner) hesap bazli filtrelenir.
 function appendFreshRegistryRows(ongoingData, username) {
   const nowMs = Date.now();
+  const upstreamIds = new Set(ongoingData.map((r) => String(r.attack_id || r.id || '')));
   // RackGhost taze kayitlari (henuz upstream ongoing'e dusmemis olanlar)
   if (rackghost.isConfigured()) {
     const seenRg = new Set(ongoingData.filter((r) => r && r.provider === 'rackghost').map((r) => r.attack_id));
@@ -3994,6 +4012,8 @@ function appendFreshRegistryRows(ongoingData, username) {
       if (seenRg.has(id)) return;
       const owner = a.username || sessions[a.sessionId]?.username || null;
       if (owner && owner !== username) return; // baska hesabin saldirisi
+      // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan rg kaydi duser
+      if (!registryRowVisible(a, upstreamIds, nowMs)) return;
       const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
       if (!Number.isFinite(tlSec) || tlSec <= 0) return;
       ongoingData.push({
@@ -4025,6 +4045,8 @@ function appendFreshRegistryRows(ongoingData, username) {
     const id = String(a.attackId);
     if (seenIds.has(id)) return;
     const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
+    // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
+    if (!registryRowVisible(a, upstreamIds, nowMs)) return;
     // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
     const sig = rowSigKey(target, a.method);
     if (sig && (nullIdBudget.get(sig) || 0) > 0) {
