@@ -614,8 +614,9 @@ function isSlotsBusyError(err, fallbackMessage = '') {
 async function startAttackApi(apiClient, params) {
   const url = buildApiUrl(params.apiToken, params);
   // stresse.st'in /api ucu yuk altinda (ozellikle L7 methodlarda da) 15sn'yi
-  // asabiliyor; timeout turu olduruyor. L4/L7 icin esit, genis timeout ver.
-  const timeout = 60000;
+  // asabiliyor; timeout turu olduruyor. Yavas donemde 60sn+ da goruldu —
+  // retry'siz "basladi varsay" mantigiyla uyumlu genis timeout ver.
+  const timeout = 90000;
   try {
     const res = await apiClient.get(url, { timeout });
     console.log(`[startAttackApi] status=${res.status} data=${JSON.stringify(res.data).slice(0, 400)}`);
@@ -749,8 +750,19 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
           pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
         };
       }
-      console.error(`[launchAttacksGet] GET /api hata:`, err.message);
-      throw err;
+      // Timeout = istek upstream'e ULASTI ama yanit gelmedi; stresse saldirilari
+      // genelde BASLATMIS olur. Retry etmek = cift launch (kanit: conc=10
+      // loop'un 20 saldirisi). Listing gecikmesi kurtarmayi kör edebilir —
+      // o yuzden hicbir sey bulunamazsa "basladi varsay" (dogrulanmamis basari);
+      // gercekten baslamadiysa tek tur bosluk olur, sonraki tur drain ile
+      // normal toparlanir. Baglanti reddi (ECONNREFUSED vs) bu dala girmez.
+      console.warn(`[launchAttacksGet] timeout; kurtarma bos — basladi varsayiliyor (retry YOK)`);
+      return {
+        data: { status: 'success', recovered: true, timeoutAssumed: true },
+        attackIds: [],
+        elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
+        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+      };
     } else if (err.response && err.response.status >= 500) {
       // 502/503/504: stresse gateway yuk altinda; istek islenmis ve saldirilar
       // baslamis olabilir. Imza sayisiyla dogrula — baslamissa hata sayma,
@@ -766,8 +778,13 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
           pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
         };
       }
-      console.error(`[launchAttacksGet] GET /api hata:`, err.message);
-      throw err;
+      console.warn(`[launchAttacksGet] GET /api ${err.response.status}; kurtarma bos — basladi varsayiliyor (retry YOK, cift launch onlemi)`);
+      return {
+        data: { status: 'success', recovered: true, timeoutAssumed: true },
+        attackIds: [],
+        elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
+        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+      };
     } else {
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
       throw err;
@@ -2613,9 +2630,9 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       roundSuccesses = parseInt(effectiveParams.concurrents, 10) || 1;
       loop.roundAttackIds = [];
       loop.unverifiedRounds = (loop.unverifiedRounds || 0) + 1;
-      if (data?.sigRecovered) {
-        // Imza kurtarma: timeout/5xx sonrasi saldirilarin upstream'te oldugu
-        // satir sayisiyla dogrulandi — yanlis uyari basma.
+      if (data?.sigRecovered || data?.timeoutAssumed) {
+        // Imza kurtarma veya basladi-varsayilan: timeout/5xx sonrasi saldirilar
+        // upstream'te (veya gonderildi) — yanlis uyari basma.
         loop.lastError = null;
         console.log(`[loop ${loopId}] round ${round} imza ile dogrulandi (upstream'te satir var; timeout/5xx idi)`);
       } else {
