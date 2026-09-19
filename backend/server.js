@@ -194,7 +194,15 @@ const activeAttacks = {};
 // methods herkes icin ayni (global, TTL 1 saat); plan kullanici bazli (TTL 5 dk).
 const METHODS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PLAN_CACHE_TTL_MS = 5 * 60 * 1000;
-const methodsCache = { data: null, fetchedAt: 0 };
+const METHODS_CACHE_FILE = path.join(DATA_DIR, 'methods-cache.json');
+// Disk destekli: restart'ta/ilk acilista upstream'i beklemeden servis edilir.
+const methodsCache = (() => {
+  try {
+    const d = JSON.parse(fs.readFileSync(METHODS_CACHE_FILE, 'utf8'));
+    if (Array.isArray(d.data) && d.data.length) return d;
+  } catch { /* yok */ }
+  return { data: null, fetchedAt: 0 };
+})();
 const planCache = new Map(); // username -> { data, fetchedAt }
 
 // Upstream istegini 1 kez retry'la dener: ilk deneme hata/timeout verirse
@@ -1934,6 +1942,7 @@ app.get('/api/stresse/methods', async (req, res) => {
       }
       methodsCache.data = response.data;
       methodsCache.fetchedAt = Date.now();
+      try { safeWriteJson(METHODS_CACHE_FILE, methodsCache); } catch { /* sessiz */ }
       return res.json(response.data);
     } catch (err) {
       throw err;
@@ -1955,6 +1964,7 @@ function refreshMethodsBackground(sessionId) {
       if (Array.isArray(response.data) && response.data.every((m) => m && typeof m === 'object' && m.method)) {
         methodsCache.data = response.data;
         methodsCache.fetchedAt = Date.now();
+        try { safeWriteJson(METHODS_CACHE_FILE, methodsCache); } catch { /* sessiz */ }
       }
     } catch { /* sessiz */ }
   })();
