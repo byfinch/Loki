@@ -1594,8 +1594,16 @@ async function performKeyBasedLogin(sessionId, username) {
       'Accept': 'application/json, text/plain, */*'
     }
   });
-  const resp = await verifier.get(`/api?key=${encodeURIComponent(apiToken)}`, { validateStatus: () => true });
-  if (resp.status === 401 || resp.status === 403) {
+  let resp = null;
+  try {
+    resp = await verifier.get(`/api?key=${encodeURIComponent(apiToken)}`, { validateStatus: () => true });
+  } catch (netErr) {
+    // stresse su an ulasilamaz/yavas (DNS flapping/hastaligi): dogrulamayi
+    // atlayip YEREL kayda guven — key bizde daha once dogrulanmis. Web akisina
+    // dusmek dakikalar surup proxy timeout'u ("Failed to fetch") uretiyordu.
+    console.warn(`[login] key dogrulamasi upstream'e ulasamadi (${netErr.message}); yerel kayitla devam`);
+  }
+  if (resp && (resp.status === 401 || resp.status === 403)) {
     const err = new Error('stresse.st API key reddedildi (whitelist eksik?)');
     err.statusCode = 401;
     throw err;
