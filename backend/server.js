@@ -736,6 +736,11 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   // 2x methodlarda upstream'e yarisi gonderilir; dogrulama esikleri de buna gore.
   const sendConc = stresseSendConc(params.method, concurrents);
 
+  // ANINDA GORUNURLUK: pending satirlar launch gonderilmeden ONCE duser —
+  // upstream hastayken launch 90sn surebiliyor; o pencerede panel bos kaliyordu.
+  // Hard hatada (401/conn) asagida geri alinir; basarida gercek ID'ler devralir.
+  const upfrontPendingIds = registerPendingAttacks(sessionId, params, sendConc, loopId);
+
   // Once /ongoing'den mevcut ID'leri al.
   const beforeIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000));
 
@@ -757,6 +762,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       console.warn(`[launchAttacksGet] 401 (Invalid API key); guncel token cekilip tekrar denenecek...`);
       const freshToken = await refreshApiToken(sessionId);
       if (!freshToken) {
+        upfrontPendingIds.forEach((id) => unregisterAttack(id)); // basarisiz: geri al
         console.error(`[launchAttacksGet] GET /api hata:`, err.message);
         throw err;
       }
@@ -774,7 +780,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, sendConc);
       if (recovered.length > 0) {
         console.log(`[launchAttacksGet] timeout'a ragmen ${recovered.length} saldiri kurtarildi`);
-        // Aninda gorunurluk: kurtarilan ID'leri hemen kaydet
+        // Aninda gorunurluk: kurtarilan ID'leri hemen kaydet; upfront pending'ler devredilir
+        upfrontPendingIds.forEach((id) => unregisterAttack(id));
         recovered.forEach((id) => registerAttack(String(id), sessionId, params, loopId, 1, Math.round((Date.now() - requestStartedAt) / 1000)));
         return {
           data: { status: 'success', recovered: true },
@@ -794,9 +801,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
           data: { status: 'success', recovered: true, sigRecovered: true },
           attackIds: [],
           elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-          // Aninda gorunurluk: upstream satirlari var ama ID'leri yok; pending
-          // satirlar hemen gorunsun, null-id butcesi tekillestirir.
-          pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+          // Upfront pending'ler zaten satir olarak gorunuyor; yenisi uretme.
+          pendingIds: upfrontPendingIds
         };
       }
       // Timeout = istek upstream'e ULASTI ama yanit gelmedi; stresse saldirilari
@@ -810,9 +816,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         data: { status: 'success', recovered: true, timeoutAssumed: true },
         attackIds: [],
         elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-        // Pending satirlar var: launch gonderildi, satir gorunsun. Cift sayim
-        // imza-butcesiyle, hayalet 2x time omur + olum takibiyle dengeli.
-        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+        // Upfront pending'ler satir olarak gorunuyor; yenisi uretme.
+        pendingIds: upfrontPendingIds
       };
     } else if (err.response && err.response.status >= 500) {
       // 502/503/504: stresse gateway yuk altinda; istek islenmis ve saldirilar
@@ -826,7 +831,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
           data: { status: 'success', recovered: true, sigRecovered: true },
           attackIds: [],
           elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-          pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
+          pendingIds: upfrontPendingIds
         };
       }
       console.warn(`[launchAttacksGet] GET /api ${err.response.status}; kurtarma bos — basladi varsayiliyor (retry YOK, cift launch onlemi)`);
@@ -837,6 +842,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
       };
     } else {
+      upfrontPendingIds.forEach((id) => unregisterAttack(id)); // basarisiz: geri al
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
       throw err;
     }
@@ -852,10 +858,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     responseIds = [data.id];
   }
 
-  // ANINDA GORUNURLUK: upstream'in /ongoing'e dusmesini (5-15sn) ve ID
-  // dogrulamasini beklemeden kaydet — satir ~1-2sn'de panele duser.
-  // ID'li methodlarda gercek ID'lerle; ID'siz (L4 null-id) methodlarda pending
-  // satirlarla. Pending'ler gercek ID'ler dogrulaninca asagida silinir.
+  // ANINDA GORUNURLUK: pending satirlar launch oncesi dustu (upfrontPendingIds).
+  // Gercek ID'ler donduyse hemen onlarla kaydet + pending'leri devret.
   let pendingIds = [];
   const instantIds = new Set(); // az once biz kaydettik — diff bunlari elememeli
   if (data?.status === 'success' || data?.message === 'Attack started') {
@@ -864,9 +868,14 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         registerAttack(String(id), sessionId, params, loopId, 1, 0);
         instantIds.add(String(id));
       });
+      upfrontPendingIds.forEach((id) => unregisterAttack(id));
     } else {
-      pendingIds = registerPendingAttacks(sessionId, params, sendConc, loopId);
+      // ID'siz method (L4 null-id): upfront pending'ler satir olarak kalir
+      pendingIds = upfrontPendingIds;
     }
+  } else {
+    // Beklenmedik basarisizlik: upfront satirlari geri al
+    upfrontPendingIds.forEach((id) => unregisterAttack(id));
   }
 
   // Ongoing listesinin guncellenmesi icin kisa bekle.
@@ -3066,15 +3075,17 @@ app.post('/api/stresse/loop', async (req, res) => {
 
     // Ilk turun launch sonucunu bekle: method bakimda gibi kalici hatalarda
     // loop hic olusmasin, panel "Loop baslatildi" yerine gercek hatayi gostersin.
+    // AMA upstream hastayken tur 90sn+ surebiliyor — kullaniciyi dakikalarca
+    // bekletme: kalici hata erken gelirse 8sn icinde yakala, yoksa basarili don
+    // (hata loop listesinin Hata kolonunda gorunur).
     const firstRoundResult = new Promise((resolve) => {
       activeLoops[loopId].resolveFirstRound = resolve;
     });
     runLoop(loopId).catch((err) => console.error(`[loop ${loopId}] runLoop beklenmeyen hata:`, err));
 
-    // Aski ihtimaline karsi guvenlik suresi; asarsa eski davranis (aninda basarili)
     const outcome = await Promise.race([
       firstRoundResult,
-      new Promise((r) => setTimeout(() => r({ ok: true, timeout: true }), 75000))
+      new Promise((r) => setTimeout(() => r({ ok: true, timeout: true }), 8000))
     ]);
 
     if (!outcome.ok && outcome.permanent) {
