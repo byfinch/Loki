@@ -3860,6 +3860,71 @@ function liveHubBroadcast(hub, chunk) {
 // Paylasimli poller tick'i: /ongoing her tick, /user sadece ilk tick ve her
 // 10. tickte cekilir. 3 ardisik hatadan sonra aralik 10sn'ye duser (backoff),
 // ilk basarida 3sn'ye doner.
+// Taze kayit defteri satirlarini (stresse pending/dogrulanmis + rackghost)
+// listeye ekler. liveHubTick ve pokeLiveHub ortak kullanir: upstream
+// beklenmeden satirin aninda dusmesinin ozu budur. null-id butcesiyle cift
+// satir engellenir; sahiplik (owner) hesap bazli filtrelenir.
+function appendFreshRegistryRows(ongoingData, username) {
+  const nowMs = Date.now();
+  // RackGhost taze kayitlari (henuz upstream ongoing'e dusmemis olanlar)
+  if (rackghost.isConfigured()) {
+    const seenRg = new Set(ongoingData.filter((r) => r && r.provider === 'rackghost').map((r) => r.attack_id));
+    Object.values(activeAttacks).forEach((a) => {
+      if (a.provider !== 'rackghost') return;
+      const id = `rg_${a.attackId}`;
+      if (seenRg.has(id)) return;
+      const owner = a.username || sessions[a.sessionId]?.username || null;
+      if (owner && owner !== username) return; // baska hesabin saldirisi
+      const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
+      if (!Number.isFinite(tlSec) || tlSec <= 0) return;
+      ongoingData.push({
+        attack_id: id,
+        target: `${String(a.host || '').replace(/\/+$/, '')}:${a.port}`,
+        method: a.method,
+        timeLeft: String(tlSec),
+        count: a.concurrents || 1,
+        provider: 'rackghost'
+      });
+    });
+  }
+  // Taze kayitli stresse saldirilari: upstream /ongoing gec guncellenir (5-15sn);
+  // kayit defterinden aninda goster; upstream gorunur olunca ayni satir devam eder.
+  const seenIds = new Set(ongoingData.map((r) => String(r.attack_id || '')));
+  // Upstream'in attack_id'siz (null) satirlari ID tekillestirmesinden kacar;
+  // ayni saldiri iki kez sayilmasin diye hedef+yontem butcesi uygulanir.
+  const nullIdBudget = new Map();
+  ongoingData.forEach((r) => {
+    if (r.attack_id) return;
+    const sig = rowSigKey(r.target || r.host, r.method);
+    if (sig) nullIdBudget.set(sig, (nullIdBudget.get(sig) || 0) + 1);
+  });
+  Object.values(activeAttacks).forEach((a) => {
+    if (a.provider === 'rackghost') return; // onlar yukarida
+    const owner = a.username || sessions[a.sessionId]?.username;
+    if (owner !== username) return;
+    const id = String(a.attackId);
+    if (seenIds.has(id)) return;
+    const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
+    // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
+    const sig = rowSigKey(target, a.method);
+    if (sig && (nullIdBudget.get(sig) || 0) > 0) {
+      nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
+      return;
+    }
+    const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
+    if (!Number.isFinite(tlSec) || tlSec <= 0) return;
+    ongoingData.push({
+      attack_id: id,
+      target,
+      method: a.method,
+      timeLeft: String(tlSec),
+      count: a.concurrents || 1,
+      ...(a.loopId ? { loopId: a.loopId } : {}),
+      ...(a.group ? { group: a.group } : {})
+    });
+  });
+}
+
 async function liveHubTick(hub, username) {
   if (hub.clients.size === 0) return;
   // Poke ile normal tick cakismasini onle (iki tick paralel kosarsa iki timer
@@ -3987,68 +4052,10 @@ async function liveHubTick(hub, username) {
             .forEach((r) => { seenRg.add(r.attack_id); ongoingData.push(r); });
         }
       }
-      // Henuz upstream ongoing'e dusmemis taze rackghost kayitlari:
-      // baslatma aninda satir rozet ve adet (slots) ile dogru gorunur;
-      // upstream gorunur olunca ayni satir onunla devam eder.
-      Object.values(activeAttacks).forEach((a) => {
-        if (a.provider !== 'rackghost') return;
-        const id = `rg_${a.attackId}`;
-        if (seenRg.has(id)) return;
-        const owner = a.username || sessions[a.sessionId]?.username || null;
-        if (owner && owner !== username) return; // baska hesabin saldirisi
-        const expiresMs = new Date(a.expiresAt || 0).getTime();
-        const tlSec = Math.round((expiresMs - Date.now()) / 1000);
-        if (!Number.isFinite(tlSec) || tlSec <= 0) return;
-        ongoingData.push({
-          attack_id: id,
-          target: `${String(a.host || '').replace(/\/+$/, '')}:${a.port}`,
-          method: a.method,
-          timeLeft: String(tlSec),
-          count: a.concurrents || 1,
-          provider: 'rackghost'
-        });
-      });
     }
-    // Taze kayitli stresse saldirilari: upstream /ongoing gec guncellenir (5-15sn);
-    // kullanici sayfayi yenilemek zorunda kalmasin diye baslatma aninda kayit
-    // defterinden goster; upstream gorunur olunca ayni satir onunla devam eder.
-    {
-      const nowMs = Date.now();
-      const seenIds = new Set(ongoingData.map((r) => String(r.attack_id || '')));
-      // Upstream'in attack_id'siz (null) satirlari ID tekillestirmesinden kacar;
-      // ayni saldiri iki kez sayilmasin diye hedef+yontem butcesi uygulanir.
-      const nullIdBudget = new Map();
-      ongoingData.forEach((r) => {
-        if (r.attack_id) return;
-        const sig = rowSigKey(r.target || r.host, r.method);
-        if (sig) nullIdBudget.set(sig, (nullIdBudget.get(sig) || 0) + 1);
-      });
-      Object.values(activeAttacks).forEach((a) => {
-        if (a.provider === 'rackghost') return; // onlar yukaridaki blokta
-        const owner = a.username || sessions[a.sessionId]?.username;
-        if (owner !== username) return;
-        const id = String(a.attackId);
-        if (seenIds.has(id)) return;
-        const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
-        // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
-        const sig = rowSigKey(target, a.method);
-        if (sig && (nullIdBudget.get(sig) || 0) > 0) {
-          nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
-          return;
-        }
-        const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
-        if (!Number.isFinite(tlSec) || tlSec <= 0) return;
-        ongoingData.push({
-          attack_id: id,
-          target,
-          method: a.method,
-          timeLeft: String(tlSec),
-          count: a.concurrents || 1,
-          ...(a.loopId ? { loopId: a.loopId } : {}),
-          ...(a.group ? { group: a.group } : {})
-        });
-      });
-    }
+    // Taze kayit defteri satirlari (stresse + rackghost pending): upstream
+    // gecikmesinden bagimsiz olarak her zaman eklenir.
+    appendFreshRegistryRows(ongoingData, username);
     hub.lastOngoing = ongoingData;
     // Her tick broadcast (upstream hatasi dahil): akis susmaz; taze kayitlar
     // ve korunan satirlar client'a daima akar. Hata serisinde sadece aralik
@@ -4077,6 +4084,15 @@ function pokeLiveHub(username) {
   const now = Date.now();
   if (now - (lastPokeAt.get(username) || 0) < 1500) return;
   lastPokeAt.set(username, now);
+  // Upstream beklemeden ANINDA broadcast: taze kayitlar son listenin ustune
+  // eklenir; sonraki gercek tick uzlastirir/tekillestirir.
+  const base = Array.isArray(hub.lastOngoing) ? [...hub.lastOngoing] : [];
+  appendFreshRegistryRows(base, username);
+  hub.lastOngoing = base;
+  const payload = { timestamp: new Date().toISOString(), ongoing: base };
+  if (hub.lastUser) payload.user = hub.lastUser;
+  liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
+  // Normal tick'i de one cek (upstream ile uzlasma)
   clearTimeout(hub.timer);
   liveHubTick(hub, username).catch(() => {});
 }
