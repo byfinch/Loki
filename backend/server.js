@@ -1894,6 +1894,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       const sig = rowSigKey(item.target || item.host, item.method);
       if (sig) nullIdBudget.set(sig, (nullIdBudget.get(sig) || 0) + 1);
     });
+    // Pending satirlar upstream AYNI imzali satiri (id'li/id'siz) gorunce duser
+    const upstreamSigCounts = new Map();
+    ongoing.forEach((item) => {
+      const sig = rowSigKey(item.target || item.host, item.method);
+      if (sig) upstreamSigCounts.set(sig, (upstreamSigCounts.get(sig) || 0) + 1);
+    });
 
     Object.values(activeAttacks).forEach((attack) => {
       // Sadece ayni session'a ait saldirilari ekle (diger kullanicilarin saldirilarini karistirma)
@@ -1902,11 +1908,18 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       if (attack.username && attack.username !== username) return;
       // Zaten listede varsa tekrar ekleme
       if (existingIds.has(attack.attackId)) return;
+      const idStr = String(attack.attackId);
+      const sigEarly = rowSigKey(buildTargetUrl(attack.host, attack.port), attack.method);
+      // Pending'ler upstream'in id'li veya id'siz ayni-imzali satiriyla 1:1 duser
+      if (idStr.startsWith('pending_') && sigEarly && (upstreamSigCounts.get(sigEarly) || 0) > 0) {
+        upstreamSigCounts.set(sigEarly, upstreamSigCounts.get(sigEarly) - 1);
+        return;
+      }
       // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
       if (!registryRowVisible(attack, new Set([...existingIds].map(String)), now)) return;
       // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
       const sig = rowSigKey(buildTargetUrl(attack.host, attack.port), attack.method);
-      if (sig && (nullIdBudget.get(sig) || 0) > 0) {
+      if (sig && !idStr.startsWith('pending_') && (nullIdBudget.get(sig) || 0) > 0) {
         nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
         return;
       }
@@ -4030,6 +4043,14 @@ function appendFreshRegistryRows(ongoingData, username) {
   // Taze kayitli stresse saldirilari: upstream /ongoing gec guncellenir (5-15sn);
   // kayit defterinden aninda goster; upstream gorunur olunca ayni satir devam eder.
   const seenIds = new Set(ongoingData.map((r) => String(r.attack_id || '')));
+  // Pending satirlar launch boslugunu doldurur; upstream AYNI imzali satiri
+  // (id'li veya id'siz) gosterdiginde 1:1 duserler — aksi halde upstream'in
+  // gercek satirlariyla yan yana cift sayilirlar.
+  const upstreamSigCounts = new Map();
+  ongoingData.forEach((r) => {
+    const sig = rowSigKey(r.target || r.host, r.method);
+    if (sig) upstreamSigCounts.set(sig, (upstreamSigCounts.get(sig) || 0) + 1);
+  });
   // Upstream'in attack_id'siz (null) satirlari ID tekillestirmesinden kacar;
   // ayni saldiri iki kez sayilmasin diye hedef+yontem butcesi uygulanir.
   const nullIdBudget = new Map();
@@ -4045,11 +4066,17 @@ function appendFreshRegistryRows(ongoingData, username) {
     const id = String(a.attackId);
     if (seenIds.has(id)) return;
     const target = a.layer === 'L7' ? `https://${a.host}/:${a.port}` : `${a.host}:${a.port}`;
+    const sig = rowSigKey(target, a.method);
+    if (sig && id.startsWith('pending_')) {
+      if ((upstreamSigCounts.get(sig) || 0) > 0) {
+        upstreamSigCounts.set(sig, upstreamSigCounts.get(sig) - 1);
+        return;
+      }
+    }
     // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
     if (!registryRowVisible(a, upstreamIds, nowMs)) return;
     // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
-    const sig = rowSigKey(target, a.method);
-    if (sig && (nullIdBudget.get(sig) || 0) > 0) {
+    if (sig && !id.startsWith('pending_') && (nullIdBudget.get(sig) || 0) > 0) {
       nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
       return;
     }
