@@ -194,7 +194,7 @@ const activeAttacks = {};
 // methods herkes icin ayni (global, TTL 1 saat); plan kullanici bazli (TTL 5 dk).
 const METHODS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PLAN_CACHE_TTL_MS = 5 * 60 * 1000;
-const METHODS_CACHE_FILE = path.join(DATA_DIR, 'methods-cache.json');
+const METHODS_CACHE_FILE = path.join(__dirname, 'data', 'methods-cache.json');
 // Disk destekli: restart'ta/ilk acilista upstream'i beklemeden servis edilir.
 const methodsCache = (() => {
   try {
