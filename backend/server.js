@@ -3878,6 +3878,8 @@ async function liveHubTick(hub, username) {
   hub.tickStartedAt = Date.now();
   hub.tickCount += 1;
   const fetchUser = hub.tickCount === 1 || hub.tickCount % 10 === 0;
+  let user = null;
+  let ongoingData;
   try {
     const client = getClient(hub.sessionId);
     // Sert timeout ZORUNLU: zaman asimisiz bir istek takilirsa tick zinciri
@@ -3885,34 +3887,45 @@ async function liveHubTick(hub, username) {
     // kullanicinin "saldiriyi gec goruyorum / yenilemek zorundayim" bug'i.
     const requests = [client.get(`/ongoing/${username}`, { timeout: 15000 })];
     if (fetchUser) requests.push(client.get(`/user/${username}`, { timeout: 15000 }));
-    const [ongoing, user] = await Promise.all(requests);
+    const [ongoing, userRes] = await Promise.all(requests);
+    user = userRes;
+    // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi) hata say
+    if (!Array.isArray(ongoing.data)) throw new Error('upstream array disi yanit');
     // Not cozumleme ID'den bagimsiz oldugu icin satir /ongoing'de gorunur
     // gorunmez not da ayni tick'te hazirdir (gec gelme sorunu yok).
-    let ongoingData = ongoing.data;
-    if (Array.isArray(ongoingData)) {
-      ongoingData = ongoingData.map((item) => {
-        const local = activeAttacks[item.attack_id || item.id];
-        let next = item;
-        // Upstream kuyruk payini gosterme: gercek sureyi asma
-        if (local) {
-          const t = parseInt(local.time, 10) || 0;
-          const tl = parseInt(item.timeLeft, 10);
-          if (t > 0 && Number.isFinite(tl) && tl > t) {
-            next = { ...next, timeLeft: t };
-          }
-          // Grup goruntusu icin: loopId ve group frontend'e tasinir
-          if (local.loopId) next = { ...next, loopId: local.loopId };
-          if (local.group) next = { ...next, group: local.group };
+    ongoingData = ongoing.data.map((item) => {
+      const local = activeAttacks[item.attack_id || item.id];
+      let next = item;
+      // Upstream kuyruk payini gosterme: gercek sureyi asma
+      if (local) {
+        const t = parseInt(local.time, 10) || 0;
+        const tl = parseInt(item.timeLeft, 10);
+        if (t > 0 && Number.isFinite(tl) && tl > t) {
+          next = { ...next, timeLeft: t };
         }
-        const note = resolveNoteForRow(username, item.target || item.host, item.method);
-        return note ? { ...next, note } : next;
-      });
+        // Grup goruntusu icin: loopId ve group frontend'e tasinir
+        if (local.loopId) next = { ...next, loopId: local.loopId };
+        if (local.group) next = { ...next, group: local.group };
+      }
+      const note = resolveNoteForRow(username, item.target || item.host, item.method);
+      return note ? { ...next, note } : next;
+    });
+    hub.consecutiveErrors = 0;
+    // Basarili tick: bu session calisiyor demektir; iyi bilinen session olarak isle.
+    hub.lastGoodSessionId = hub.sessionId;
+    if (user) hub.lastUser = user.data;
+  } catch (err) {
+    hub.consecutiveErrors += 1;
+    // Session hatasi variysa (401/gecersiz oturum) son calisan session'a don;
+    // bayat sekmenin session'i tum hub'i bozmasin.
+    if (hub.lastGoodSessionId && hub.sessionId !== hub.lastGoodSessionId) {
+      hub.sessionId = hub.lastGoodSessionId;
     }
-    // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi)
-    // client'i kirmamak icin son bilinen iyi veriyi koru; yoksa bos dizi.
-    if (!Array.isArray(ongoingData)) {
-      ongoingData = Array.isArray(hub.lastOngoing) ? hub.lastOngoing : [];
-    }
+    console.warn(`[liveHub] upstream tick hatasi (${username}):`, err.message);
+    // AKIS SUSMASIN: son bilinen listeyle devam et (satirlar client'ta geri
+    // sayiyor); taze kayitlar (pending) ve RG merge asagida yine eklenir.
+    ongoingData = Array.isArray(hub.lastOngoing) ? [...hub.lastOngoing] : [];
+  }
     // RackGhost aktif saldirilari canli listeye ekle (provider rozeti ile)
     if (rackghost.isConfigured()) {
       // RackGhost tek ortak hesap: kayit defterinde hangi saldiri hangi
@@ -4037,23 +4050,13 @@ async function liveHubTick(hub, username) {
       });
     }
     hub.lastOngoing = ongoingData;
-    if (user) hub.lastUser = user.data;
-    hub.consecutiveErrors = 0;
-    // Basarili tick: bu session calisiyor demektir; iyi bilinen session olarak isle.
-    hub.lastGoodSessionId = hub.sessionId;
-    // user yoksa payload'a koyma; client'lar son user'i kullanmaya devam eder.
+    // Her tick broadcast (upstream hatasi dahil): akis susmaz; taze kayitlar
+    // ve korunan satirlar client'a daima akar. Hata serisinde sadece aralik
+    // uzar (30sn), veri akmaya devam eder.
     const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
-    if (user) payload.user = hub.lastUser;
+    if (hub.lastUser) payload.user = hub.lastUser;
     liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
-  } catch (err) {
-    hub.consecutiveErrors += 1;
-    // Session hatasi variysa (401/gecersiz oturum) son calisan session'a don;
-    // bayat sekmenin session'i tum hub'i bozmasin.
-    if (hub.lastGoodSessionId && hub.sessionId !== hub.lastGoodSessionId) {
-      hub.sessionId = hub.lastGoodSessionId;
-    }
-    liveHubBroadcast(hub, `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
-  }
+
   if (hub.clients.size === 0) { hub.tickInFlight = false; return; } // close handler hub'i zaten temizledi
   // Poll baskisi: 3sn agresyifti (stresse anti-abuse tetikliyor); 10sn yeterli.
   const delay = hub.consecutiveErrors >= 3 ? 30000 : 10000;
