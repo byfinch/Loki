@@ -1931,8 +1931,6 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         upstreamSigCounts.set(sigEarly, upstreamSigCounts.get(sigEarly) - 1);
         return;
       }
-      // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
-      if (!registryRowVisible(attack, new Set([...existingIds].map(String)), now)) return;
       // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
       const sig = rowSigKey(buildTargetUrl(attack.host, attack.port), attack.method);
       if (sig && !idStr.startsWith('pending_') && (nullIdBudget.get(sig) || 0) > 0) {
@@ -4039,20 +4037,6 @@ function liveHubBroadcast(hub, chunk) {
 // Paylasimli poller tick'i: /ongoing her tick, /user sadece ilk tick ve her
 // 10. tickte cekilir. 3 ardisik hatadan sonra aralik 10sn'ye duser (backoff),
 // ilk basarida 3sn'ye doner.
-// Kayit defteri satirinin gorunurluk kurali: upstream satirlari TEK gercek
-// kaynaktir; defter satiri sadece launch boslugunu doldurur. 45sn, upstream
-// listeleme gecikmesinin (hasta donemde ~40sn) ust siniridir. Daha yasli ve
-// upstream'de karsiligi olmayan kayit HAYALETTIR (hic baslamamis/yanlis
-// varsayim) — gosterilmez. Boylece Aktif sayisi gercek saldiri sayisina kitlenir.
-const FRESH_ROW_WINDOW_MS = 45000;
-function registryRowVisible(a, upstreamIds, nowMs) {
-  const startedMs = new Date(a.startedAt || 0).getTime();
-  if (Number.isFinite(startedMs) && nowMs - startedMs > FRESH_ROW_WINDOW_MS) {
-    return upstreamIds.has(String(a.attackId));
-  }
-  return true;
-}
-
 // Taze kayit defteri satirlarini (stresse pending/dogrulanmis + rackghost)
 // listeye ekler. liveHubTick ve pokeLiveHub ortak kullanir: upstream
 // beklenmeden satirin aninda dusmesinin ozu budur. null-id butcesiyle cift
@@ -4069,8 +4053,6 @@ function appendFreshRegistryRows(ongoingData, username) {
       if (seenRg.has(id)) return;
       const owner = a.username || sessions[a.sessionId]?.username || null;
       if (owner && owner !== username) return; // baska hesabin saldirisi
-      // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan rg kaydi duser
-      if (!registryRowVisible(a, upstreamIds, nowMs)) return;
       const tlSec = Math.round((new Date(a.expiresAt || 0).getTime() - nowMs) / 1000);
       if (!Number.isFinite(tlSec) || tlSec <= 0) return;
       ongoingData.push({
@@ -4117,8 +4099,9 @@ function appendFreshRegistryRows(ongoingData, username) {
         return;
       }
     }
-    // Hayalet filtresi: yasli ve upstream'de karsiligi olmayan kayit duser
-    if (!registryRowVisible(a, upstreamIds, nowMs)) return;
+    // Yas kapisini kaldirma: expiresAt kaynakta sinirli (registerAttack +
+    // restore dogrulamasi); upstream'i hic listelemeyen hesaplarda (listing'i
+    // bozuk) kayit satirlari gorunur kalmali.
     // Upstream ayni saldiriyi id'siz satirla zaten gosteriyorsa ekleme
     if (sig && !id.startsWith('pending_') && (nullIdBudget.get(sig) || 0) > 0) {
       nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
