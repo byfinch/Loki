@@ -425,8 +425,22 @@ function loadState() {
       });
       console.log(`[persistence] Restored ${Object.keys(activeLoops).length} infinite loop(s)`);
 
+      // Senkron gruptaki loop'larin sahipligi koordinatorde (initSync): bunlari
+      // kuyruğa VERME. Aksi halde restart'ta kuyruk turlari + initSync'in
+      // syncTick'i ayni loop'u ~10sn arayla cift atesler — upstream'te iki
+      // nesil saldiri birikir (Aktif > Toplam sismesinin kok sebebi).
+      let syncOwnedIds = new Set();
+      try {
+        const sg = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'sync-groups.json'), 'utf8'));
+        Object.values(sg).forEach((g) => (g.loopIds || []).forEach((id) => syncOwnedIds.add(id)));
+      } catch { /* grup dosyasi yoksa bos kume */ }
+
       // Geri yuklenen loop'larin motorunu tekrar calistir
       Object.keys(activeLoops).forEach((loopId) => {
+        if (syncOwnedIds.has(loopId)) {
+          console.log(`[persistence] Loop senkron grupta, koordinator devralacak: ${loopId}`);
+          return;
+        }
         console.log(`[persistence] Restarting loop ${loopId}`);
         runLoop(loopId).catch((err) => console.error(`[persistence] runLoop ${loopId} hatasi:`, err));
       });
@@ -4457,6 +4471,16 @@ rackghost.initRackghost();
 sitewatch.initSitewatch();
 // Senkron Tur Koordinatoru: paylasilan saatli loop gruplari (restart'ta geri yuklenir)
 sync.initSync({ activeLoops, sessions, getLoopOwner, fireLoopRound, runLoop, saveState, activeLoopRounds, waitLoopsDrained });
+// loadState senkron-gruplu loop'lari kuyruga vermedi (cift atesleme onlemi).
+// Grubu gecersiz/bozuk cikip initSync sahiplenmedigi loop kalirsa kuyruk
+// devralsin — yoksa loop sessizce tur atamaz durumda donar kalir.
+Object.keys(activeLoops).forEach((loopId) => {
+  const l = activeLoops[loopId];
+  if (l?.running && !l.syncGroup && !loopQueue.includes(loopId)) {
+    console.log(`[persistence] initSync sahiplenmedi, kuyruk devraliyor: ${loopId}`);
+    runLoop(loopId).catch(() => {});
+  }
+});
 // Restart sonrasi slot bildirimi kacmasin: geri yuklenen saldirilari hesap
 // bazinda baz al.
 Object.values(activeAttacks).forEach((a) => {
