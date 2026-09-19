@@ -2033,13 +2033,22 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
 
     const { username } = req.params;
     const client = getClient(sessionId);
-    const response = await client.get(`/ongoing/${username}`);
+    // Upstream timeout ZORUNLU: hasta donemde istek asili kaliyor, endpoint
+    // hic donmuyor ve panel "aktif saldiri yok" kaliyordu. Hata durumunda
+    // bos listeyle devam et; kayit defteri satirlari asagida yine eklenir.
+    let upstreamData = null;
+    try {
+      const response = await client.get(`/ongoing/${username}`, { timeout: 12000 });
+      upstreamData = response.data;
+    } catch (err) {
+      console.warn(`[ongoing] upstream hatasi (${username}):`, err.message);
+    }
 
     let ongoing = [];
-    if (Array.isArray(response.data)) {
-      ongoing = response.data;
-    } else if (response.data && Array.isArray(response.data.attacks)) {
-      ongoing = response.data.attacks;
+    if (Array.isArray(upstreamData)) {
+      ongoing = upstreamData;
+    } else if (upstreamData && Array.isArray(upstreamData.attacks)) {
+      ongoing = upstreamData.attacks;
     }
 
     const existingIds = new Set(ongoing.map((a) => a.attack_id || a.id));
