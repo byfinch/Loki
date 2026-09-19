@@ -2471,21 +2471,26 @@ async function getOngoingShared(sessionId) {
 // (birden cok loop ayni hesaptaysa istekler birlesir). rackghost atlanir:
 // saldirilari sure dolunca kesin olur, fireLoopRound'un statik buffer'i yeter.
 async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
-  const pending = new Map(); // loopId -> { kind:'ids'|'sig', ids:Set, sig, sessionId }
+  const pending = new Map(); // loopId -> { kind:'ids'|'sig', ids:Set, sig, sessionId, clean:0 }
   for (const loopId of loopIds) {
     const loop = activeLoops[loopId];
     if (!loop || loop.params?.provider === 'rackghost') continue;
     if (!sessions[loop.sessionId]) continue;
     const ids = (loop.roundAttackIds || []).filter(Boolean);
     if (ids.length > 0) {
-      pending.set(loopId, { kind: 'ids', ids: new Set(ids), sessionId: loop.sessionId });
+      pending.set(loopId, { kind: 'ids', ids: new Set(ids), sessionId: loop.sessionId, clean: 0 });
     } else if ((loop.roundCount || 0) > 0) {
       const sig = rowSigKey(`${loop.params.host}:${loop.params.port}`, loop.params.method);
-      if (sig) pending.set(loopId, { kind: 'sig', sig, sessionId: loop.sessionId });
+      if (sig) pending.set(loopId, { kind: 'sig', sig, sessionId: loop.sessionId, clean: 0 });
     }
   }
   if (pending.size === 0) return;
 
+  // Yalanci-bosluk korumasi: stresse /ongoing yuk altinda aralikli BOS liste
+  // donduruyor; tek bos olcumu "herkes oldu" sanip erken ateslemek nesillerin
+  // ust uste binmesinin (Aktif > Toplam) ana kaynagiydi. Drain ancak 3 ardisik
+  // temiz olcumle acar (~3sn tutarlilik); satir geri gelirse sayac sifirlanir.
+  const CLEAN_CHECKS = 3;
   const started = Date.now();
   while (pending.size > 0 && Date.now() - started < maxWaitMs) {
     const bySession = new Map();
@@ -2497,10 +2502,11 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
       const session = sessions[sessionId];
       if (!session) { sLoopIds.forEach((id) => pending.delete(id)); continue; }
       const { list, ok } = await getOngoingShared(sessionId);
-      // Fetch hataliysa (timeout/429): "herkes oldu" sanip ACMA — bu turu bekle.
-      // Aksi halde upstream hastayken ardisik nesiller ust uste biner
-      // (Aktif > Toplam ve plan limiti asimi gorunuyordu).
-      if (!ok) continue;
+      // Fetch hataliysa (timeout/429): "herkes oldu" sanip ACMA — bekle.
+      if (!ok) {
+        sLoopIds.forEach((id) => { const p = pending.get(id); if (p) p.clean = 0; });
+        continue;
+      }
       const ongoingIds = new Set(list.map((a) => a.attack_id || a.id));
       const sigCounts = new Map();
       list.forEach((a) => {
@@ -2510,12 +2516,19 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
       sLoopIds.forEach((loopId) => {
         const p = pending.get(loopId);
         if (!p) return;
+        let aliveNow;
         if (p.kind === 'ids') {
           const alive = [...p.ids].filter((x) => ongoingIds.has(x));
-          if (alive.length === 0) pending.delete(loopId);
-          else p.ids = new Set(alive);
-        } else if ((sigCounts.get(p.sig) || 0) === 0) {
-          pending.delete(loopId);
+          p.ids = new Set(alive);
+          aliveNow = alive.length;
+        } else {
+          aliveNow = sigCounts.get(p.sig) || 0;
+        }
+        if (aliveNow === 0) {
+          p.clean = (p.clean || 0) + 1;
+          if (p.clean >= CLEAN_CHECKS) pending.delete(loopId);
+        } else {
+          p.clean = 0; // satir geri geldi: yalanci bosluktu, sayac sifir
         }
       });
     }
@@ -2589,7 +2602,10 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       await new Promise((r) => setTimeout(r, 3000));
     }
   } else if (!skipDrain) {
-    await waitLoopsDrained([loopId], 60000);
+    // Tavan saldiri suresine endeksli: upstream hasta donemde saldirilar
+    // nominalin ~2 kati yasiyor; sabit 60sn tavan yetmiyordu.
+    const drainCap = Math.max(60000, (parseInt(effectiveParams.time, 10) || 60) * 1000);
+    await waitLoopsDrained([loopId], drainCap);
   }
   previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
 

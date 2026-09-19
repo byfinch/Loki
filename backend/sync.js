@@ -62,7 +62,9 @@ async function syncTick(groupId) {
   // tum loop'lar icin ayni kalir. Ust sinir 120s: gecis doneminde onceki
   // uzun saldirilarin olmesi beklenebilir, zombie satirlarda ise akis kilitlenmez.
   if (deps.waitLoopsDrained) {
-    await deps.waitLoopsDrained(runningIds, 120000);
+    // Tavan tur suresine endeksli: upstream hasta donemde saldirilar nominalin
+    // ~2 kati yasiyor; sabit 120sn yetmiyordu.
+    await deps.waitLoopsDrained(runningIds, Math.max(120000, g.time * 1000));
   }
   // Faz 2 — atesleme: await YOK. fireLoopRound icindeki ID dogrulama pollamasi
   // (~10s, L4'te hic ID gelmedigi icin hep zamana dayali) sirayla await
