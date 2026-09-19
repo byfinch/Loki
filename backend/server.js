@@ -691,10 +691,13 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
       const recovered = [...salvageIds].filter((id) => !beforeIds.has(id)).slice(0, sendConc);
       if (recovered.length > 0) {
         console.log(`[launchAttacksGet] timeout'a ragmen ${recovered.length} saldiri kurtarildi`);
+        // Aninda gorunurluk: kurtarilan ID'leri hemen kaydet
+        recovered.forEach((id) => registerAttack(String(id), sessionId, params, loopId, 1, Math.round((Date.now() - requestStartedAt) / 1000)));
         return {
           data: { status: 'success', recovered: true },
           attackIds: recovered,
-          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
+          pendingIds: []
         };
       }
       // ID kurtarma attack_id'siz methodlarda (L4/L7 null-id) hic calismaz.
@@ -707,7 +710,10 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         return {
           data: { status: 'success', recovered: true, sigRecovered: true },
           attackIds: [],
-          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
+          // Aninda gorunurluk: upstream satirlari var ama ID'leri yok; pending
+          // satirlar hemen gorunsun, null-id butcesi tekillestirir.
+          pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
         };
       }
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
@@ -723,7 +729,8 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         return {
           data: { status: 'success', recovered: true, sigRecovered: true },
           attackIds: [],
-          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000)
+          elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
+          pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
         };
       }
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
@@ -744,6 +751,23 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     responseIds = [data.id];
   }
 
+  // ANINDA GORUNURLUK: upstream'in /ongoing'e dusmesini (5-15sn) ve ID
+  // dogrulamasini beklemeden kaydet — satir ~1-2sn'de panele duser.
+  // ID'li methodlarda gercek ID'lerle; ID'siz (L4 null-id) methodlarda pending
+  // satirlarla. Pending'ler gercek ID'ler dogrulaninca asagida silinir.
+  let pendingIds = [];
+  const instantIds = new Set(); // az once biz kaydettik — diff bunlari elememeli
+  if (data?.status === 'success' || data?.message === 'Attack started') {
+    if (responseIds.length > 0) {
+      responseIds.slice(0, sendConc).forEach((id) => {
+        registerAttack(String(id), sessionId, params, loopId, 1, 0);
+        instantIds.add(String(id));
+      });
+    } else {
+      pendingIds = registerPendingAttacks(sessionId, params, sendConc, loopId);
+    }
+  }
+
   // Ongoing listesinin guncellenmesi icin kisa bekle.
   await new Promise((r) => setTimeout(r, 4000));
 
@@ -752,13 +776,15 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
   const afterIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
 
   // Onceki /ongoing'de olmayan ve baska bir launch/loop'a zaten kayitli olmayan
-  // yeni ID'leri tespit et.
-  let newIds = responseIds.filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
+  // yeni ID'leri tespit et. (Aninda kaydedilen instantIds defterde zaten var —
+  // onlari eleme; yoksa basarili launch "dogrulanamadi" gorunur.)
+  const notRegisteredElsewhere = (id) => !activeAttacks[id] || instantIds.has(String(id));
+  let newIds = responseIds.filter((id) => !beforeIds.has(id) && notRegisteredElsewhere(id));
 
   // Eger response'taki ID'lerin hepsi eskiyse (tum aktifler listesi ise),
   // after - before diff'inden yeni ID'leri cikar.
   if (newIds.length === 0 && afterIds.size > beforeIds.size) {
-    newIds = [...afterIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
+    newIds = [...afterIds].filter((id) => !beforeIds.has(id) && notRegisteredElsewhere(id));
   }
 
   // stresse.st "success" dedi ama hic ID yoksa: /ongoing gec guncellenebilir,
@@ -767,7 +793,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     console.warn(`[launchAttacksGet] success ama ID yok; ikinci dogrulama yapiliyor...`);
     await new Promise((r) => setTimeout(r, 4000));
     const retryIds = new Set(await fetchOngoingAttackIds(sessionId, params, 1000, requestStartedAt));
-    newIds = [...retryIds].filter((id) => !beforeIds.has(id) && !activeAttacks[id]);
+    newIds = [...retryIds].filter((id) => !beforeIds.has(id) && notRegisteredElsewhere(id));
   }
 
   console.log(`[launchAttacksGet] before=${beforeIds.size} responseIds=${responseIds.length} after=${afterIds.size} new=${newIds.length} requested=${concurrents} sent=${sendConc}`);
@@ -787,10 +813,18 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     markMethodBusy(params.method);
   }
 
+  // Gercek ID'ler dogrulandiysa pending satirlar artik gereksiz (cift satir
+  // olmasin diye sil). ID yoksa pending'ler yasamaya devam eder.
+  if (newIds.length > 0 && pendingIds.length > 0) {
+    pendingIds.forEach((id) => unregisterAttack(id));
+    pendingIds = [];
+  }
+
   return {
     data,
     attackIds: newIds.slice(0, sendConc),
-    elapsedSec: 0
+    elapsedSec: 0,
+    pendingIds
   };
 }
 
@@ -1003,6 +1037,23 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
   const attackOwner = activeAttacks[attackId].username;
   if (attackOwner) lastAttackCountByUser.set(attackOwner, countAttacksForUser(attackOwner));
   saveState();
+  // Aninda gorunurluk: hub'in normal tick'ini (10sn; hata backoff'unda 30sn)
+  // beklemeden canli listeye dusur. Patlamada 1.5sn birlestirme (pokeLiveHub).
+  pokeLiveHub(attackOwner);
+}
+
+// Launch yaniti geldigi anda (upstream listelemesini beklemeden) deftere pending
+// satirlar duser: saldiri panelde ~1-2sn icinde gorunur. Gercek ID'ler gelince
+// cagiran taraf bunlari siler; ID'siz methodlarda (L4 null-id) upstream satir
+// gorunene kadar kalir ve null-id butcesiyle tekillestirilir (cift satir olmaz).
+function registerPendingAttacks(sessionId, params, count, loopId = null) {
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    const pid = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${i}`;
+    registerAttack(pid, sessionId, params, loopId, 1, 0);
+    ids.push(pid);
+  }
+  return ids;
 }
 
 function unregisterAttack(attackId) {
@@ -1871,7 +1922,9 @@ app.post('/api/stresse/attack', async (req, res) => {
     let data, attackIds;
     try {
       const result = await launchAttacksGet(sessionId, {
-        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
+        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet,
+        // Aninda kayit pending/id'li satirin grup rozetiyle dusmesi icin
+        group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined
       }, 1);
       data = result.data;
       attackIds = result.attackIds;
@@ -1991,7 +2044,9 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     let data, attackIds;
     try {
       const result = await launchAttacksGet(sessionId, {
-        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet
+        host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet,
+        // Aninda kayit pending/id'li satirin grup rozetiyle dusmesi icin
+        group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined
       }, count);
       data = result.data;
       attackIds = result.attackIds;
@@ -2733,6 +2788,10 @@ app.post('/api/stresse/stop', async (req, res) => {
 
     const { id } = req.body;
     if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
+    // Pending satir: launch yeni gitti, upstream ID'si henuz yok — durdurulamaz.
+    if (String(id).startsWith('pending_')) {
+      return res.status(409).json({ status: 'error', message: 'Saldırı henüz başlatılıyor; birkaç saniye sonra tekrar dene' });
+    }
 
     // Baska hesaba ait saldiri durdurulamaz: upstream stop atma, kayitlara dokunma.
     // Yerel kayit yoksa (panel disindan baslatilmis olabilir) durdurmaya izin ver.
@@ -3803,6 +3862,10 @@ function liveHubBroadcast(hub, chunk) {
 // ilk basarida 3sn'ye doner.
 async function liveHubTick(hub, username) {
   if (hub.clients.size === 0) return;
+  // Poke ile normal tick cakismasini onle (iki tick paralel kosarsa iki timer
+  // zinciri olusur — biri ezilir, biri yasamaya devam eder).
+  if (hub.tickInFlight) return;
+  hub.tickInFlight = true;
   hub.tickCount += 1;
   const fetchUser = hub.tickCount === 1 || hub.tickCount % 10 === 0;
   try {
@@ -3973,12 +4036,28 @@ async function liveHubTick(hub, username) {
     }
     liveHubBroadcast(hub, `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
   }
-  if (hub.clients.size === 0) return; // close handler hub'i zaten temizledi
+  if (hub.clients.size === 0) { hub.tickInFlight = false; return; } // close handler hub'i zaten temizledi
   // Poll baskisi: 3sn agresyifti (stresse anti-abuse tetikliyor); 10sn yeterli.
   const delay = hub.consecutiveErrors >= 3 ? 30000 : 10000;
+  hub.tickInFlight = false;
   hub.timer = setTimeout(() => {
     liveHubTick(hub, username).catch((err) => console.error('[liveHub] beklenmeyen tick hatasi:', err));
   }, delay);
+}
+
+// Yeni kayit/launch aninda hub tick'ini one cek: satir gecikmesi ~1-2sn'ye iner
+// (normalde 10sn, hata backoff'unda 30sn idi — "saldiriyi gec goruyorum" bug'i).
+// 1.5sn birlestirme: toplu launch'larda (senkron 13 loop) upstream'i yormaz.
+const lastPokeAt = new Map(); // username -> ts
+function pokeLiveHub(username) {
+  if (!username) return;
+  const hub = liveHubs.get(username);
+  if (!hub || hub.clients.size === 0) return;
+  const now = Date.now();
+  if (now - (lastPokeAt.get(username) || 0) < 1500) return;
+  lastPokeAt.set(username, now);
+  clearTimeout(hub.timer);
+  liveHubTick(hub, username).catch(() => {});
 }
 
 /**

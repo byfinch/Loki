@@ -183,6 +183,11 @@ const LiveAttacks = () => {
 
   const handleStopSingle = async (attackId, rowKey = null, sig = null) => {
     if (!attackId) return;
+    // Pending satir: launch yeni gitti, upstream ID henuz yok
+    if (String(attackId).startsWith('pending_')) {
+      showToast('Saldırı henüz başlatılıyor; birkaç saniye sonra tekrar dene', 'error');
+      return;
+    }
     if (rowKey) stoppedKeysRef.current.add(rowKey);
     if (sig) stoppedSigsRef.current.add(sig);
     setStopping((prev) => new Set(prev).add(attackId));
@@ -256,6 +261,10 @@ const LiveAttacks = () => {
       if (stopCancelledRef.current) {
         return { id, status: 'cancelled' };
       }
+      // Pending (henuz upstream ID'siz) satirlar durdurulamaz; atla
+      if (String(id).startsWith('pending_')) {
+        return { id, status: 'error', message: 'Saldırı henüz başlatılıyor' };
+      }
       try {
         const data = await apiClient.stopAttack(id);
         if (data && data.error) {
@@ -328,7 +337,10 @@ const LiveAttacks = () => {
   };
 
   const handleStopAll = async () => {
-    const allIds = state.liveAttacks.map((a) => a.attack_id).filter(Boolean);
+    // Pending (henuz upstream ID'si olusmamis) satirlar durdurulamaz; disla.
+    const allIds = state.liveAttacks
+      .map((a) => a.attack_id)
+      .filter((id) => id && !String(id).startsWith('pending_'));
     if (allIds.length === 0) return;
     groupedAttacks.forEach((g) => {
       stoppedKeysRef.current.add(rowKeyOf(g));
