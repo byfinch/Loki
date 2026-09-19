@@ -1579,6 +1579,20 @@ async function performKeyBasedLogin(sessionId, username) {
 async function performStresseLogin(sessionId, username, password) {
   sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };  const client = getClient(sessionId);
 
+  // HIZLI YOL: bilinen hesap + kayitli API key varsa once key-bazli giris
+  // (birkac saniye). stresse web login'i (/login ~20-45sn x 3 deneme x N adim)
+  // hasta donemlerde dakikalar suruyor ve proxy timeout'u "Failed to fetch"
+  // uretiyordu. Key yoksa/basarisizsa web akisina dusulur.
+  if (KNOWN_ACCOUNTS.get(username) === password && getFallbackApiToken(username)) {
+    try {
+      const result = await performKeyBasedLogin(sessionId, username);
+      console.log(`[login] ${username} icin key-oncelikli hizli giris basarili`);
+      return result;
+    } catch (fastErr) {
+      console.warn(`[login] key-oncelikli giris basarisiz, web akisina geciliyor: ${fastErr.message}`);
+    }
+  }
+
   let step = 'GET /login';
   try {
     // 1. Get login page to collect cookies (retry ile)
