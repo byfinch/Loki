@@ -667,10 +667,10 @@ async function sigSalvage(sessionId, params) {
 }
 
 // Bazi stresse methodlari istegin concurrents degerinin 2 katini baslatir
-// (HTTP-REST: conc=10 -> 20 saldiri/20 slot, canli olcumle dogrulandi).
-// Kullanici girdigi kadar saldiri VE slot tuketsin diye upstream'e yarisi
-// gonderilir (tek sayida yukari yuvarlanir: 7 -> 4 gonder, 8 acilir).
-const STRESSE_DOUBLE_LAUNCH = new Set(['http-rest']);
+// (HTTP-REST: conc=10 -> 20; TCPAMP: conc=5 -> 10 — ikisi de canli olcumle
+// dogrulandi). Kullanici girdigi kadar saldiri VE slot tuketsin diye
+// upstream'e yarisi gonderilir (tek sayida yukari yuvarlanir).
+const STRESSE_DOUBLE_LAUNCH = new Set(['http-rest', 'tcpamp']);
 function stresseSendConc(method, conc) {
   const c = parseInt(conc, 10) || 1;
   return STRESSE_DOUBLE_LAUNCH.has(String(method || '').toLowerCase())
