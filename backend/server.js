@@ -2694,7 +2694,12 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
   // donduruyor; tek bos olcumu "herkes oldu" sanip erken ateslemek nesillerin
   // ust uste binmesinin (Aktif > Toplam) ana kaynagiydi. Drain ancak 3 ardisik
   // temiz olcumle acar (~3sn tutarlilik); satir geri gelirse sayac sifirlanir.
+  // Karsi kural: upstream'e HIC ulasilamiyorsa (ardisik 5 hata ~5sn) drain
+  // erken pes eder — zaman kapisi zaten araligi koruyor; hasta donemde her tur
+  // 120sn bloklanip gorunurluk boslugu (panel bos) uretiyordu.
   const CLEAN_CHECKS = 3;
+  const MAX_ERROR_CYCLES = 5;
+  let errorCycles = 0;
   const started = Date.now();
   while (pending.size > 0 && Date.now() - started < maxWaitMs) {
     const bySession = new Map();
@@ -2702,15 +2707,19 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
       if (!bySession.has(p.sessionId)) bySession.set(p.sessionId, []);
       bySession.get(p.sessionId).push(loopId);
     });
+    let cycleHadError = false;
+    let cycleHadSuccess = false;
     for (const [sessionId, sLoopIds] of bySession) {
       const session = sessions[sessionId];
       if (!session) { sLoopIds.forEach((id) => pending.delete(id)); continue; }
       const { list, ok } = await getOngoingShared(sessionId);
       // Fetch hataliysa (timeout/429): "herkes oldu" sanip ACMA — bekle.
       if (!ok) {
+        cycleHadError = true;
         sLoopIds.forEach((id) => { const p = pending.get(id); if (p) p.clean = 0; });
         continue;
       }
+      cycleHadSuccess = true;
       const ongoingIds = new Set(list.map((a) => a.attack_id || a.id));
       const sigCounts = new Map();
       list.forEach((a) => {
@@ -2736,7 +2745,18 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
         }
       });
     }
-    if (pending.size > 0) await new Promise((r) => setTimeout(r, 1000));
+    if (pending.size > 0) {
+      if (cycleHadError && !cycleHadSuccess) {
+        errorCycles += 1;
+        if (errorCycles >= MAX_ERROR_CYCLES) {
+          console.warn(`[drain] upstream'e ${MAX_ERROR_CYCLES} dongu ulasilamadi; zaman kapisi koruyor, drain erken birakiliyor`);
+          break;
+        }
+      } else {
+        errorCycles = 0;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
   if (pending.size > 0) {
     console.warn(`[drain] ${maxWaitMs}ms icinde dusmeyen loop'lar var, yine de devam: ${[...pending.keys()].join(', ')}`);
