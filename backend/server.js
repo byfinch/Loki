@@ -524,6 +524,10 @@ function buildTargetUrl(host, port) {
 // imzasiyla butceleme yapilir: protokol ve sondaki slash'lar atilir, kucuk harf.
 function rowSigKey(target, method) {
   let t = String(target || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  // L7 path/query'li hedefler ('host/?s=..:443') upstream satirinin
+  // 'host:443' formatiyla eslessin; aksi halde butce/drain hic eslesemez
+  // ve ayni saldirilar iki kez sayilir (Aktif > Toplam sismesi).
+  t = t.replace(/^([^/?]+)\/[^:]*:(\d+)$/, '$1:$2');
   // L7 upstream hedefi 'host/:443' biciminde gelebilir; 'host:443'e indir
   t = t.replace(/^([^/]+)\/:(\d+)$/, '$1:$2');
   if (!t || !method) return null;

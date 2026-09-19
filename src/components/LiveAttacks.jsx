@@ -18,6 +18,8 @@ const targetKeyNorm = (t) => String(t || '')
   .toLowerCase()
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '')
+  // L7 path/query'li hedefler ('host/?s=..:443') -> 'host:443' (upstream ile ayni)
+  .replace(/^([^/?]+)\/[^:]*:(\d+)$/, '$1:$2')
   .replace(/\/:(\d+)/g, ':$1');
 const sigOf = (target, method) => `${targetKeyNorm(target)}::${String(method || '').toLowerCase()}`;
 
