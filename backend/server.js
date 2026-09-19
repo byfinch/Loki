@@ -1824,14 +1824,42 @@ app.get('/api/stresse/user/:username', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
+    const session = sessions[sessionId];
+    if (!session) return res.status(401).json({ status: 'error', message: 'Session unknown' });
 
     const client = getClient(sessionId);
-    const response = await client.get(`/user/${req.params.username}`);
-    res.json(response.data);
+    try {
+      const response = await client.get(`/user/${req.params.username}`, { timeout: 10000 });
+      return res.json(response.data);
+    } catch (upErr) {
+      const st = upErr.response?.status;
+      // Upstream 401 = web cookie bayat (oturumun kendisi degil): bilinen
+      // hesapsa arka planda web login ile cookie'leri tazele (tum oturumlara
+      // yayilir) ve bu istegi cache'ten karsila — hesap degisimi login'e dusmesin.
+      if (st === 401 || st === 403) throttledWebRefresh(session.username || req.params.username);
+      if (session.user || session.username) {
+        return res.json(session.user || { username: session.username });
+      }
+      throw upErr;
+    }
   } catch (error) {
     handleEndpointError(res, error, 'User fetch error');
   }
 });
+
+// Bayat web cookie'sini arka planda tazeler (dakikada bir, hesap basina).
+// Basarili web login jar'ini ayni hesabin tum oturumlarina yayar.
+const webRefreshAt = new Map();
+function throttledWebRefresh(username) {
+  if (!username || !KNOWN_ACCOUNTS.has(username)) return;
+  const last = webRefreshAt.get(username) || 0;
+  if (Date.now() - last < 60000) return;
+  webRefreshAt.set(username, Date.now());
+  const sid = `sess_refresh_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}`;
+  console.log(`[login] ${username} icin arka plan cookie tazelemesi basladi`);
+  performStresseLogin(sid, username, KNOWN_ACCOUNTS.get(username), true)
+    .catch((e) => console.warn(`[login] arka plan tazeleme basarisiz (${username}):`, e.message));
+}
 
 /**
  * GET /api/stresse/plan/:username
