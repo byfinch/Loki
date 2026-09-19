@@ -1546,10 +1546,13 @@ async function performStresseLogin(sessionId, username, password) {
   let step = 'GET /login';
   try {
     // 1. Get login page to collect cookies (retry ile)
+    // Not: stresse /login su an ~20sn suruyor (upstream yavasligi); 15sn'lik
+    // client timeout'u login'i olduruyordu. Login adimlarina genis timeout.
+    const LOGIN_TIMEOUT = 45000;
     let loginPageOk = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await client.get('/login');
+        await client.get('/login', { timeout: LOGIN_TIMEOUT });
         loginPageOk = true;
         break;
       } catch (retryErr) {
@@ -1567,7 +1570,7 @@ async function performStresseLogin(sessionId, username, password) {
     let loginRes;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        loginRes = await client.post('/w/login', { username, password });
+        loginRes = await client.post('/w/login', { username, password }, { timeout: LOGIN_TIMEOUT });
         break;
       } catch (retryErr) {
         console.warn(`[login] POST /w/login deneme ${attempt}/3 hata: ${retryErr.message}`);
@@ -1581,7 +1584,7 @@ async function performStresseLogin(sessionId, username, password) {
     let vcookieRes;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        vcookieRes = await client.get('/vcookie');
+        vcookieRes = await client.get('/vcookie', { timeout: LOGIN_TIMEOUT });
         break;
       } catch (retryErr) {
         console.warn(`[login] GET /vcookie deneme ${attempt}/3 hata: ${retryErr.message}`);
@@ -1601,8 +1604,8 @@ async function performStresseLogin(sessionId, username, password) {
     let planData = {};
     let apiToken = null;
     const [planResult, tokenResult] = await Promise.allSettled([
-      client.get(`/plan/${vcookieRes.data.username}`),
-      client.get('/getApiToken')
+      client.get(`/plan/${vcookieRes.data.username}`, { timeout: LOGIN_TIMEOUT }),
+      client.get('/getApiToken', { timeout: LOGIN_TIMEOUT })
     ]);
     if (planResult.status === 'fulfilled') {
       planData = planResult.value.data || {};
@@ -4050,8 +4053,10 @@ async function liveHubTick(hub, username) {
     // Sert timeout ZORUNLU: zaman asimisiz bir istek takilirsa tick zinciri
     // (timer tick sonunda kuruluyor) tamamen olur ve hub sessizce donar —
     // kullanicinin "saldiriyi gec goruyorum / yenilemek zorundayim" bug'i.
-    const requests = [client.get(`/ongoing/${username}`, { timeout: 15000 })];
-    if (fetchUser) requests.push(client.get(`/user/${username}`, { timeout: 15000 }));
+    // Upstream yavas donemlerde /ongoing 20sn+ surebiliyor; 15sn'de hub hic
+    // toparlanamadan surekli hata veriyordu. 30sn yeterli (tick seri calisir).
+    const requests = [client.get(`/ongoing/${username}`, { timeout: 30000 })];
+    if (fetchUser) requests.push(client.get(`/user/${username}`, { timeout: 30000 }));
     const [ongoing, userRes] = await Promise.all(requests);
     user = userRes;
     // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi) hata say
