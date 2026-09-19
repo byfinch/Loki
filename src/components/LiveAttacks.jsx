@@ -472,10 +472,10 @@ const LiveAttacks = () => {
 
     // SSE sessizlik watchdog'u: hub baglantisi acik ama veri gelmiyorsa
     // (upstream hata frameleri onmessage'a dusmez!) poll'un devreye girmesi
-    // icin sseConnected'i dusur. Hub tick'i ~10sn; 25sn sessizlik = 2.5 tick.
+    // icin sseConnected'i dusur. Hub tick'i ~10sn; 15sn sessizlik yeterli.
     let lastSseMsgAt = Date.now();
     const watchdog = setInterval(() => {
-      if (sseConnected && Date.now() - lastSseMsgAt > 25000) {
+      if (sseConnected && Date.now() - lastSseMsgAt > 15000) {
         sseConnected = false;
       }
     }, 5000);

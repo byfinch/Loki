@@ -4412,6 +4412,7 @@ async function liveHubTick(hub, username) {
   const fetchUser = hub.tickCount === 1 || hub.tickCount % 10 === 0;
   let user = null;
   let ongoingData;
+  let rgPromise = null; // try disinda tanimli: RG merge blogu sonradan kullaniyor
   try {
     const client = getClient(hub.sessionId);
     // Sert timeout ZORUNLU: zaman asimisiz bir istek takilirsa tick zinciri
@@ -4421,6 +4422,14 @@ async function liveHubTick(hub, username) {
     // toparlanamadan surekli hata veriyordu. 30sn yeterli (tick seri calisir).
     const requests = [client.get(`/ongoing/${username}`, { timeout: 30000 })];
     if (fetchUser) requests.push(client.get(`/user/${username}`, { timeout: 30000 }));
+    // RG fetch upstream ile PARALEL baslar (seri beklemek tick'i 50sn'ye
+    // cikariyordu — hastalikta guncelleme gecikmesinin kaynagi buydu).
+    rgPromise = rackghost.isConfigured()
+      ? Promise.race([
+          rackghost.getOngoing(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing tick timeout')), 10000))
+        ]).then((list) => ({ list }), (err) => ({ error: err }))
+      : null;
     const [ongoing, userRes] = await Promise.all(requests);
     user = userRes;
     // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi) hata say
@@ -4492,12 +4501,11 @@ async function liveHubTick(hub, username) {
       const rgVisible = makeRgVisibility();
       const seenRg = new Set();
       try {
-        // RG servis timeout'u 120sn; tick'i bloklamasin diye sert ust sinir —
-        // asimda onceki RG satirlari korunur (asagidaki catch).
-        const rgList = await Promise.race([
-          rackghost.getOngoing(),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing tick timeout')), 20000))
-        ]);
+        // RG fetch upstream ile paralel baslamisti (tick ustunde); burada
+        // sonucu al — hata parcasinda onceki RG satirlari korunur.
+        const rgOutcome = rgPromise ? await rgPromise : { list: null };
+        if (rgOutcome.error) throw rgOutcome.error;
+        const rgList = rgOutcome.list;
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
