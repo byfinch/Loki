@@ -2602,10 +2602,21 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       await new Promise((r) => setTimeout(r, 3000));
     }
   } else if (!skipDrain) {
-    // Tavan saldiri suresine endeksli: upstream hasta donemde saldirilar
-    // nominalin ~2 kati yasiyor; sabit 60sn tavan yetmiyordu.
-    const drainCap = Math.max(60000, (parseInt(effectiveParams.time, 10) || 60) * 1000);
-    await waitLoopsDrained([loopId], drainCap);
+    // ZAMAN KAPISI (birincil, API'den bagimsiz): yeni tur onceki ateslemeden
+    // time x 2 gecmeden ateslenemez. Upstream hasta donemde saldirilar ~2x
+    // nominal omur suruyor ve /ongoing blip'leri drain'i kör ediyordu;
+    // bu kapi overlap'i insaatla imkansiz kilar.
+    const timeSec = parseInt(effectiveParams.time, 10) || 60;
+    const minGapMs = timeSec * 2000;
+    const waitMs = (loop.lastFireAt || 0) + minGapMs - Date.now();
+    if (waitMs > 0) {
+      console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+    // Ikincil: upstream durumu iyiyse drain de el sikismasi saglar (blip'e
+    // dayali 3-temiz-olcum korumali); zaman kapisi zaten kapsiyor.
+    await waitLoopsDrained([loopId], Math.max(60000, timeSec * 1000));
+    loop.lastFireAt = Date.now();
   }
   previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
 

@@ -89,7 +89,10 @@ async function syncTick(groupId) {
     }, i * STAGGER_MS);
   });
   persistGroups();
-  g.timer = setTimeout(() => syncTick(groupId).catch((e) => console.error(`[sync ${groupId}] tick hatasi:`, e)), g.time * 1000);
+  // Tur araligi = 2 x tur suresi: saldirilar (senkron suresi = saldiri suresi)
+  // upstream'te ~2x nominal omur suruyor; API blip'lerine guvenmeden overlap
+  // imkansiz kilar. Saglikli donemde bu oran 1x'e indirilebilir.
+  g.timer = setTimeout(() => syncTick(groupId).catch((e) => console.error(`[sync ${groupId}] tick hatasi:`, e)), g.time * 2000);
 }
 
 /** Kapasite kontrolu: hesap basina toplam concurrents plan limitini asmamali. */
