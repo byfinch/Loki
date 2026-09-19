@@ -2033,12 +2033,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
 
     const { username } = req.params;
     const client = getClient(sessionId);
-    // Upstream timeout ZORUNLU: hasta donemde istek asili kaliyor, endpoint
-    // hic donmuyor ve panel "aktif saldiri yok" kaliyordu. Hata durumunda
-    // bos listeyle devam et; kayit defteri satirlari asagida yine eklenir.
+    // Upstream sadece bonus: 3sn icinde gelirse kullanilir, gelmezse kayit
+    // defteri aninda doner (hasta donemde hesap degisimi 30sn bekliyordu —
+    // upstream verisi SSE ile zaten ~10-30sn'de guncelleniyor).
     let upstreamData = null;
     try {
-      const response = await client.get(`/ongoing/${username}`, { timeout: 12000 });
+      const response = await client.get(`/ongoing/${username}`, { timeout: 3000 });
       upstreamData = response.data;
     } catch (err) {
       console.warn(`[ongoing] upstream hatasi (${username}):`, err.message);
@@ -2170,11 +2170,10 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     if (rackghost.isConfigured()) {
       const rgVisibleRow = makeRgVisibility();
       try {
-        // RG servis timeout'u 120sn; endpoint asili kalmasin diye 8sn ust sinir.
-        // Asimda catch'e duser; taze kayitlar asagida yine eklenir.
+        // RG sadece bonus: 3sn icinde gelmezse atla (taze kayitlar asagida yine eklenir)
         const rgList = await Promise.race([
           rackghost.getOngoing(),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing timeout')), 8000))
+          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing timeout')), 3000))
         ]);
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
