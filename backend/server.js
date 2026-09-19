@@ -2589,6 +2589,11 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
     hasSession: !!session
   }));
 
+  // Senkronlu loop'larin saldiri suresi senkron suresidir (kullanici secti);
+  // boylece grup gercekten ayni anda baslayip ayni anda biter.
+  // NOT: zaman kapisi/drain bu degere dayanir; once tanimlanmali (TDZ).
+  const effectiveParams = loop.syncTime ? { ...loop.params, time: loop.syncTime } : loop.params;
+
   // Onceki turun saldirilari kendi time suresi doldugunda stresse.st tarafindan
   // otomatik sonlanir. Yeni tur baslatmadan once onceki turun dustugunu
   // dogrulariz (ID ile; ID yoksa imza ile) — boylece concurrent limitini asmayiz.
@@ -2625,10 +2630,6 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
   loop.roundCount += 1;
   loop.lastRoundAt = new Date().toISOString();
   const round = loop.roundCount;
-
-  // Senkronlu loop'larin saldiri suresi senkron suresidir (kullanici secti);
-  // boylece grup gercekten ayni anda baslayip ayni anda biter.
-  const effectiveParams = loop.syncTime ? { ...loop.params, time: loop.syncTime } : loop.params;
 
   // Yeni tur ID'lerini temizle
   loop.roundAttackIds = [];
