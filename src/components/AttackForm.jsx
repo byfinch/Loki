@@ -369,13 +369,20 @@ const AttackForm = () => {
         const fail = data.failCount ?? 0;
         const total = data.total ?? (ok + fail);
 
-        if (ok === 0) {
-          const reason = data.data?.message || data.message || `${fail}/${total} saldırı başarısız`;
-          throw new Error(`Saldırı başlatılamadı: ${reason}`);
-        }
+        // fastReturn: saldiri gonderildi ama upstream yavas dondu; satir(lar)
+        // zaten aninda kayitla listede. Hata degil — dogrulama arka planda surer.
+        if (data.fastReturn) {
+          addLog(`Saldırı gönderildi: ${method} -> ${host}:${port} (${time}s) x${total} — upstream doğrulaması sürüyor`);
+          showToast('Saldırı gönderildi, listede görünüyor (upstream doğrulaması sürüyor)', 'warning');
+        } else {
+          if (ok === 0) {
+            const reason = data.data?.message || data.message || `${fail}/${total} saldırı başarısız`;
+            throw new Error(`Saldırı başlatılamadı: ${reason}`);
+          }
 
-        addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s) x${ok} başarılı${fail > 0 ? `, ${fail} başarısız` : ''}`);
-        showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
+          addLog(`Saldırı başlatıldı: ${method} -> ${host}:${port} (${time}s) x${ok} başarılı${fail > 0 ? `, ${fail} başarısız` : ''}`);
+          showToast(`${ok} adet saldırı başlatıldı${fail > 0 ? ` (${fail} başarısız)` : ''}`, fail > 0 ? 'warning' : 'success');
+        }
       }
 
       if (!loopActive) { setHost(''); setNote(''); }

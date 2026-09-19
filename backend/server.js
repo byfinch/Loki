@@ -2275,6 +2275,7 @@ app.post('/api/stresse/attack', async (req, res) => {
 
     res.json({
       status: (attackIds.length > 0 || fastReturn) ? 'success' : 'error',
+      fastReturn,
       // Upstream'in sebebini (orn. method bakimda) kullanici gorebilsin
       message: attackIds.length > 0 ? undefined : (data?.message || 'Saldiri upstream tarafindan baslatilamadi'),
       data,
@@ -2403,6 +2404,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
 
     res.json({
       status: (successCount > 0 || fastReturn) ? 'success' : 'error',
+      fastReturn,
       total: count,
       successCount,
       failCount: count - successCount,
