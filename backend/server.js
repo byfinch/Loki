@@ -1920,12 +1920,19 @@ app.get('/api/stresse/plan/:username', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { username } = req.params;
-    // Stale-while-revalidate: cache varsa ANINDA onu don + arka planda tazele.
+    // SWR: cache varsa ANINDA onu don + arka planda tazele.
     // Upstream hasta donemde form "PLAN YUKLENIYOR"da dakikalarca takiliyordu.
     const cached = planCache.get(username);
     if (cached) {
       refreshPlanBackground(username, sessionId);
       return res.json(cached.data);
+    }
+    // Cache yoksa bile login'de alinan session plani aninda servis et
+    // (ilk yuklemede upstream'i bekleme); arka planda tazelesin.
+    const sess = sessions[sessionId];
+    if (sess?.plan && Object.keys(sess.plan).length) {
+      refreshPlanBackground(username, sessionId);
+      return res.json(sess.plan);
     }
     const client = getClient(sessionId);
     try {
@@ -2804,20 +2811,22 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       await new Promise((r) => setTimeout(r, 3000));
     }
   } else if (!skipDrain) {
-    // ZAMAN KAPISI (birincil, API'den bagimsiz): yeni tur onceki ateslemeden
-    // time x 2 gecmeden ateslenemez. Upstream hasta donemde saldirilar ~2x
-    // nominal omur suruyor ve /ongoing blip'leri drain'i kör ediyordu;
-    // bu kapi overlap'i insaatla imkansiz kilar.
     const timeSec = parseInt(effectiveParams.time, 10) || 60;
-    const minGapMs = timeSec * 2000;
-    const waitMs = (loop.lastFireAt || 0) + minGapMs - Date.now();
+    // Adaptif zaman kapisi: drain her turda onceki neslin olumunu blip
+    // korumali olctugu icin bir SONRAKI turun kapisi = olculen gercek omur
+    // (+5sn pay), [time, 2x time] araliginda. Saglikli donemde kadans ~time
+    // (surekli ates, bosluk yok); hasta donemde kendini uzatir (overlap yok).
+    const gapMs = loop.measuredGapMs || timeSec * 2000;
+    const waitMs = (loop.lastFireAt || 0) + gapMs - Date.now();
     if (waitMs > 0) {
-      console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor`);
+      console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor (olculen omur: ${Math.round(gapMs / 1000)}sn)`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
-    // Ikincil: upstream durumu iyiyse drain de el sikismasi saglar (blip'e
-    // dayali 3-temiz-olcum korumali); zaman kapisi zaten kapsiyor.
     await waitLoopsDrained([loopId], Math.max(60000, timeSec * 1000));
+    // Drain bitisi = onceki neslin olumu: olculen omur = son ateslemeden beri
+    if (loop.lastFireAt) {
+      loop.measuredGapMs = Math.min(Math.max(Date.now() - loop.lastFireAt + 5000, timeSec * 1000), timeSec * 2000);
+    }
     loop.lastFireAt = Date.now();
   }
   previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
