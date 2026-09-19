@@ -1617,14 +1617,15 @@ async function performKeyBasedLogin(sessionId, username) {
  * Hata durumunda gecici session'i temizleyip err.step bilgisiyle firlatir.
  * Hem /api/stresse/login hem /api/accounts/ensure kullanir.
  */
-async function performStresseLogin(sessionId, username, password) {
+async function performStresseLogin(sessionId, username, password, forceWeb = false) {
   sessions[sessionId] = { jar: new CookieJar(), username: null, createdAt: new Date().toISOString() };  const client = getClient(sessionId);
 
   // HIZLI YOL: bilinen hesap + kayitli API key varsa once key-bazli giris
   // (birkac saniye). stresse web login'i (/login ~20-45sn x 3 deneme x N adim)
   // hasta donemlerde dakikalar suruyor ve proxy timeout'u "Failed to fetch"
   // uretiyordu. Key yoksa/basarisizsa web akisina dusulur.
-  if (KNOWN_ACCOUNTS.get(username) === password && getFallbackApiToken(username)) {
+  // forceWeb: cookie tazeleme gerektiginde (upstream 401) web akisini zorla.
+  if (!forceWeb && KNOWN_ACCOUNTS.get(username) === password && getFallbackApiToken(username)) {
     try {
       const result = await performKeyBasedLogin(sessionId, username);
       console.log(`[login] ${username} icin key-oncelikli hizli giris basarili`);
@@ -1725,6 +1726,14 @@ async function performStresseLogin(sessionId, username, password) {
     sessions[sessionId].user = vcookieRes.data;
     sessions[sessionId].plan = planData;
     sessions[sessionId].apiToken = apiToken;
+    // Ayni hesabin diger oturumlari (loop'larin kullandigi eski oturumlar
+    // dahil) taze cookie/token'i paylassin — bayat jar upstream'te 401 verir.
+    Object.values(sessions).forEach((s) => {
+      if (!s || s.username !== sessions[sessionId].username) return;
+      s.jar = sessions[sessionId].jar;
+      if (apiToken) s.apiToken = apiToken;
+      s.plan = planData;
+    });
     // Basarili loginde guncel key'i hesap bazli token dosyasina yaz;
     // ileride token'suz login'lerde ve yenileme senaryolarinda guncel kalsin.
     if (apiToken) {
@@ -1765,7 +1774,7 @@ app.post('/api/stresse/login', async (req, res) => {
 
     const sessionId = `sess_${Date.now()}_${crypto.randomBytes(12).toString('base64url')}`;
     try {
-      const { user, plan } = await performStresseLogin(sessionId, username, password);
+      const { user, plan } = await performStresseLogin(sessionId, username, password, !!req.body?.forceWeb);
       res.json({
         status: 'success',
         sessionId,
