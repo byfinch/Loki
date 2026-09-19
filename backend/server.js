@@ -2372,31 +2372,33 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
 // duzinece loop ayni veriyi paylasir; aksi halde her loop kendi poll'unu
 // acar ve stresse 429 (rate limit) ile karsilar. Anahtar username'dir —
 // ayni hesabin farkli oturumlari ayni listeyi gorur.
-const ongoingShared = new Map(); // username -> { at, list, inflight }
+const ongoingShared = new Map(); // username -> { at, list, inflight, ok }
 const ONGOING_SHARED_MS = 2000;
 async function getOngoingShared(sessionId) {
   const session = sessions[sessionId];
-  if (!session) return [];
+  if (!session) return { list: [], ok: false };
   const key = session.username;
   const now = Date.now();
-  const entry = ongoingShared.get(key) || { at: 0, list: [], inflight: null };
+  const entry = ongoingShared.get(key) || { at: 0, list: [], inflight: null, ok: false };
   ongoingShared.set(key, entry);
   if (entry.inflight) return entry.inflight;
-  if (now - entry.at < ONGOING_SHARED_MS) return entry.list;
+  if (now - entry.at < ONGOING_SHARED_MS) return { list: entry.list, ok: entry.ok };
   entry.inflight = (async () => {
     try {
       const client = getClient(sessionId);
-      const res = await client.get(`/ongoing/${key}`);
+      const res = await client.get(`/ongoing/${key}`, { timeout: 15000 });
       entry.list = Array.isArray(res.data) ? res.data : (res.data?.attacks || []);
+      entry.ok = true;
     } catch (err) {
-      // Hata (429 dahil): bayat veriyi koru; 'at' guncellenir ki hemen
-      // tekrar denenmesin — ONGOING_SHARED_MS kadar dogal backoff.
+      // Hata (429/timeout): bayat veriyi koru; ok=false — drain "herkes oldu"
+      // sanip yeni tur ateslemesin (overlap), basarili fetch gorene kadar bekle.
+      entry.ok = false;
       console.warn(`[drain] /ongoing hatasi (${key}):`, err.message);
     } finally {
       entry.at = Date.now();
       entry.inflight = null;
     }
-    return entry.list;
+    return { list: entry.list, ok: entry.ok };
   })();
   return entry.inflight;
 }
@@ -2433,7 +2435,11 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
     for (const [sessionId, sLoopIds] of bySession) {
       const session = sessions[sessionId];
       if (!session) { sLoopIds.forEach((id) => pending.delete(id)); continue; }
-      const list = await getOngoingShared(sessionId);
+      const { list, ok } = await getOngoingShared(sessionId);
+      // Fetch hataliysa (timeout/429): "herkes oldu" sanip ACMA — bu turu bekle.
+      // Aksi halde upstream hastayken ardisik nesiller ust uste biner
+      // (Aktif > Toplam ve plan limiti asimi gorunuyordu).
+      if (!ok) continue;
       const ongoingIds = new Set(list.map((a) => a.attack_id || a.id));
       const sigCounts = new Map();
       list.forEach((a) => {
