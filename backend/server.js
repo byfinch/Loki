@@ -713,18 +713,25 @@ async function sigSalvage(sessionId, params) {
   return 0;
 }
 
-// Bazi stresse methodlari istegin concurrents degerinin 2 katini baslatir
-// (HTTP-REST: conc=10 -> 20 saldiri/20 slot, canli olcumle dogrulandi).
-// Kullanici girdigi kadar saldiri VE slot tuketsin diye upstream'e yarisi
-// gonderilir (tek sayida yukari yuvarlanir: 7 -> 4 gonder, 8 acilir).
-// Not: TCPAMP'i yanlislikla eklemistik (185.8.33.101'de 2 gonder 2 geldi =
-// 1x); overlap kalintisini carpan sanma tuzagina dusme.
-const STRESSE_DOUBLE_LAUNCH = new Set(['http-rest']);
-function stresseSendConc(method, conc) {
-  const c = parseInt(conc, 10) || 1;
-  return STRESSE_DOUBLE_LAUNCH.has(String(method || '').toLowerCase())
-    ? Math.max(1, Math.ceil(c / 2))
-    : c;
+// HTTP-REST stresse'te 2x baslatir (canli olcum: conc=10 -> 20). Kullanici
+// istegiyle YARILAMA YOK: girilen deger aynen gonderilir; kullanici formdaki
+// uyarida durumu bilir (AttackForm ipucu). TCPAMP'i eklemeyin (1x olcumu var).
+// Launch'i 8sn'den uzun bekletme: upstream hastayken kullanici dakikalarca
+// bekliyordu. Pending satirlar zaten aninda listede; launch arka planda
+// tamamlanir, dogrulanan ID'ler/history sonra islenir.
+const FAST_LAUNCH_MS = 8000;
+async function launchWithFastResponse(sessionId, params, concurrents, loopId = null, onComplete = null) {
+  const p = launchAttacksGet(sessionId, params, concurrents, loopId);
+  const outcome = await Promise.race([p, new Promise((r) => setTimeout(() => r(null), FAST_LAUNCH_MS))]);
+  if (outcome !== null) return { ...outcome, fastReturn: false };
+  p.then((result) => { if (onComplete) onComplete(result); })
+    .catch((err) => console.warn('[launch] arka plan launch hatasi:', err.message));
+  return {
+    data: { status: 'success', message: 'Saldırı gönderildi; upstream yavaş, doğrulanıyor (satır anında listede)' },
+    attackIds: [],
+    pendingIds: [],
+    fastReturn: true
+  };
 }
 
 async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
@@ -733,8 +740,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     throw new Error('API token not available');
   }
 
-  // 2x methodlarda upstream'e yarisi gonderilir; dogrulama esikleri de buna gore.
-  const sendConc = stresseSendConc(params.method, concurrents);
+  const sendConc = parseInt(concurrents, 10) || 1;
 
   // ANINDA GORUNURLUK: pending satirlar launch gonderilmeden ONCE duser —
   // upstream hastayken launch 90sn surebiliyor; o pencerede panel bos kaliyordu.
@@ -1844,6 +1850,13 @@ app.get('/api/stresse/user/:username', async (req, res) => {
     const session = sessions[sessionId];
     if (!session) return res.status(401).json({ status: 'error', message: 'Session unknown' });
 
+    // SWR: cache varsa ANINDA don + arka planda tazele — hesap degisimi
+    // upstream yavasligina takilmaz (10sn timeout zinciri olusuyordu).
+    if (session.user) {
+      refreshUserBackground(req.params.username, sessionId);
+      return res.json(session.user);
+    }
+
     const client = getClient(sessionId);
     try {
       const response = await client.get(`/user/${req.params.username}`, { timeout: 10000 });
@@ -1863,6 +1876,26 @@ app.get('/api/stresse/user/:username', async (req, res) => {
     handleEndpointError(res, error, 'User fetch error');
   }
 });
+
+// User icin arka plan tazeleme (30sn throttle, hesap basina)
+const userRefreshAt = new Map();
+function refreshUserBackground(username, sessionId) {
+  const last = userRefreshAt.get(username) || 0;
+  if (Date.now() - last < 30000) return;
+  userRefreshAt.set(username, Date.now());
+  (async () => {
+    try {
+      const client = getClient(sessionId);
+      const response = await client.get(`/user/${username}`, { timeout: 10000 });
+      if (response.data && response.data.username && sessions[sessionId]) {
+        sessions[sessionId].user = response.data;
+      }
+    } catch (e) {
+      // Bayat cookie: arka plan web tazelemesi (tum oturumlara yayilir)
+      if (e.response?.status === 401 || e.response?.status === 403) throttledWebRefresh(username);
+    }
+  })();
+}
 
 // Bayat web cookie'sini arka planda tazeler (dakikada bir, hesap basina).
 // Basarili web login jar'ini ayni hesabin tum oturumlarina yayar.
@@ -2188,15 +2221,21 @@ app.post('/api/stresse/attack', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    let data, attackIds;
+    let data, attackIds, fastReturn = false;
     try {
-      const result = await launchAttacksGet(sessionId, {
+      const result = await launchWithFastResponse(sessionId, {
         host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet,
         // Aninda kayit pending/id'li satirin grup rozetiyle dusmesi icin
         group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined
-      }, 1);
+      }, 1, null, (late) => {
+        // Hizli donuste history launch dogrulaninca yazilir
+        if (late?.attackIds?.length) {
+          addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: 1, attackIds: late.attackIds });
+        }
+      });
       data = result.data;
       attackIds = result.attackIds;
+      fastReturn = result.fastReturn;
     } catch (err) {
       return res.status(502).json({ status: 'error', message: normalizeUpstreamError(err.message) });
     }
@@ -2215,7 +2254,7 @@ app.post('/api/stresse/attack', async (req, res) => {
     }
 
     res.json({
-      status: attackIds.length > 0 ? 'success' : 'error',
+      status: (attackIds.length > 0 || fastReturn) ? 'success' : 'error',
       // Upstream'in sebebini (orn. method bakimda) kullanici gorebilsin
       message: attackIds.length > 0 ? undefined : (data?.message || 'Saldiri upstream tarafindan baslatilamadi'),
       data,
@@ -2309,16 +2348,22 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'API token not available, please login again' });
     }
 
-    // Tek istekte istenen concurrents kadar saldiri baslat.
-    let data, attackIds;
+    // Tek istekte istenen concurrents kadar saldiri baslat (8sn'de hizli donus;
+    // launch arka planda tamamlanir, history dogrulaninca yazilir).
+    let data, attackIds, fastReturn = false;
     try {
-      const result = await launchAttacksGet(sessionId, {
+      const result = await launchWithFastResponse(sessionId, {
         host, port: parseInt(port), time: parseInt(time), method, layer, geo, subnet,
         // Aninda kayit pending/id'li satirin grup rozetiyle dusmesi icin
         group: resolveGroupName(req.body.group, sessions[sessionId]?.username) || undefined
-      }, count);
+      }, count, null, (late) => {
+        if (late?.attackIds?.length) {
+          addAttackHistory(sessionId, { host, port, method, time, layer, note }, { concurrents: count, attackIds: late.attackIds });
+        }
+      });
       data = result.data;
       attackIds = result.attackIds;
+      fastReturn = result.fastReturn;
     } catch (err) {
       return res.status(502).json({ status: 'error', message: normalizeUpstreamError(err.message) });
     }
@@ -2337,7 +2382,7 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
 
     res.json({
-      status: successCount > 0 ? 'success' : 'error',
+      status: (successCount > 0 || fastReturn) ? 'success' : 'error',
       total: count,
       successCount,
       failCount: count - successCount,
@@ -2345,9 +2390,11 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
       // baslatilmamis saldiri gosterilmesin.
       message: successCount > 0
         ? (data?.message || '')
-        : (data?.status === 'success'
-            ? 'stresse.st basarili dondu ancak saldiri dogrulanamadi (method bakimda veya upstream reddi olabilir)'
-            : (data?.message || 'Saldiri baslatilamadi')),
+        : (fastReturn
+            ? data?.message
+            : (data?.status === 'success'
+                ? 'stresse.st basarili dondu ancak saldiri dogrulanamadi (method bakimda veya upstream reddi olabilir)'
+                : (data?.message || 'Saldiri baslatilamadi'))),
       data,
       id: attackIds[0] || null,
       attack_id: attackIds[0] || null,
@@ -2823,11 +2870,7 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
         ? Object.values(rgSlotsById).reduce((a, b) => a + b, 0)
         : attackIds.length;
       console.log(`[loop ${loopId}] round ${round} basarili: ${successCount} saldiri (istenen: ${loop.params.concurrents})`);
-      // 2x methodlarda (HTTP-REST) upstream'e yarisi gonderilir; beklenti esigi
-      // gonderilen degerdir, kullanicinin girdigi degil.
-      const expectedLaunch = isRackghost
-        ? (parseInt(loop.params.concurrents, 10) || 1)
-        : stresseSendConc(loop.params.method, effectiveParams.concurrents);
+      const expectedLaunch = parseInt(effectiveParams.concurrents, 10) || 1;
       if (successCount !== expectedLaunch) {
         console.warn(`[loop ${loopId}] round ${round} UYARI: ${isRackghost ? 'rackghost' : 'stresse.st'} ${expectedLaunch} yerine ${successCount} attackId dondurdu`);
       }

@@ -45,13 +45,12 @@ Iki saglayici vardir; `provider` alaniyla ayristirilir ('stresse' | 'rackghost')
 - Bazi RackGhost methodlari girilen concurrents'in kati slot tuketir
   (HTTPSMIX, HTTPSCUSTOM = 2x). Limit tuketim uzerinden (girilen x carpan <= 15)
   dogrulanir; gosterim de tuketimi yansitir.
-- stresse tarafinda da benzeri var: **HTTP-REST girilen concurrents'in 2 katini
-  baslatir** (conc=10 -> 20 saldiri, canli olcumle dogrulandi). Panel upstream'e
-  yarisi gonderir (`stresseSendConc`, server.js): kullanici girdigi kadar
-  saldiri/slot tuketir; tek sayida yukari yuvarlanir. Yeni 2x method
-  gozlemlenirse STRESSE_DOUBLE_LAUNCH set'ine ve AttackForm ipucu listesine ekle.
-  DIKKAT: listeye eklemeden once TEK NESILDE (ust uste binme yokken) olcum yap;
-  overlap kalintisini carpan sanma (TCPAMP bu tuzakla yanlis eklenip geri alindi).
+- stresse tarafinda **HTTP-REST girilen concurrents'in 2 katini baslatir**
+  (conc=10 -> 20 saldiri, canli olcumle dogrulandi). Panel girilen degeri AYNEN
+  gonderir (kullanici istegi: yarilama yok); AttackForm concurrents altinda
+  bilgi uyarisi gosterir. TCPAMP 1x (canli olcum: 2 gonder 2 gelir) — ekleme.
+  Yeni 2x method gozlemlenirse sadece AttackForm ipucu listesine ekle; gercek
+  saldiri/slot tuketimi girilen degerin 2 katidir.
 
 ## Loop Motoru (server.js)
 
