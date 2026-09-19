@@ -1802,7 +1802,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       ongoing.push({
         attack_id: attack.attackId,
         id: attack.attackId,
-        target: buildTargetUrl(attack.host, attack.port),
+        // SSE'deki taze-kayit bloguyla ayni format: L7 "https://host/:443".
+        // Aksi halde poll'da gelen satir upstream "https://host/:443" ile
+        // eslesmeyip ayni saldiriyi ikinci satir olarak gosteriyordu.
+        target: attack.layer === 'L7'
+          ? `https://${attack.host}/:${attack.port}`
+          : buildTargetUrl(attack.host, attack.port),
         host: attack.host,
         port: attack.port,
         method: attack.method,

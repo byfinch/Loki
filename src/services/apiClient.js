@@ -314,6 +314,15 @@ export const apiClient = {
       }
     };
 
+    // Sunucunun gonderdigi named 'error' frame'i (data tasiyan): baglanti
+    // saglikli ama upstream hatali — onerror'a dusmez, ayrica dinlemek lazim.
+    // Aksi halde upstream patlarken liste sessizce bayat kaliyordu.
+    eventSource.addEventListener('error', (ev) => {
+      if (ev.data) {
+        try { onError(new Error(JSON.parse(ev.data).message || 'live stream error')); } catch { onError(ev); }
+      }
+    });
+
     eventSource.onerror = (err) => {
       onError(err);
     };

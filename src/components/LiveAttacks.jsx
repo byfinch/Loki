@@ -12,12 +12,13 @@ import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 const lastServerValues = {};
 const persistedTimeLefts = {};
 
-// Normalize imza: ham target farklari (protokol, sondaki /, buyuk-kucuk harf)
-// ve method buyuklugu ayni mantiksal satiri eslesir kilar.
+// Normalize imza: ham target farklari (protokol, sondaki /, buyuk-kucuk harf,
+// L7'nin "host/:443" vs "host:443" varyantlari) ayni mantiksal satiri eslesir kilar.
 const targetKeyNorm = (t) => String(t || '')
   .toLowerCase()
   .replace(/^https?:\/\//, '')
-  .replace(/\/+$/, '');
+  .replace(/\/+$/, '')
+  .replace(/\/:(\d+)/g, ':$1');
 const sigOf = (target, method) => `${targetKeyNorm(target)}::${String(method || '').toLowerCase()}`;
 
 // Satir anahtari = hedef+yontem imzasi. ID'den bagimsizdir: loop turlari
@@ -447,12 +448,23 @@ const LiveAttacks = () => {
     poll();
     const interval = setInterval(poll, 3000);
 
+    // SSE sessizlik watchdog'u: hub baglantisi acik ama veri gelmiyorsa
+    // (upstream hata frameleri onmessage'a dusmez!) poll'un devreye girmesi
+    // icin sseConnected'i dusur. Hub tick'i ~10sn; 25sn sessizlik = 2.5 tick.
+    let lastSseMsgAt = Date.now();
+    const watchdog = setInterval(() => {
+      if (sseConnected && Date.now() - lastSseMsgAt > 25000) {
+        sseConnected = false;
+      }
+    }, 5000);
+
     let eventSource;
     try {
       eventSource = apiClient.connectLiveStream(
         username,
         (data) => {
           sseConnected = true;
+          lastSseMsgAt = Date.now();
           // Backend normalize etse da savunma: array disi payload gelirse yoksay
           if (Array.isArray(data.ongoing)) {
             setLiveAttacks(data.ongoing);
@@ -467,6 +479,7 @@ const LiveAttacks = () => {
       if (eventSource) {
         eventSource.onopen = () => {
           sseConnected = true;
+          lastSseMsgAt = Date.now();
         };
       }
     } catch (err) {
@@ -475,6 +488,7 @@ const LiveAttacks = () => {
 
     return () => {
       clearInterval(interval);
+      clearInterval(watchdog);
       if (eventSource) eventSource.close();
     };
   }, [state.isAuthenticated]);
