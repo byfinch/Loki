@@ -25,6 +25,7 @@ kullanicili ortak panel mantigiyla tasarlanmistir.
 | `backend/invader.js` | Site cloak/durum kontrolu (curl-impersonate + Chrome kart gorseli) |
 | `backend/impact.js` | Etki Monitoru: hedefleri check-host.net ile olcer |
 | `backend/telegram.js` | Panel bildirim botu modulu |
+| `backend/sync.js` | Senkron Tur Koordinatoru: secili loop'lari tek saatle calistirir; tur suresi = saldiri suresi (loop.syncTime), 10-3600sn |
 
 Frontend bilesenleri `src/components/` altinda modul basina bir dosya
 (AttackForm, LoopManager, LiveAttacks, LinkWatcher, InvaderPanel, SiteWatcher,
@@ -54,11 +55,19 @@ Iki saglayici vardir; `provider` alaniyla ayristirilir ('stresse' | 'rackghost')
 
 - Loop'lar `active-loops.json`'da; restart'ta geri yuklenir (rackghost
   methodlari BUYUK harf tasar — "eski format" filtresi buna istisna icerir).
+  Senkron uyeligi (syncGroup/syncTime) diskten TASINMAZ; initSync kurar.
+- Tur kilidi (activeLoopRounds) fireLoopRound icinde tek noktadan yonetilir;
+  kuyruk ve senkron ayni loop'u ust uste atesleyemez (-1 = atlandi).
 - Hata toleransi: 30 ardisik hata + ustel backoff (30sn x hata, max 3dk).
-- stresse turleri arasinda onceki tur /ongoing'den dogrulanir; rackghost'ta
-  statik 3sn buffer (saldiri suresi bitince kesin duser).
-- Taze saldirilar canli akisa backend kayit defterinden ANINDA duser
-  (upstream gecikmesi beklenmez); upstream yakalayinca ayni satir devam eder.
+  Hatayla duran loop cleanupLoop'a duser (history kapanir, kayit temizlenir).
+- stresse turleri arasinda drain: ID varsa attack_id ile, yoksa hedef+yontem
+  imzasiyla beklenir (waitLoopsDrained; hesap basina paylasilan /ongoing
+  onbellegi). rackghost'ta statik 3sn buffer.
+- Taze saldirilar launch aninda kayit defterine duser (ID'siz methodlarda
+  pending_ satirlar) ve pokeLiveHub ile hub'a aninda broadcast edilir;
+  upstream yakalayinca ayni satir devam eder (null-id butcesi tekillestirir).
+- SSE hub: her tick her kosulda broadcast eder (upstream hatasinda son liste +
+  taze kayitlar); upstream fetch'lerde 15sn timeout, RG'de 20sn race cap.
 
 ## Guvenlik ve Gizli Veriler
 
