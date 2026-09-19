@@ -2864,6 +2864,15 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
     loop.lastFireAt = Date.now();
   }
   previousRoundIds.forEach((attackId) => unregisterAttack(attackId));
+  // Onceki turun pending satirlari da duser: kayit omru 2x time iken turlar
+  // ~1x time'da atesleniyor; temizlenmezse iki nesil yan yana sayilir
+  // (Aktif 2x konfigure gorunuyordu). Eski nesil upstream'te hala yasiyorsa
+  // satir upstream'ten gelmeye devam eder (kaybolmaz).
+  Object.values(activeAttacks).forEach((a) => {
+    if (a.loopId === loopId && String(a.attackId).startsWith('pending_')) {
+      unregisterAttack(a.attackId);
+    }
+  });
 
   loop.roundCount += 1;
   loop.lastRoundAt = new Date().toISOString();
