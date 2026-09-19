@@ -1870,25 +1870,45 @@ app.get('/api/stresse/plan/:username', async (req, res) => {
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
     const { username } = req.params;
+    // Stale-while-revalidate: cache varsa ANINDA onu don + arka planda tazele.
+    // Upstream hasta donemde form "PLAN YUKLENIYOR"da dakikalarca takiliyordu.
+    const cached = planCache.get(username);
+    if (cached) {
+      refreshPlanBackground(username, sessionId);
+      return res.json(cached.data);
+    }
     const client = getClient(sessionId);
     try {
-      const response = await fetchWithRetry(() => client.get(`/plan/${username}`), `plan/${username}`);
+      const response = await client.get(`/plan/${username}`, { timeout: 10000 });
       planCache.set(username, { data: response.data, fetchedAt: Date.now() });
       return res.json(response.data);
     } catch (err) {
-      // Upstream iki denemede de basarisiz: cache varsa (taze veya bayat) onu dondur.
-      const cached = planCache.get(username);
-      if (cached) {
-        const stale = Date.now() - cached.fetchedAt > PLAN_CACHE_TTL_MS;
-        console.warn(`[cache] plan bayat veri servis edildi (username=${username}, yas=${Math.round((Date.now() - cached.fetchedAt) / 1000)}sn, ttlAsimi=${stale})`);
-        return res.json(cached.data);
-      }
+      // Hic cache yoksa: session planina dus (login'de alinmisti)
+      const sess = sessions[sessionId];
+      if (sess?.plan && Object.keys(sess.plan).length) return res.json(sess.plan);
+      const st = err.response?.status;
+      if (st === 401 || st === 403) throttledWebRefresh(username);
       throw err;
     }
   } catch (error) {
     handleEndpointError(res, error, 'Plan fetch error');
   }
 });
+
+// Plan icin arka plan tazeleme (30sn throttle, hesap basina)
+const planRefreshAt = new Map();
+function refreshPlanBackground(username, sessionId) {
+  const last = planRefreshAt.get(username) || 0;
+  if (Date.now() - last < 30000) return;
+  planRefreshAt.set(username, Date.now());
+  (async () => {
+    try {
+      const client = getClient(sessionId);
+      const response = await client.get(`/plan/${username}`, { timeout: 10000 });
+      planCache.set(username, { data: response.data, fetchedAt: Date.now() });
+    } catch { /* sessiz: cache yasamaya devam eder */ }
+  })();
+}
 
 /**
  * GET /api/stresse/methods
@@ -1898,9 +1918,15 @@ app.get('/api/stresse/methods', async (req, res) => {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
     if (!sessionId) return res.status(401).json({ status: 'error', message: 'Session required' });
 
+    // Stale-while-revalidate: cache varsa ANINDA onu don + arka planda tazele.
+    // Upstream hasta donemde "Yontemler yukleniyor" dakikalarca kaliyordu.
+    if (methodsCache.data) {
+      refreshMethodsBackground(sessionId);
+      return res.json(methodsCache.data);
+    }
     const client = getClient(sessionId);
     try {
-      const response = await fetchWithRetry(() => client.get('/methods.json'), 'methods');
+      const response = await client.get('/methods.json', { timeout: 10000 });
       // Upstream anti-bot challenge sayfasi (HTML) dondurebilir; bunu cache'leme/
       // servis etme yoksa frontend'e string gider ve panel coker (siyah ekran).
       if (!Array.isArray(response.data) || !response.data.every((m) => m && typeof m === 'object' && m.method)) {
@@ -1910,18 +1936,29 @@ app.get('/api/stresse/methods', async (req, res) => {
       methodsCache.fetchedAt = Date.now();
       return res.json(response.data);
     } catch (err) {
-      // Upstream iki denemede de basarisiz: cache varsa (taze veya bayat) onu dondur.
-      if (methodsCache.data) {
-        const stale = Date.now() - methodsCache.fetchedAt > METHODS_CACHE_TTL_MS;
-        console.warn(`[cache] methods bayat veri servis edildi (yas=${Math.round((Date.now() - methodsCache.fetchedAt) / 1000)}sn, ttlAsimi=${stale})`);
-        return res.json(methodsCache.data);
-      }
       throw err;
     }
   } catch (error) {
     handleEndpointError(res, error, 'Methods fetch error');
   }
 });
+
+// Methods icin arka plan tazeleme (30sn throttle, global)
+let methodsRefreshAt = 0;
+function refreshMethodsBackground(sessionId) {
+  if (Date.now() - methodsRefreshAt < 30000) return;
+  methodsRefreshAt = Date.now();
+  (async () => {
+    try {
+      const client = getClient(sessionId);
+      const response = await client.get('/methods.json', { timeout: 10000 });
+      if (Array.isArray(response.data) && response.data.every((m) => m && typeof m === 'object' && m.method)) {
+        methodsCache.data = response.data;
+        methodsCache.fetchedAt = Date.now();
+      }
+    } catch { /* sessiz */ }
+  })();
+}
 
 /**
  * GET /api/stresse/ongoing/:username
