@@ -266,6 +266,14 @@ const LiveAttacks = () => {
         return { id, status: 'error', message: 'Saldırı henüz başlatılıyor' };
       }
       try {
+        // RackGhost satirlari kendi stop ucuna gider (stresse ucu onlari tanimaz)
+        if (String(id).startsWith('rg_')) {
+          const rgId = String(id).slice(3);
+          const row = (state.liveAttacks || []).find((a) => (a.attack_id || '') === id);
+          const rgHost = (row?.target || '').replace(/:\d+$/, '');
+          await apiClient.stopRackghostAttack(rgId, rgHost);
+          return { id, status: 'success' };
+        }
         const data = await apiClient.stopAttack(id);
         if (data && data.error) {
           return { id, status: 'error', message: data.message };
@@ -773,7 +781,7 @@ const LiveAttacks = () => {
                             {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
                           </span>
                         </div>
-                        <span className="text-gray-400">{g.method}</span>
+                        <span className="text-gray-400">{String(g.method || '').toUpperCase()}</span>
                         <span className="font-bold text-cyan-400/80">[..] tur arası</span>
                         <span className="text-gray-500">x{g.count}</span>
                         <div className="hidden md:block" />
@@ -792,7 +800,7 @@ const LiveAttacks = () => {
                             {formatTargetShort(formatTargetForDisplay(g.target, g.layer, g.method))}
                           </span>
                         </div>
-                        <span className="text-gray-600">{g.method}</span>
+                        <span className="text-gray-600">{String(g.method || '').toUpperCase()}</span>
                         <span className="font-bold text-[#ff5c5c]">{r.stopped ? '[!!] durd.' : '[--] bitti'}</span>
                         <span className="text-gray-600">x{g.count}</span>
                         <div className="hidden md:block" />
@@ -849,7 +857,8 @@ const LiveAttacks = () => {
                         )}
                       </div>
                       <span className="text-gray-200">
-                        {attack.method}
+                        {/* Kaynak formatindan bagimsiz tek gorunum: hep buyuk harf */}
+                        {String(attack.method || '').toUpperCase()}
                         {attack.provider === 'rackghost' && (
                           <span className="ml-1 rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-1 align-middle text-[8px] font-bold uppercase tracking-wider text-cyan-400" title="RackGhost kaynakli">RG</span>
                         )}

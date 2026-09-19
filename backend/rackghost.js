@@ -256,6 +256,11 @@ function initRackghost() {
   console.log('[rackghost] init: yerel oturum servisi modu (127.0.0.1:3210)');
 }
 
+// Stop/launch sonrasi 8sn'lik paylasimli cache'in bayat satir gostermesini onle.
+function invalidateOngoingCache() {
+  ongoingCache.at = 0;
+}
+
 module.exports = {
   initRackghost,
   startAttack,
@@ -265,5 +270,6 @@ module.exports = {
   getStatus,
   isConfigured,
   slotMultiplier,
+  invalidateOngoingCache,
   LIMITS
 };

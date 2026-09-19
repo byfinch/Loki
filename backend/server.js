@@ -254,7 +254,9 @@ function writeApiToken(username, apiToken) {
     const tokens = readApiTokens();
     tokens[username] = apiToken;
     ensureDataDir();
-    fs.writeFileSync(API_TOKENS_FILE, JSON.stringify(tokens, null, 2));
+    // Atomic yazim (tmp+rename): yazim ortasinda crash tum hesaplarin token
+    // fallback'ini siliyordu (loop'lar 401 ile olurdu).
+    safeWriteJson(API_TOKENS_FILE, tokens);
   } catch (err) {
     console.warn('[apiToken] Token dosyasi yazilamadi:', err.message);
   }
@@ -413,6 +415,11 @@ function loadState() {
         }
         // Only restore infinite loops; finite loops with at least one round are considered done
         if (loop.params?.infinite && loop.running !== false) {
+          // Senkron uyeligini initSync kurar (sync-groups.json'dan). Diskten
+          // gelen syncGroup/syncTime'i TASIMA: grup dosyasi kaybolmussa loop
+          // kuyruktan sonsuza atlanip hic tur atmayan hayalet olur.
+          delete loop.syncGroup;
+          delete loop.syncTime;
           activeLoops[loopId] = { ...loop, running: true, roundAttackIds: [] };
         }
       });
@@ -442,9 +449,17 @@ function loadState() {
       const parsed = JSON.parse(raw);
       Object.entries(parsed).forEach(([attackId, attack]) => {
         // Sadece gecerli session'a sahip saldirilari geri yukle
-        if (attack && sessions[attack.sessionId]) {
-          activeAttacks[attackId] = attack;
-        }
+        if (!attack || !sessions[attack.sessionId]) return;
+        // Sema dogrulama: time/expiresAt eksik veya bozuk kayitlar geri yuklenmez;
+        // bunlar /ongoing uzatma mantiginda clampsuz kalip olumsuzlesiyordu.
+        const t = parseInt(attack.time, 10);
+        const expMs = new Date(attack.expiresAt || 0).getTime();
+        if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(expMs)) return;
+        // Sisme korumasi: expiresAt asla startedAt + time + 5dk toleransi asamaz
+        const startedMs = new Date(attack.startedAt || 0).getTime();
+        const maxExp = (Number.isFinite(startedMs) ? startedMs : expMs - t * 1000) + (t + 300) * 1000;
+        if (expMs > maxExp) attack.expiresAt = new Date(maxExp).toISOString();
+        activeAttacks[attackId] = attack;
       });
       console.log(`[persistence] Restored ${Object.keys(activeAttacks).length} attack(s)`);
     }
@@ -1236,8 +1251,14 @@ function checkPlanLimits(sessionId, time, concurrents, excludeLoopId = null) {
   // sayilmaz (yeni ayar eskisinin yerine gececek; aksi halde loop'un degerini
   // dusurmek bile "slot dolu" hatasina takilir).
   const now = Date.now();
+  // Hesap bazli sayim (sessionId degil): ayni hesabin ikinci oturumundaki
+  // saldirilar da sayilsin; aksi halde coklu oturumda plan limiti asilabilir.
+  const ownerName = sessions[sessionId]?.username;
   const currentConcurrents = Object.values(activeAttacks)
-    .filter((a) => a.sessionId === sessionId && new Date(a.expiresAt || 0).getTime() > now)
+    .filter((a) => {
+      const owner = a.username || sessions[a.sessionId]?.username;
+      return owner === ownerName && new Date(a.expiresAt || 0).getTime() > now;
+    })
     .filter((a) => !excludeLoopId || a.loopId !== excludeLoopId)
     .reduce((sum, a) => sum + (parseInt(a.concurrents) || 1), 0);
 
@@ -1813,7 +1834,10 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         // aksi halde sisik upstream degeri expiresAt'e yazilir ve kalici
         // satir 60s'lik saldiriyi 81s gibi gosterir.
         const maxLeft = parseInt(localAttack.time, 10) || 0;
-        const clampedLeft = maxLeft > 0 ? Math.min(upstreamLeft, maxLeft) : upstreamLeft;
+        // time'i bilinmeyen kayitlari UZATMA: clampsuz uzatma kaydi
+        // olumsuzlestiriyordu (cleanup dokunamaz, hayalet satir).
+        if (maxLeft <= 0) return;
+        const clampedLeft = Math.min(upstreamLeft, maxLeft);
         const newExpires = new Date(now + clampedLeft * 1000).toISOString();
         if (newExpires > (localAttack.expiresAt || '')) {
           localAttack.expiresAt = newExpires;
@@ -1873,6 +1897,33 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         persisted: true
       });
     });
+
+    // RackGhost satirlari: SSE ile ayni gorunum. SSE sessizken poll'a dusen
+    // frontend RG saldirilarini kaybetmesin (hesap filtreli).
+    if (rackghost.isConfigured()) {
+      const rgVisibleRow = makeRgVisibility();
+      try {
+        const rgList = await rackghost.getOngoing();
+        rgList.forEach((a) => {
+          const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
+          const dur = parseInt(a.time, 10) || 0;
+          const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - now) / 1000)) : dur;
+          const rgHost = String(a.host || '').replace(/\/+$/, '');
+          const row = {
+            attack_id: `rg_${a.id}`,
+            target: `${rgHost}:${a.port}`,
+            method: a.method,
+            timeLeft: String(tl),
+            count: parseInt(a.slots, 10) || 1,
+            layer: a.layer === 7 ? 'L7' : 'L4',
+            provider: 'rackghost'
+          };
+          if (rgVisibleRow(row, username)) ongoing.push(row);
+        });
+      } catch { /* RG merge hatasi: taze kayitlar asagida yine eklenir */ }
+      // Taze kayitlar (stresse id'leri zaten dedupe'li; rg pending dahil)
+      appendFreshRegistryRows(ongoing, username);
+    }
 
     res.json(ongoing);
   } catch (error) {
@@ -2193,6 +2244,7 @@ async function processLoopQueue() {
     if (!loop || !loop.running || loop.syncGroup) continue;
 
     // Ayni loopId'den ayni anda sadece 1 tur calissin; aktif turu varsa bekle.
+    // (Set'i fireLoopRound yonetir; burada sadece zamanlayici adaleti icin bakilir)
     if (activeLoopRounds.has(loopId)) {
       if (!loopQueue.includes(loopId)) {
         loopQueue.push(loopId);
@@ -2201,10 +2253,8 @@ async function processLoopQueue() {
       continue;
     }
 
-    activeLoopRounds.add(loopId);
     console.log(`[scheduler] ${loopId} turu baslatiliyor`);
     runLoopRound(loopId).finally(async () => {
-      activeLoopRounds.delete(loopId);
       // Tur bittikten sonra loop hala calisiyorsa kendi intervali kadar bekle,
       // sonra kuyrugun sonuna ekle.
       if (activeLoops[loopId]?.running) {
@@ -2404,7 +2454,27 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
 
 async function fireLoopRound(loopId, { skipDrain = false } = {}) {
   const loop = activeLoops[loopId];
-  if (!loop || !loop.running) return;
+  if (!loop || !loop.running) return 0;
+
+  // Reentrancy kilidi TEK NOKTADA: ayni loop'un iki turu ust uste binmesin.
+  // Kuyruk (runLoopRound), senkron (syncTick) ve stopGroup->runLoop cakismasi
+  // buradan gecer; sync.js'deki erken-atla kontrolu sadece log icindir.
+  // Donus -1 = atlandi (hata sayacina GIRMEZ).
+  if (activeLoopRounds.has(loopId)) {
+    console.log(`[loop ${loopId}] zaten tur calisiyor, bu atesleme atlaniyor`);
+    return -1;
+  }
+  activeLoopRounds.add(loopId);
+  try {
+    return await fireLoopRoundInner(loopId, { skipDrain });
+  } finally {
+    activeLoopRounds.delete(loopId);
+  }
+}
+
+async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
+  const loop = activeLoops[loopId];
+  if (!loop || !loop.running) return 0;
 
   const session = sessions[loop.sessionId];
   const isRackghost = loop.params.provider === 'rackghost';
@@ -2414,9 +2484,10 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
     loop.stopDetail = 'API token bulunamadı (oturum kapanmış veya süresi dolmuş)';
     loop.running = false;
     saveState();
+    cleanupLoop(loopId); // zombi birakma: history kapansin, kayitlar temizlensin
     loop.resolveFirstRound?.({ ok: false, permanent: true, message: loop.stopDetail });
     loop.resolveFirstRound = null;
-    return;
+    return 0;
   }
 
   console.log(`[loop ${loopId}] round baslatiliyor:`, JSON.stringify({
@@ -2546,11 +2617,13 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
       loop.stopReason = 'error';
       loop.stopDetail = `stresse.st method'u bakıma aldı (${upstreamMsg})`;
       loop.running = false;
+      cleanupLoop(loopId); // zombi birakma (senkron loop'lar kuyruk finally'sine hic girmez)
     } else if (loop.consecutiveErrors >= MAX_LOOP_CONSECUTIVE_ERRORS) {
       console.error(`[loop ${loopId}] Cok fazla hata, loop otomatik durduruluyor`);
       loop.stopReason = 'error';
       loop.stopDetail = `${MAX_LOOP_CONSECUTIVE_ERRORS} ardışık başarısız tur (son: ${upstreamMsg})`;
       loop.running = false;
+      cleanupLoop(loopId);
     }
   } else {
     loop.consecutiveErrors = 0;
@@ -2570,6 +2643,8 @@ async function fireLoopRound(loopId, { skipDrain = false } = {}) {
 async function runLoopRound(loopId) {
   const loop = activeLoops[loopId];
   const roundSuccesses = await fireLoopRound(loopId);
+  // -1 = baska bir yol (senkron) su an tur calistiriyor; hata sayma, sus.
+  if (roundSuccesses === -1) return;
 
   // /loop endpoint'i ilk turun launch sonucunu bekliyor olabilir; kalici
   // hatalarda loop olusumu bastan reddedilsin diye sonucu bildir.
@@ -3883,6 +3958,7 @@ function appendFreshRegistryRows(ongoingData, username) {
         method: a.method,
         timeLeft: String(tlSec),
         count: a.concurrents || 1,
+        layer: a.layer || 'L4',
         provider: 'rackghost'
       });
     });
@@ -3923,6 +3999,30 @@ function appendFreshRegistryRows(ongoingData, username) {
       ...(a.group ? { group: a.group } : {})
     });
   });
+}
+
+// RackGhost satir gorunurlugu (hesap izolasyonu): ID ile, kacamazsa
+// hedef+method imzasiyla sahip cozulur. Protokol iki tarafta da soyulur.
+// Defterde olmayanlar (RG panelinden baslatilanlar) herkese gorunur.
+// liveHubTick ve /ongoing poll ucu ortak kullanir.
+function makeRgVisibility() {
+  const byId = {};
+  const bySig = {};
+  Object.values(activeAttacks).forEach((a) => {
+    if (a.provider !== 'rackghost') return;
+    const owner = a.username || sessions[a.sessionId]?.username || null;
+    byId[`rg_${a.attackId}`] = owner;
+    const h = String(a.host || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    if (h && a.method) bySig[`${h}|${String(a.method).toUpperCase()}`] = owner;
+  });
+  return (row, username) => {
+    let owner = byId[row.attack_id];
+    if (owner === undefined) {
+      const h = String(row.target || '').toLowerCase().replace(/^https?:\/\//, '').split(':')[0];
+      owner = bySig[`${h}|${String(row.method || '').toUpperCase()}`];
+    }
+    return !owner || owner === username;
+  };
 }
 
 async function liveHubTick(hub, username) {
@@ -3997,26 +4097,7 @@ async function liveHubTick(hub, username) {
       // panel hesabindan baslatildi belli; akisi hesaba gore filtrele ki
       // Yavrukurt1'in saldirisi Yavrukurt akisinda gorunmesin. Defterde
       // olmayanlar (rackghost panelinden baslatilanlar) herkese gosterilir.
-      const rgOwnerById = {};
-      // Imza fallback'i: loop turlarinda eski kayit yeni launch'tan once silinir;
-      // o bostluk penceresinde (veya launch hatasinda) ID eslesmesi kacar ve
-      // satir tum hesaplara sizar. Hedef+method imzasiyla da sahip cozulsun.
-      const rgOwnerBySig = {};
-      Object.values(activeAttacks).forEach((a) => {
-        if (a.provider !== 'rackghost') return;
-        const owner = a.username || sessions[a.sessionId]?.username || null;
-        rgOwnerById[`rg_${a.attackId}`] = owner;
-        const h = String(a.host || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        if (h && a.method) rgOwnerBySig[`${h}|${String(a.method).toUpperCase()}`] = owner;
-      });
-      const rgVisible = (row) => {
-        let owner = rgOwnerById[row.attack_id];
-        if (owner === undefined) {
-          const h = String(row.target || '').split(':')[0].toLowerCase();
-          owner = rgOwnerBySig[`${h}|${String(row.method || '').toUpperCase()}`];
-        }
-        return !owner || owner === username;
-      };
+      const rgVisible = makeRgVisibility();
       const seenRg = new Set();
       try {
         // RG servis timeout'u 120sn; tick'i bloklamasin diye sert ust sinir —
@@ -4039,16 +4120,17 @@ async function liveHubTick(hub, username) {
             method: a.method,
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
+            layer: a.layer === 7 ? 'L7' : 'L4',
             provider: 'rackghost'
           };
-          if (rgVisible(row)) ongoingData.push(row);
+          if (rgVisible(row, username)) ongoingData.push(row);
         });
       } catch (rgErr) {
         // Merge bu tick basarisiz: onceki rackghost satirlarini koru ki panelde
         // satir/rozet titremesi olmasin (oturum hatasi watchdog'da raporlanir).
         if (Array.isArray(hub.lastOngoing)) {
           hub.lastOngoing
-            .filter((r) => r && r.provider === 'rackghost' && rgVisible(r))
+            .filter((r) => r && r.provider === 'rackghost' && rgVisible(r, username))
             .forEach((r) => { seenRg.add(r.attack_id); ongoingData.push(r); });
         }
       }
@@ -4107,6 +4189,15 @@ app.get('/api/stresse/live/:username', (req, res) => {
 
   if (!sessionId) {
     return res.status(401).json({ status: 'error', message: 'Session required' });
+  }
+
+  // Session'in hesabi istenen akisin hesabiyla eslesmeli; aksi halde baska
+  // hesabin session'i hub'i zehirleyebilir (hub.sessionId ezilir, yanlis
+  // hesabin verisi broadcast edilir). Silinmis/bayat session'larda eski
+  // davranis korunur (fallback mantigi toparlar).
+  const sessUser = sessions[sessionId]?.username;
+  if (sessUser && sessUser !== username) {
+    return res.status(403).json({ status: 'error', message: 'Session hesap uyusmazligi' });
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -4223,6 +4314,31 @@ app.post('/api/rackghost/stop', async (req, res) => {
 
   try {
     const data = await rackghost.stopAttack(id, host);
+    // stresse /stop ile ayni zincir: kaydi sil, history isaretle, sahip loop'u
+    // durdur (yoksa sonraki tur ayni hedefi yeniden baslatir) — aksi durumda
+    // durdurulan saldiri panelde hayalet satir olarak kalmaya devam ediyordu.
+    const stoppedLoop = record?.loopId ? activeLoops[record.loopId] : null;
+    if (stoppedLoop) {
+      stoppedLoop.running = false;
+      delete activeLoops[record.loopId];
+      saveState();
+      notifyLoopRemoved(stoppedLoop, 'durduruldu', {
+        username: sessionUser,
+        ip: getClientIp(req),
+        stopDetail: 'Loop saldırısı panelden durduruldu'
+      });
+      const loopHistoryId = `hist_loop_${record.loopId}`;
+      if (attackHistory[loopHistoryId] && attackHistory[loopHistoryId].status === 'active') {
+        updateAttackHistoryStatus(loopHistoryId, 'stopped');
+      }
+    }
+    const history = findActiveHistoryByAttackId(String(id));
+    if (history && !history.loop) {
+      updateAttackHistoryStatus(history.historyId, 'stopped');
+    }
+    unregisterAttack(String(id));
+    // ongoing onbellegini kir ki satir hemen dussun
+    if (typeof rackghost.invalidateOngoingCache === 'function') rackghost.invalidateOngoingCache();
     res.json({ status: 'success', data });
   } catch (err) {
     res.status(502).json({ status: 'error', message: err.message });

@@ -345,7 +345,7 @@ const LoopManager = () => {
                               {formatTargetShort(formatTargetForDisplay(loop.displayTarget || loop.params?.host || '', loop.params?.layer))}
                             </span>
                             <button
-                              onClick={() => handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer)}
+                              onClick={(e) => { e.stopPropagation(); handleCopyTarget(loop.displayTarget || loop.params?.host || '', loopId, loop.params?.layer); }}
                               title="URL'yi kopyala"
                               className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 ${
                                 copiedKey === loopId
@@ -752,6 +752,7 @@ const LoopManager = () => {
             <input
               type="number"
               min={10}
+              max={3600}
               value={syncTime}
               onChange={(e) => setSyncTime(e.target.value)}
               className="mb-4 w-full min-h-[46px] rounded-sm border border-cyan-500/40 bg-black px-3 py-2.5 text-[15px] text-cyan-300 focus:outline-none focus:shadow-[0_0_12px_rgba(0,212,255,0.2)]"

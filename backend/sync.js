@@ -119,6 +119,9 @@ function startGroup(loopIds, time) {
   }
   const t = parseInt(time, 10);
   if (!Number.isFinite(t) || t < 10) return { error: 'Geçerli bir süre gir (en az 10 saniye)' };
+  // Ust sinir: senkron suresi saldirinin kendi suresi olur (loop.syncTime);
+  // sinirsiz birakilirsa kayitlar gunlerce yasayan hayalet olur.
+  if (t > 3600) return { error: 'Tur süresi en fazla 3600 saniye (1 saat) olabilir' };
   const cap = validateCapacity(loopIds);
   if (!cap.ok) return { error: cap.message };
 

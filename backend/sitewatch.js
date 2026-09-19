@@ -141,12 +141,14 @@ function humanDuration(sinceIso) {
 }
 
 /** Tarama sonucunu bildirir: UP -> grup+kanit; DOWN -> grup + admin DM. */
-async function notifyScanResult(site, result, kind) {
+async function notifyScanResult(site, result, kind, prevDownSince = null) {
   const label = kind === 'manuel' ? 'manuel tarama' : 'otomatik tarama';
   const isUp = result.status === 'up';
   let caption;
   if (isUp) {
-    const backNote = site.downSince ? `\n⏱️ Kesinti süresi: ${humanDuration(site.downSince)}` : '';
+    // downSince recordResult'da null'lanir; kesinti suresi icin ONCEKI deger lazim
+    const downRef = prevDownSince || site.downSince;
+    const backNote = downRef ? `\n⏱️ Kesinti süresi: ${humanDuration(downRef)}` : '';
     caption = `🟢 <b>UP</b> — ${site.url}\n⚡ Yanıt: ${result.ms} ms\n🔁 Tür: ${label}${backNote}\n🕐 <i>${stamp()}</i>`;
   } else {
     caption = `🔴 <b>DOWN</b> — ${site.url}\n⚠️ Sebep: ${result.reason}\n🔁 Tür: ${label}\n🕐 <i>${stamp()}</i>`;
@@ -186,9 +188,10 @@ function recordResult(site, result) {
 async function scanSite(site, kind, silent) {
   const result = await httpCheck(site.url);
   const prevStatus = site.status;
+  const prevDownSince = site.downSince; // recordResult UP'ta null'luyor
   recordResult(site, result);
   // Boot/sessiz turda mesaj yok; normal turda her site bildirir (orijinal davranis)
-  if (!silent) await notifyScanResult(site, result, kind);
+  if (!silent) await notifyScanResult(site, result, kind, prevDownSince);
   return { url: site.url, prevStatus, ...result };
 }
 
@@ -202,7 +205,11 @@ async function scanAll(kind = 'auto', silent = false) {
     writeJson(SITES_FILE, sites);
     if (!silent) {
       const up = sites.filter((s) => s.status === 'up').length;
-      await tgText(TG_CHAT, `✅ <b>Tarama turu tamamlandı</b> — tüm siteler ayakta (${up}/${sites.length})`);
+      // Metin durumu dogru soylesin: eksik site varken "tumu ayakta" denmiyordu
+      const allUp = up === sites.length;
+      await tgText(TG_CHAT, allUp
+        ? `✅ <b>Tarama turu tamamlandı</b> — tüm siteler ayakta (${up}/${sites.length})`
+        : `⚠️ <b>Tarama turu tamamlandı</b> — ${up}/${sites.length} ayakta, ${sites.length - up} down`);
     }
     return { scanned: sites.length };
   } finally {

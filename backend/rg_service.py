@@ -18,7 +18,8 @@ import time
 import traceback
 import urllib.request
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Kimlikler koda GOMMEZ; systemd unit Environment satirlarindan okunur.
 # (rg_service.py repoda durdugu icin duz metin sifre geçmişi temizlendi.)
@@ -172,6 +173,30 @@ def api_call(payload):
                 pass
             # Oturum dusmus olabilir: bir kez tazeleyip tekrar dene
             log("beklenmeyen yanit, oturum tazeleniyor...")
+            # CIFT SALDIRI KORUMASI: 'start' istegi upstream'e ulasmis ama
+            # yaniti parse edilememis olabilir; ayni payload'i koru kavuşturmadan
+            # tekrar gondermek ikinci bir saldiri baslatir. Once ongoing'de
+            # ayni hedef+method'un az once baslayip baslamadigina bak.
+            if payload.get("action") == "start":
+                try:
+                    p = payload.get("params", {})
+                    p_host = str(p.get("host", "")).lower().replace("https://", "").replace("http://", "").rstrip("/")
+                    p_method = str(p.get("method", "")).upper()
+                    st2, tx2, _ = _http(f"{BASE}{API_PATH}", method="POST", json_body={"action": "ongoing", "api": 2})
+                    ongoing = json.loads(tx2)
+                    now_ts = time.time()
+                    for a in ongoing.get("data", []):
+                        a_host = str(a.get("host", "")).lower().replace("https://", "").replace("http://", "").rstrip("/")
+                        created = a.get("created_at")
+                        try:
+                            created_ts = datetime.fromisoformat(str(created).replace("Z", "+00:00")).timestamp() if created else None
+                        except Exception:
+                            created_ts = None
+                        if a_host == p_host and str(a.get("method", "")).upper() == p_method and created_ts and (now_ts - created_ts) < 90:
+                            log("start retry engellendi: saldiri zaten baslamis (cift atis onlendi)")
+                            return {"ok": True, "data": {"success": True, "data": [], "message": "zaten başlamış (retry engellendi)"}}
+                except Exception as e:
+                    log(f"start on-kontrol hatasi: {str(e)[:120]}")
             if ensure_session(force=True):
                 time.sleep(1.2)
                 status, text, _ = _http(f"{BASE}{API_PATH}", method="POST", json_body=payload)
@@ -235,4 +260,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     log("rackghost oturum servisi basliyor (127.0.0.1:3210, browser'siz)")
     threading.Thread(target=lambda: api_call({"action": "ongoing", "api": 2}), daemon=True).start()
-    HTTPServer(("127.0.0.1", 3210), Handler).serve_forever()
+    # ThreadingHTTPServer: uzun CapSolver login'i sirasinda /health kilitlenip
+    # yanlis "servis kapali" alarmi uretiyordu; upstream istekleri zaten
+    # _lock + throttle ile seri ve guvenli.
+    ThreadingHTTPServer(("127.0.0.1", 3210), Handler).serve_forever()

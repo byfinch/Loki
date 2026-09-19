@@ -192,12 +192,18 @@ async function notifyResult(r, prev) {
   const wasDown = prev?.status === 'DOWN';
   const isDown = r.status === 'DOWN';
   const cap = captionOf(r, prev);
-  if (GROUP_CHAT && card) await tgDmPhoto(card, cap, GROUP_CHAT);
-  if ((isDown || wasDown) && isDown !== wasDown) {
-    for (const dm of DM_USERS) {
-      if (card) await tgDmPhoto(card, cap, dm);
-      else await tgDm(cap, dm);
+  try {
+    if (GROUP_CHAT && card) await tgDmPhoto(card, cap, GROUP_CHAT);
+    if ((isDown || wasDown) && isDown !== wasDown) {
+      for (const dm of DM_USERS) {
+        if (card) await tgDmPhoto(card, cap, dm);
+        else await tgDm(cap, dm);
+      }
     }
+  } finally {
+    // Disk sismesini onle: gonderimden sonra shot/kart dosyalari silinir
+    // (sitewatch kanit kalibi). Aksi halde her tur site basina 3+ dosya birikir.
+    [shotBot, shotUsr, card].forEach((f) => { if (f) { try { fs.unlinkSync(f); } catch { /* yoksay */ } } });
   }
 }
 

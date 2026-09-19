@@ -10,6 +10,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { isPublicHost } = require('./netutil');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const KEYWORDS_FILE = path.join(DATA_DIR, 'watch-keywords.json');
@@ -371,6 +372,8 @@ function addSite(raw) {
   // Kullanici tam URL de yapistirabilir: domain'i ayikla (protokol, path, www. atilir)
   let s = String(raw || '').trim().replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./i, '').toLowerCase();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) return { error: 'Geçersiz domain' };
+  // SSRF korumasi: ic aga cozulen host'lar izlenemez (xip.io/nip.io tuzagi dahil)
+  if (!isPublicHost(s)) return { error: 'İç ağ adresleri izlenemez' };
   if (!sites.includes(s)) sites.push(s);
   writeJson(SITES_FILE, sites);
   return { sites };
