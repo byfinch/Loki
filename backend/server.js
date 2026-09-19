@@ -2083,13 +2083,13 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         return;
       }
 
-      // Listeleme bozuk hesapta (upstream hic satir dondurmuyor) kayit omru
-      // 2x time'a uzar — zaman kapisi (2x time) ile kayit omru arasindaki
-      // gorunurluk boslugu kapanir.
-      const expiresBase = new Date(attack.expiresAt || 0).getTime();
-      const listingBroken = ongoing.length === 0;
-      const expires = listingBroken ? expiresBase + (parseInt(attack.time, 10) || 0) * 1000 : expiresBase;
-      const timeLeft = Math.max(0, Math.round((expires - now) / 1000));
+      // Gosterilen kalan sure = gercek geri sayim (startedAt + time); kayit
+      // omru (expiresAt) sadece temizlik ufkudur, gorunumu sisirmez.
+      const startedMs = new Date(attack.startedAt || 0).getTime();
+      const tSec = parseInt(attack.time, 10) || 0;
+      const timeLeft = Number.isFinite(startedMs) && tSec > 0
+        ? Math.max(0, Math.round((startedMs + tSec * 1000 - now) / 1000))
+        : 0;
       if (timeLeft <= 0) return; // Suresi dolmussa ekleme
 
       ongoing.push({
@@ -4195,15 +4195,14 @@ function liveHubBroadcast(hub, chunk) {
 // satir engellenir; sahiplik (owner) hesap bazli filtrelenir.
 function appendFreshRegistryRows(ongoingData, username) {
   const nowMs = Date.now();
-  // Listeleme bozuk hesap tespiti: hic upstream satir yoksa (API yalan
-  // soyluyor) kayit omru 2x time'a uzar — yoksa zaman kapisi (2x time kadans)
-  // ile kayit omru (time) arasinda gorunurluk boslugu olusurdu.
-  const listingBroken = ongoingData.length === 0;
-  const effExpiresMs = (a) => {
-    const expMs = new Date(a.expiresAt || 0).getTime();
-    if (!listingBroken) return expMs;
+  // Gosterilen kalan sure = saldirinin GERCEK geri sayimi (startedAt + time).
+  // Kayit omru (expiresAt, 2x time) sadece temizlik ufkudur; gorunumu sisirmez.
+  // (Onceki tasarim expiresAt'i gosteriyordu — 60s'lik saldiri 156s gorunuyordu.)
+  const realTlSec = (a) => {
+    const startedMs = new Date(a.startedAt || 0).getTime();
     const t = parseInt(a.time, 10) || 0;
-    return expMs + t * 1000;
+    if (!Number.isFinite(startedMs) || t <= 0) return 0;
+    return Math.round((startedMs + t * 1000 - nowMs) / 1000);
   };
   const upstreamIds = new Set(ongoingData.map((r) => String(r.attack_id || r.id || '')));
   // RackGhost taze kayitlari (henuz upstream ongoing'e dusmemis olanlar)
@@ -4215,7 +4214,7 @@ function appendFreshRegistryRows(ongoingData, username) {
       if (seenRg.has(id)) return;
       const owner = a.username || sessions[a.sessionId]?.username || null;
       if (owner && owner !== username) return; // baska hesabin saldirisi
-      const tlSec = Math.round((effExpiresMs(a) - nowMs) / 1000);
+      const tlSec = realTlSec(a);
       if (!Number.isFinite(tlSec) || tlSec <= 0) return;
       ongoingData.push({
         attack_id: id,
@@ -4269,7 +4268,7 @@ function appendFreshRegistryRows(ongoingData, username) {
       nullIdBudget.set(sig, nullIdBudget.get(sig) - 1);
       return;
     }
-    const tlSec = Math.round((effExpiresMs(a) - nowMs) / 1000);
+    const tlSec = realTlSec(a);
     if (!Number.isFinite(tlSec) || tlSec <= 0) return;
     ongoingData.push({
       attack_id: id,
