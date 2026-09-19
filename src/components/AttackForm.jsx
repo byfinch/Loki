@@ -527,7 +527,7 @@ const AttackForm = () => {
             {/* Bazi stresse methodlari girilen degerin 2 katini baslatir
                 (canli olcum: HTTP-REST conc=10 -> 20). Panel upstream'e yarisi
                 gonderir: kullanici girdigi kadar saldiri ve slot tuketir. */}
-            {provider === 'stresse' && ['HTTP-REST', 'TCPAMP'].includes(method?.toUpperCase()) && (
+            {provider === 'stresse' && ['HTTP-REST'].includes(method?.toUpperCase()) && (
               <p className="mt-0.5 text-[9px] text-amber-500/80"># {method.toUpperCase()} stresse'te 2× başlatır; biz yarısını göndeririz — {concurrents} girersen {concurrents % 2 === 0 ? concurrents : concurrents + 1} saldırı açılır, o kadar slot tüketir</p>
             )}
           </div>
