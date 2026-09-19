@@ -3864,14 +3864,27 @@ async function liveHubTick(hub, username) {
   if (hub.clients.size === 0) return;
   // Poke ile normal tick cakismasini onle (iki tick paralel kosarsa iki timer
   // zinciri olusur — biri ezilir, biri yasamaya devam eder).
-  if (hub.tickInFlight) return;
+  // Takili tick kilidi: normalde fetch timeout'lari bitirir; yine de 60sn'yi
+  // asan tick'i takilmis say, kilidi kir (aksi hub sonsuza susar).
+  if (hub.tickInFlight) {
+    if (Date.now() - (hub.tickStartedAt || 0) > 60000) {
+      console.warn('[liveHub] tick 60sn+ takili kalmis, kilit kiriliyor');
+      hub.tickInFlight = false;
+    } else {
+      return;
+    }
+  }
   hub.tickInFlight = true;
+  hub.tickStartedAt = Date.now();
   hub.tickCount += 1;
   const fetchUser = hub.tickCount === 1 || hub.tickCount % 10 === 0;
   try {
     const client = getClient(hub.sessionId);
-    const requests = [client.get(`/ongoing/${username}`)];
-    if (fetchUser) requests.push(client.get(`/user/${username}`));
+    // Sert timeout ZORUNLU: zaman asimisiz bir istek takilirsa tick zinciri
+    // (timer tick sonunda kuruluyor) tamamen olur ve hub sessizce donar —
+    // kullanicinin "saldiriyi gec goruyorum / yenilemek zorundayim" bug'i.
+    const requests = [client.get(`/ongoing/${username}`, { timeout: 15000 })];
+    if (fetchUser) requests.push(client.get(`/user/${username}`, { timeout: 15000 }));
     const [ongoing, user] = await Promise.all(requests);
     // Not cozumleme ID'den bagimsiz oldugu icin satir /ongoing'de gorunur
     // gorunmez not da ayni tick'te hazirdir (gec gelme sorunu yok).
@@ -3928,7 +3941,12 @@ async function liveHubTick(hub, username) {
       };
       const seenRg = new Set();
       try {
-        const rgList = await rackghost.getOngoing();
+        // RG servis timeout'u 120sn; tick'i bloklamasin diye sert ust sinir —
+        // asimda onceki RG satirlari korunur (asagidaki catch).
+        const rgList = await Promise.race([
+          rackghost.getOngoing(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing tick timeout')), 20000))
+        ]);
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
