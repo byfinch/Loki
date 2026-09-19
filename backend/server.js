@@ -2170,7 +2170,12 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
     if (rackghost.isConfigured()) {
       const rgVisibleRow = makeRgVisibility();
       try {
-        const rgList = await rackghost.getOngoing();
+        // RG servis timeout'u 120sn; endpoint asili kalmasin diye 8sn ust sinir.
+        // Asimda catch'e duser; taze kayitlar asagida yine eklenir.
+        const rgList = await Promise.race([
+          rackghost.getOngoing(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('rg ongoing timeout')), 8000))
+        ]);
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
