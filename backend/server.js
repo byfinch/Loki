@@ -802,8 +802,9 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         data: { status: 'success', recovered: true, timeoutAssumed: true },
         attackIds: [],
         elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-        // Pending YOK: dogrulanmamis varsayim satir uretmez (hayalet sinifi).
-        pendingIds: []
+        // Pending satirlar var: launch gonderildi, satir gorunsun. Cift sayim
+        // imza-butcesiyle, hayalet 2x time omur + olum takibiyle dengeli.
+        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
       };
     } else if (err.response && err.response.status >= 500) {
       // 502/503/504: stresse gateway yuk altinda; istek islenmis ve saldirilar
@@ -825,7 +826,7 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
         data: { status: 'success', recovered: true, timeoutAssumed: true },
         attackIds: [],
         elapsedSec: Math.round((Date.now() - requestStartedAt) / 1000),
-        pendingIds: []
+        pendingIds: registerPendingAttacks(sessionId, params, sendConc, loopId)
       };
     } else {
       console.error(`[launchAttacksGet] GET /api hata:`, err.message);
