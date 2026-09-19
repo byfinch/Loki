@@ -1107,6 +1107,10 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
   // Kurtarma (salvage) yolunda saldiri istegi gonderileli elapsedSec gecti;
   // expiresAt'i bu kadar kisalt ki saldiri erken silinmesin/gec silinmesin.
   const remainingSec = Math.max(1, (parseInt(params.time) || 0) - (parseInt(elapsedSec) || 0));
+  // Kayit omru: upstream hasta donemde saldirilar ~2x nominal yasiyor ve zaman
+  // kapisi 2x time kadansinda calisiyor — 2x time kapsar. Gercek olum (upstream'ten
+  // dusme) tick'te erken oldurulur (olum takibi) — hayalet kalmaz.
+  const lifeSec = remainingSec + Math.max(60, remainingSec);
   activeAttacks[attackId] = {
     attackId,
     sessionId,
@@ -1124,7 +1128,7 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
     provider: params.provider || 'stresse',
     group: params.group || null, // dogrudan saldirida form secimi; loop'ta loop.group uzerinden
     startedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + remainingSec * 1000).toISOString()
+    expiresAt: new Date(Date.now() + lifeSec * 1000).toISOString()
   };
   const attackOwner = activeAttacks[attackId].username;
   if (attackOwner) lastAttackCountByUser.set(attackOwner, countAttacksForUser(attackOwner));
@@ -4264,6 +4268,29 @@ async function liveHubTick(hub, username) {
     // Basarili tick: bu session calisiyor demektir; iyi bilinen session olarak isle.
     hub.lastGoodSessionId = hub.sessionId;
     if (user) hub.lastUser = user.data;
+
+    // Olum takibi: kayit omru 2x time veriliyor (broken-listing hesaplari
+    // kapsar); saglikli hesapta upstream'ten dusen saldiri ERKEN oldurulur —
+    // hayalet satir kalmaz. (Sadece basarili fetch'te: blip'te oldurme.)
+    {
+      const upIdsNow = new Set(ongoingData.map((r) => String(r.attack_id || r.id || '')));
+      const nowDeath = Date.now();
+      Object.values(activeAttacks).forEach((a) => {
+        const owner = a.username || sessions[a.sessionId]?.username;
+        if (owner !== username) return;
+        const id = String(a.attackId);
+        if (id.startsWith('pending_')) return; // pending'ler imza-butcesiyle yasar
+        if (upIdsNow.has(id)) { a.seenUpstream = true; return; }
+        if (!a.seenUpstream) return;
+        const startedMs = new Date(a.startedAt || 0).getTime();
+        const t = parseInt(a.time, 10) || 0;
+        // En az yarim omur (max 30sn) yasamis ve upstream'ten dusmus: bitmis say
+        if (Number.isFinite(startedMs) && nowDeath - startedMs > Math.min(t * 500, 30000)) {
+          delete a.seenUpstream;
+          a.expiresAt = new Date(nowDeath).toISOString();
+        }
+      });
+    }
   } catch (err) {
     hub.consecutiveErrors += 1;
     // Session hatasi variysa (401/gecersiz oturum) son calisan session'a don;
