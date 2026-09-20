@@ -3,6 +3,7 @@ import { StressTestProvider, useStressTest } from './context/StressTestContext';
 import { apiClient } from './services/apiClient';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Session dogrulanirken login ekraninin flas yapmasini engelleyen temali splash.
 const ValidatingSplash = () => (
@@ -90,9 +91,11 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <StressTestProvider>
-      <AppContent />
-    </StressTestProvider>
+    <ErrorBoundary>
+      <StressTestProvider>
+        <AppContent />
+      </StressTestProvider>
+    </ErrorBoundary>
   );
 };
 

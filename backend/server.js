@@ -4797,6 +4797,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Panel (client) hata bildirimi: siyah-ekran/crash kok neden teshisi icin.
+// Sadece pm2 loguna yazar; oturum gecersizse de kabul edilir (crash aninda
+// oturum da olmus olabilir) ama /api rate limiter'i (500/dk) spam'i sinirlar.
+app.post('/api/client-error', (req, res) => {
+  const { source, message, stack } = req.body || {};
+  if (!message) return res.status(400).json({ status: 'error', message: 'message required' });
+  const sid = req.headers['sessionid'] || req.headers['sessionId'];
+  const user = sid && sessions[sid] ? sessions[sid].username : 'bilinmiyor';
+  console.error(`[client-hata] user=${user} source=${String(source || '?')} :: ${String(message).slice(0, 300)} :: ${String(stack || '').slice(0, 800)}`);
+  res.json({ status: 'success' });
+});
+
 // =====================
 // RACKGHOST PROVIDER
 // =====================

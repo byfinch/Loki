@@ -178,7 +178,9 @@ const LiveAttacks = () => {
       const ka = targetKeyNorm(a.target);
       const kb = targetKeyNorm(b.target);
       if (ka !== kb) return ka.localeCompare(kb);
-      if (a.method !== b.method) return a.method.localeCompare(b.method);
+      const ma = String(a.method || '');
+      const mb = String(b.method || '');
+      if (ma !== mb) return ma.localeCompare(mb);
       return b.timeLeft - a.timeLeft;
     });
   }, [state.liveAttacks, serverTimeLefts]);
@@ -430,6 +432,10 @@ const LiveAttacks = () => {
             next[key] = t;
           }
         });
+        // Budama: listede olmayan anahtarlar birikmez. Modul seviyesindeki
+        // depo (persistedTimeLefts) saatlerce acik sekmede sinirsiz buyuyordu.
+        const liveKeys = new Set((attacks || []).map((a) => a.attack_id || sigOf(a.target, a.method)));
+        Object.keys(next).forEach((k) => { if (!liveKeys.has(k)) delete next[k]; });
         return next;
       });
       // Raporlanan tum degerleri kaydet (degisim tespiti icin)
