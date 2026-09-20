@@ -1031,11 +1031,20 @@ function normalizeUpstreamError(msg) {
   return text;
 }
 
-// L7'de ulke bazli geo desteklenmiyor (upstream 400: "Invalid geo value for
-// Layer 7" — canli olcumle dogrulandi); yalniz worldwide gecerli. L4 ulke
-// listesini kabul eder. Launch oncesi net Turkce hata icin ortak kontrol.
-function isInvalidL7Geo(layer, provider, geo) {
-  return provider === 'stresse' && layer === 'L7' && geo && geo !== 'worldwide';
+// stresse geo deger uzayi KATMANA GORE farkli (hub arayuzundeki country-l4 /
+// country-l7 selectlerinden birebir alindi; canli olcumle dogrulandi):
+//  L4: duz ulke adlari — worldwide, china, turkey, ...
+//  L7: geo-bypass proxy listesi DOSYA adlari — proxies.txt, turkey.txt, ...
+// L7'ye duz ad gonderilirse upstream 400 "Invalid geo value for Layer 7" verir.
+const GEO_L4_VALUES = ['worldwide', 'china', 'russia', 'brazil', 'korea', 'turkey', 'thailand', 'japan', 'vietnam', 'indonesia', 'iran'];
+const GEO_L7_VALUES = ['proxies.txt', 'china.txt', 'brazil.txt', 'canada.txt', 'usa.txt', 'germany.txt', 'vietnam.txt', 'netherlands.txt', 'russia.txt', 'iran.txt', 'korea.txt', 'indonesia.txt', 'turkey.txt'];
+function geoDomainError(layer, provider, geo) {
+  if (provider !== 'stresse' || !geo) return null;
+  const valid = layer === 'L7' ? GEO_L7_VALUES : GEO_L4_VALUES;
+  if (valid.includes(geo)) return null;
+  return layer === 'L7'
+    ? 'L7 için geçersiz Geo: L7 ülke seçimi proxy-liste adı ister (turkey.txt, usa.txt, ...; Worldwide = proxies.txt)'
+    : 'L4 için geçersiz Geo değeri (dünya/ülke adları: worldwide, turkey, ...)';
 }
 
 function checkSlotsEmpty() {
@@ -2297,9 +2306,9 @@ app.post('/api/stresse/attack', async (req, res) => {
     }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, 'stresse', host)) return;
-    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
-    if (isInvalidL7Geo(layer, 'stresse', geo)) {
-      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    // Geo deger uzayi katmana gore dogrulanir (L7: .txt proxy listeleri)
+    if (geoDomainError(layer, 'stresse', geo)) {
+      return res.status(400).json({ status: 'error', message: geoDomainError(layer, 'stresse', geo) });
     }
 
     if (isFreeMethod(method)) {
@@ -2454,9 +2463,9 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, provider, host)) return;
-    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
-    if (isInvalidL7Geo(layer, provider, geo)) {
-      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    // Geo deger uzayi katmana gore dogrulanir (L7: .txt proxy listeleri)
+    if (geoDomainError(layer, provider, geo)) {
+      return res.status(400).json({ status: 'error', message: geoDomainError(layer, provider, geo) });
     }
 
     if (isFreeMethod(method)) {
@@ -3282,9 +3291,9 @@ app.post('/api/stresse/loop', async (req, res) => {
     if (provider === 'stresse' && isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
     }
-    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
-    if (isInvalidL7Geo(layer, provider, geo)) {
-      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    // Geo deger uzayi katmana gore dogrulanir (L7: .txt proxy listeleri)
+    if (geoDomainError(layer, provider, geo)) {
+      return res.status(400).json({ status: 'error', message: geoDomainError(layer, provider, geo) });
     }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, provider, host)) return;
@@ -3698,9 +3707,9 @@ const loopEditHandler = async (req, res) => {
     if (!VALID_GEO.includes(newGeo)) {
       return res.status(400).json({ status: 'error', message: 'Gecersiz geo degeri' });
     }
-    // L7 loop'larinda ulke geo gecersiz (yalniz worldwide — upstream kurali)
-    if (isInvalidL7Geo(p.layer || 'L4', p.provider, newGeo)) {
-      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    // Geo deger uzayi katmana gore dogrulanir (L7: .txt proxy listeleri)
+    if (geoDomainError(p.layer || 'L4', p.provider, newGeo)) {
+      return res.status(400).json({ status: 'error', message: geoDomainError(p.layer || 'L4', p.provider, newGeo) });
     }
 
     if (!Number.isFinite(newTime)) {

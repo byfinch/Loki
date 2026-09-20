@@ -32,7 +32,12 @@ const L7_MIN_TIME = 60;
 const L4_MIN_TIME = 60;
 
 // stresse.st'in destekledigi geo degerleri (hub formundaki liste)
-const GEO_OPTIONS = [
+// Geo secimi katmana gore iki ayri deger uzayina sahip (stresse hub arayuzunden
+// birebir alindi — country-l4 / country-l7 selectleri):
+//  L4: duz ulke adlari (worldwide, turkey, ...)
+//  L7: geo-bypass proxy listesi DOSYA adlari (turkey.txt, proxies.txt, ...)
+// L7'ye duz ad gondermek upstream'te "Invalid geo value for Layer 7" uretir.
+const GEO_L4 = [
   { value: 'worldwide', label: 'Worldwide (varsayılan)' },
   { value: 'china', label: 'China' },
   { value: 'russia', label: 'Russia' },
@@ -45,6 +50,22 @@ const GEO_OPTIONS = [
   { value: 'indonesia', label: 'Indonesia' },
   { value: 'iran', label: 'Iran' }
 ];
+const GEO_L7 = [
+  { value: 'proxies.txt', label: 'Worldwide (varsayılan)' },
+  { value: 'turkey.txt', label: 'Turkey' },
+  { value: 'usa.txt', label: 'United States' },
+  { value: 'germany.txt', label: 'Germany' },
+  { value: 'netherlands.txt', label: 'Netherlands' },
+  { value: 'canada.txt', label: 'Canada' },
+  { value: 'russia.txt', label: 'Russia' },
+  { value: 'china.txt', label: 'China' },
+  { value: 'brazil.txt', label: 'Brazil' },
+  { value: 'iran.txt', label: 'Iran' },
+  { value: 'korea.txt', label: 'South Korea' },
+  { value: 'vietnam.txt', label: 'Vietnam' },
+  { value: 'indonesia.txt', label: 'Indonesia' }
+];
+const GEO_OPTIONS = GEO_L4;
 
 function getMinTime(method, layer) {
   if (METHOD_MIN_TIME[method?.toUpperCase()]) return METHOD_MIN_TIME[method.toUpperCase()];
@@ -199,14 +220,13 @@ const AttackForm = () => {
     }
   }, [method, layer]);
 
-  // Geo secimi katmana gore: L7'de ulke bazli geo UPSTREAM TARAFINDAN
-  // reddediliyor ("Invalid geo value for Layer 7" — canli olcum); yalniz
-  // worldwide gecerli. L4 ulke listesini kabul eder.
-  const geoOptions = layer === 'L7'
-    ? GEO_OPTIONS.filter((g) => g.value === 'worldwide')
-    : GEO_OPTIONS;
+  // Geo secimi katmana gore: L4 duz ulke adlari, L7 geo-bypass proxy liste
+  // DOSYA adlari (turkey.txt gibi — stresse'nin country-l7 arayuzu). Katman
+  // degisince deger uzayi da degisir; gecersiz deger o katmanin varsayilanina duser.
+  const geoOptions = layer === 'L7' ? GEO_L7 : GEO_L4;
   useEffect(() => {
-    if (layer === 'L7' && geo !== 'worldwide') setGeo('worldwide');
+    const valid = geoOptions.some((g) => g.value === geo);
+    if (!valid) setGeo(layer === 'L7' ? 'proxies.txt' : 'worldwide');
   }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredMethods = provider === 'rackghost'
