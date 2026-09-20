@@ -245,15 +245,20 @@ async function startAttack(params, opts = {}) {
   }
 
   if (st.name === 'new') {
-    // Yanit: {status:'true', message, target, method, duration}. Kimlik = hedef
-    // (stop hedefe yapilir). Kayit defterinde rg2_<target> olarak gorunur.
+    // Yanit: {status:'true', message, target, method, duration}. api3'un stop'u
+    // HEDEF adina yapilir ve upstream ongoing listesi bos doner; bu yuzden kayit
+    // kimligi benzersiz olmali: ayni hedefe farkli methodlarla (loop'lar)
+    // vuruldugunda 'hedef' kimligi cakisir ve defter tek satir gosterirdi.
+    // Kimlik = 'hedef::METHOD'; stop ucunda host'a geri cozulur.
     const d = data.data || {};
     const target = String(d.target || params.host);
+    const methodUp = String(d.method || method).toUpperCase();
     const duration = parseInt(d.duration) || parseInt(params.time) || 60;
+    const rowId = `${target}::${methodUp}`;
     return {
       message: d.message || data.message || 'başlatıldı',
-      attackIds: [target],
-      raw: [{ id: target, host: target, method: String(d.method || method).toUpperCase(), time: duration, slots: wanted }],
+      attackIds: [rowId],
+      raw: [{ id: rowId, host: target, method: methodUp, time: duration, slots: wanted }],
       slotsTotal: wanted,
       account: 'new'
     };

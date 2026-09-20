@@ -4910,9 +4910,13 @@ app.post('/api/rackghost/stop', async (req, res) => {
   if (!host) return res.status(400).json({ status: 'error', message: 'host cozulemedi' });
 
   try {
-    // Stresser routing: kayitta hangi sistemden baslatildigi yazar
-    // (main: api2 id+host / new: api3 HEDEF adina stop)
-    const data = await rackghost.stopAttack(id, host, record?.providerAccount || req.body.account || 'main');
+    // Stresser routing: kayitta hangi sistemden baslatildigi yazar.
+    // main (api2): id = upstream saldiri ID'si + host.
+    // new  (api3): kayit kimligi 'hedef::METHOD' benzersizligi icin; upstream
+    //              stop HEDEF adina yapilir -> composite kimlik host'a cozulur.
+    const isNewStresser = record?.providerAccount === 'new' || req.body.account === 'new';
+    const stopId = isNewStresser ? host : id;
+    const data = await rackghost.stopAttack(stopId, host, record?.providerAccount || req.body.account || 'main');
     // stresse /stop ile ayni zincir: kaydi sil, history isaretle, sahip loop'u
     // durdur (yoksa sonraki tur ayni hedefi yeniden baslatir) — aksi durumda
     // durdurulan saldiri panelde hayalet satir olarak kalmaya devam ediyordu.
