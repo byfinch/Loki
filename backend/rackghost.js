@@ -75,9 +75,10 @@ const METHODS_NEW = [
   { value: 'HTTP2-FLOODER', label: 'HTTP2-FLOODER', layer: 'L7' },
   { value: 'HTTP1-FLOODER', label: 'HTTP1-FLOODER', layer: 'L7' },
   { value: 'HTTP-MEDUSA', label: 'HTTP-MEDUSA — Özel korumalar', layer: 'L7' },
-  { value: 'HTTP-AREX', label: 'HTTP-AREX — CF/DDoS-Guard bypass', layer: 'L7' },
-  { value: 'GET', label: 'GET', layer: 'L7' },
-  { value: 'POST', label: 'POST', layer: 'L7' }
+  { value: 'HTTP-AREX', label: 'HTTP-AREX — CF/DDoS-Guard bypass', layer: 'L7' }
+  // NOT: upstream select'inde etiketsiz 'GET'/'POST' secenekleri de vardi;
+  // kendi panelinin method kartlarinda yer almazlar (miras kalan bos girdiler).
+  // Istek tipi zaten ayri rgReqmethod (GET/POST) parametresi olarak gider.
 ];
 
 const STRESSERS = {
