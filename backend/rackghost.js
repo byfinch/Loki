@@ -281,39 +281,35 @@ async function stopAttack(id, host, stresser) {
   return apiCall({ action: 'stop', api: st ? st.api : 2, id: String(id), host });
 }
 
-// Ongoing cache: stresser bazli 8sn (ayni veriyi tuketiciler tekrar istemesin)
-const ongoingCaches = { main: { at: 0, data: null }, new: { at: 0, data: null } };
+// Ongoing: sunucu HESAP GENELI tek liste dondurur (api parametresi yok sayilir;
+// "running attacks found on your API key" mesaji). Assign/api3 saldirilari bu
+// listeye DUSMEZ (kanitli: aktif api3 saldirisi + 25sn bekleme sonrasi listeye
+// girmiyor) — assign satirlari yalniz Loki kayit defterinden gorunur.
+// Bu yuzden TEK cagri yapilir (rate limit israfi yok); satirlar method
+// uyeliginden etiketlenir (klasik ve assign method kumeleri ayriktir).
+const ongoingCache = { at: 0, data: null };
 
-async function getOngoingFor(stresserName) {
-  const st = getStresser(stresserName) || STRESSERS.main;
-  const cache = ongoingCaches[st.name];
-  if (cache.data && Date.now() - cache.at < 8000) return cache.data;
-  const data = await apiCall({ action: 'ongoing', api: st.api });
-  const list = data && Array.isArray(data.data) ? data.data : [];
-  cache.at = Date.now();
-  cache.data = list;
-  return list;
+function tagRows(list) {
+  const newMethods = new Set(METHODS_NEW.map((m) => m.value.toUpperCase()));
+  return list
+    .map((row) => ({
+      ...row,
+      id: row.id ?? row.test_id ?? row.target ?? row.host,
+      host: row.host ?? row.target ?? row.ip,
+      time: row.time ?? row.duration
+    }))
+    .map((row) => ({ ...row, stresser: newMethods.has(String(row.method || '').toUpperCase()) ? 'new' : 'main' }));
 }
 
-/** Iki stresserin aktif saldirilari birlesik; her satira .stresser etiketi.
- *  new satirlari alan uyumu: id|test_id, host|target|ip, time|duration. */
 async function getOngoing() {
-  const results = await Promise.allSettled([getOngoingFor('main'), getOngoingFor('new')]);
-  const merged = [];
-  results.forEach((r, i) => {
-    const name = i === 0 ? 'main' : 'new';
-    if (r.status !== 'fulfilled') return; // tek stresser hataliysa digeri akar
-    r.value.forEach((row) => {
-      const norm = {
-        ...row,
-        id: row.id ?? row.test_id ?? row.target ?? row.host,
-        host: row.host ?? row.target ?? row.ip,
-        time: row.time ?? row.duration
-      };
-      merged.push({ ...norm, stresser: name });
-    });
-  });
-  return merged;
+  if (ongoingCache.data && Date.now() - ongoingCache.at < 8000) {
+    return tagRows(ongoingCache.data);
+  }
+  const data = await apiCall({ action: 'ongoing', api: 2 });
+  const list = data && Array.isArray(data.data) ? data.data : [];
+  ongoingCache.at = Date.now();
+  ongoingCache.data = list;
+  return tagRows(list);
 }
 
 function getMethods(stresser) {
@@ -381,7 +377,7 @@ function initRackghost() {
 
 // Stop/launch sonrasi cache bayatligini onle.
 function invalidateOngoingCache() {
-  Object.values(ongoingCaches).forEach((c) => { c.at = 0; });
+  ongoingCache.at = 0;
 }
 
 module.exports = {
