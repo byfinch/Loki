@@ -35,6 +35,11 @@ LOGIN_RENEW_BEFORE_SEC = 20 * 60  # oturumu bu surede bir tazele
 if not all([EMAIL, PASSWORD, CAPSOLVER_KEY, PROXY]):
     raise SystemExit("[rg_service] RG_EMAIL/RG_PASSWORD/RG_CAPSOLVER_KEY/RG_PROXY env tanimli degil")
 
+# Coklu hesap: ayni script birden fazla sistemd unit'i ile farkli portlarda
+# kosar (RG_PORT). Hesap kimligi loglarda ayirt edilsin diye RG_ACCOUNT adi.
+PORT = int(os.environ.get("RG_PORT", "3210"))
+ACCOUNT = os.environ.get("RG_ACCOUNT", "main")
+
 # Loopback'te bile auth: SSRF/zincirleme erisimde servisin RackGhost hesabi
 # kotuye kullanilmasin diye paylasilan gizli deger (EnvironmentFile'dan).
 LOCAL_TOKEN = os.environ.get("RG_LOCAL_TOKEN", "")
@@ -47,7 +52,7 @@ _login_at = 0
 
 
 def log(m):
-    print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
+    print(f"[{time.strftime('%H:%M:%S')}][{ACCOUNT}] {m}", flush=True)
 
 
 _last_rg_req = [0.0]
@@ -258,9 +263,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    log("rackghost oturum servisi basliyor (127.0.0.1:3210, browser'siz)")
+    log(f"rackghost oturum servisi basliyor (127.0.0.1:{PORT}, browser'siz)")
     threading.Thread(target=lambda: api_call({"action": "ongoing", "api": 2}), daemon=True).start()
     # ThreadingHTTPServer: uzun CapSolver login'i sirasinda /health kilitlenip
     # yanlis "servis kapali" alarmi uretiyordu; upstream istekleri zaten
     # _lock + throttle ile seri ve guvenli.
-    ThreadingHTTPServer(("127.0.0.1", 3210), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

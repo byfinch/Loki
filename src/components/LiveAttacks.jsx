@@ -199,9 +199,11 @@ const LiveAttacks = () => {
     if (sig) stoppedSigsRef.current.add(sig);
     setStopping((prev) => new Set(prev).add(attackId));
     try {
-      // RackGhost satirlari 'rg_' prefixli; kendi stop ucuna yonlenir
-      if (String(attackId).startsWith('rg_')) {
-        const rgId = String(attackId).slice(3);
+      // RackGhost satirlari onekli: klasik 'rg_', yeni stresser 'rg2_'.
+      // Onek soyulup ham kimlik (klasik: saldiri ID / yeni: hedef adi) gider.
+      const rgMatch = /^rg\d*_(.+)$/.exec(String(attackId));
+      if (rgMatch) {
+        const rgId = rgMatch[1];
         const row = (state.liveAttacks || []).find((a) => (a.attack_id || '') === attackId);
         const rgHost = (row?.target || '').replace(/:\d+$/, '');
         await apiClient.stopRackghostAttack(rgId, rgHost);

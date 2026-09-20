@@ -76,19 +76,29 @@ const AttackForm = () => {
 
   // Provider: stresse.st veya rackghost (ikinci stresser kaynagi)
   const [provider, setProvider] = useState('stresse');
+  // RackGhost stresser secimi: 'main' klasik (api2, 15 slot) | 'new' atanmis
+  // profil (api3 "New Stresser", 80 baglanti, L7-only, RPS + GET/POST)
+  const [rgStresser, setRgStresser] = useState('main');
+  const [rgReqmethod, setRgReqmethod] = useState('GET');
+  const [rgRps, setRgRps] = useState(64);
   const [rgMethods, setRgMethods] = useState([]);
   const [rgLimits, setRgLimits] = useState({ maxTime: 7200, maxConcurrents: 15 });
 
-  // RackGhost method listesi ilk acilista cekilir
+  // RackGhost method listesi: secili stresser'a gore cekilir
   useEffect(() => {
     if (!state.isAuthenticated) return;
-    apiClient.getRackghostMethods()
+    apiClient.getRackghostMethods(rgStresser)
       .then((data) => {
         setRgMethods(Array.isArray(data.methods) ? data.methods : []);
         if (data.limits) setRgLimits(data.limits);
       })
       .catch(() => {});
-  }, [state.isAuthenticated]);
+  }, [state.isAuthenticated, rgStresser]);
+
+  // Yeni stresser (api3) sadece L7 icerir: secili oldugu surece layer L7'de kilir
+  useEffect(() => {
+    if (provider === 'rackghost' && rgStresser === 'new' && layer !== 'L7') setLayer('L7');
+  }, [provider, rgStresser, layer]);
 
   const withMinimumLoading = async (fn, minMs = 1000) => {
     const start = Date.now();
@@ -214,12 +224,17 @@ const AttackForm = () => {
 
     if (provider === 'rackghost') {
       const maxTime = rgLimits.maxTime || 7200;
-      const maxConcurrents = rgLimits.maxConcurrents || 15;
+      const maxConcurrents = rgLimits.maxConcurrents || (rgStresser === 'new' ? 80 : 15);
       if (time > maxTime) {
         return { ok: false, message: `RackGhost maksimum süre ${maxTime} saniye` };
       }
       if (concurrents > maxConcurrents) {
-        return { ok: false, message: `RackGhost maksimum concurrent ${maxConcurrents}` };
+        return { ok: false, message: rgStresser === 'new'
+          ? `RackGhost (Yeni): en fazla ${maxConcurrents} bağlantı`
+          : `RackGhost (Klasik): maksimum concurrent ${maxConcurrents}` };
+      }
+      if (rgStresser === 'new' && concurrents > 50) {
+        return { ok: false, message: 'RackGhost (Yeni): yönetici uyarısı — 50 üzeri bağlantı için izin alın (maks 80)' };
       }
       return { ok: true };
     }
@@ -328,6 +343,8 @@ const AttackForm = () => {
         subnet: '32',
         geo,
         provider,
+        // RackGhost stresser secimi + yeni stresser (api3) parametreleri
+        ...(provider === 'rackghost' ? { providerAccount: rgStresser, rgReqmethod, rgRps: parseInt(rgRps, 10) || 64 } : {}),
         group: group.trim() || undefined,
         concurrents: effectiveConcurrents,
         interval: parseInt(loopInterval, 10),
@@ -433,21 +450,44 @@ const AttackForm = () => {
             ))}
           </div>
           <div className="inline-flex overflow-hidden rounded-sm border border-green-500/30">
-            {['L4', 'L7'].map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setLayer(tab)}
-                className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
-                  layer === tab
-                    ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
-                    : 'text-green-500/50 hover:text-green-400'
-                }`}
-              >
-                [{tab}]
-              </button>
-            ))}
+            {['L4', 'L7'].map((tab) => {
+              // Yeni stresser (api3) sadece L7 methodlari icerir
+              const locked = provider === 'rackghost' && rgStresser === 'new';
+              if (locked && tab === 'L4') return null;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setLayer(tab)}
+                  className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
+                    layer === tab
+                      ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
+                      : 'text-green-500/50 hover:text-green-400'
+                  }`}
+                >
+                  [{tab}]
+                </button>
+              );
+            })}
           </div>
+          {provider === 'rackghost' && (
+            <div className="inline-flex overflow-hidden rounded-sm border border-cyan-500/30">
+              {[['main', 'KLASİK · 15'], ['new', 'YENİ · 80']].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setRgStresser(val)}
+                  className={`px-3 py-1.5 text-[11px] font-bold transition-all ${
+                    rgStresser === val
+                      ? 'bg-cyan-500/15 text-cyan-400 [text-shadow:0_0_8px_rgba(0,200,255,0.6)]'
+                      : 'text-cyan-500/50 hover:text-cyan-400'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -521,7 +561,9 @@ const AttackForm = () => {
           </div>
 
           <div>
-            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; concurrents</label>
+            <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">
+              &gt; {provider === 'rackghost' && rgStresser === 'new' ? 'baglanti (conn)' : 'concurrents'}
+            </label>
             <input
               ref={concurrentsRef}
               type="number"
@@ -531,12 +573,50 @@ const AttackForm = () => {
               onChange={(e) => setConcurrents(parseInt(e.target.value, 10) || 1)}
               className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
             />
+            {provider === 'rackghost' && rgStresser === 'new' && (
+              <p className="mt-0.5 text-[9px] text-amber-500/80"># yönetici uyarısı: 40-50 üzeri bağlantı yapmayın (maks 80)</p>
+            )}
             {/* HTTP-REST stresse'te 2x baslatir (canli olcum) — bilgi amaçli;
                 panel girilen degeri aynen gonderir, yarilama YOK. */}
             {provider === 'stresse' && ['HTTP-REST'].includes(method?.toUpperCase()) && (
               <p className="mt-0.5 text-[9px] text-amber-500/80"># {method.toUpperCase()} stresse tarafında 2× başlatır: {concurrents} girersen {concurrents * 2} saldırı açılır (slot da 2× tükenir)</p>
             )}
           </div>
+
+          {provider === 'rackghost' && rgStresser === 'new' && (
+            <>
+              <div>
+                <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; rps</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={rgRps}
+                  onChange={(e) => setRgRps(parseInt(e.target.value, 10) || 64)}
+                  className="w-full rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+                />
+                <p className="mt-0.5 text-[9px] text-gray-600"># saniye başına istek (örn: 64)</p>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] tracking-wider text-green-500/55">&gt; istek_tipi</label>
+                <div className="inline-flex overflow-hidden rounded-sm border border-green-500/30">
+                  {['GET', 'POST'].map((rm) => (
+                    <button
+                      key={rm}
+                      type="button"
+                      onClick={() => setRgReqmethod(rm)}
+                      className={`px-4 py-1.5 text-[11px] font-bold transition-all ${
+                        rgReqmethod === rm
+                          ? 'bg-green-500/15 text-green-400 [text-shadow:0_0_8px_rgba(0,255,65,0.6)]'
+                          : 'text-green-500/50 hover:text-green-400'
+                      }`}
+                    >
+                      [{rm}]
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {provider === 'stresse' && (
             <div>

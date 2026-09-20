@@ -425,8 +425,9 @@ export const apiClient = {
   },
 
   // ---- RackGhost provider ----
-  async getRackghostMethods() {
-    const res = await apiFetch(`${API_BASE}/rackghost/methods`, { headers: getHeaders() });
+  async getRackghostMethods(stresser) {
+    const q = stresser ? `?stresser=${encodeURIComponent(stresser)}` : '';
+    const res = await apiFetch(`${API_BASE}/rackghost/methods${q}`, { headers: getHeaders() });
     return handleResponse(res);
   },
   async getRackghostStatus() {
