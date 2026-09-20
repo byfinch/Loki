@@ -1025,7 +1025,17 @@ function normalizeUpstreamError(msg) {
   if (/invalid parameters\. fill all fields/i.test(text)) {
     return 'stresse.st slot kapasitesi dolu (hesap concurrent limiti; bosalan slotlari bekliyor)';
   }
+  if (/invalid geo value/i.test(text)) {
+    return 'Geçersiz Geo seçimi: L7 saldırılarda yalnızca Worldwide desteklenir (ülke seçimi L4 methodlarına özgü)';
+  }
   return text;
+}
+
+// L7'de ulke bazli geo desteklenmiyor (upstream 400: "Invalid geo value for
+// Layer 7" — canli olcumle dogrulandi); yalniz worldwide gecerli. L4 ulke
+// listesini kabul eder. Launch oncesi net Turkce hata icin ortak kontrol.
+function isInvalidL7Geo(layer, provider, geo) {
+  return provider === 'stresse' && layer === 'L7' && geo && geo !== 'worldwide';
 }
 
 function checkSlotsEmpty() {
@@ -2287,6 +2297,10 @@ app.post('/api/stresse/attack', async (req, res) => {
     }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, 'stresse', host)) return;
+    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
+    if (isInvalidL7Geo(layer, 'stresse', geo)) {
+      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    }
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
@@ -2440,6 +2454,10 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, provider, host)) return;
+    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
+    if (isInvalidL7Geo(layer, provider, geo)) {
+      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    }
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
@@ -3264,6 +3282,10 @@ app.post('/api/stresse/loop', async (req, res) => {
     if (provider === 'stresse' && isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
     }
+    // L7'de ulke geo gecersiz (yalniz worldwide) — bastan reddet
+    if (isInvalidL7Geo(layer, provider, geo)) {
+      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
+    }
     // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
     if (await rejectNonIpL4Host(res, layer, provider, host)) return;
 
@@ -3675,6 +3697,10 @@ const loopEditHandler = async (req, res) => {
     const newGeo = req.body.geo !== undefined ? String(req.body.geo).toLowerCase() : (p.geo || 'worldwide');
     if (!VALID_GEO.includes(newGeo)) {
       return res.status(400).json({ status: 'error', message: 'Gecersiz geo degeri' });
+    }
+    // L7 loop'larinda ulke geo gecersiz (yalniz worldwide — upstream kurali)
+    if (isInvalidL7Geo(p.layer || 'L4', p.provider, newGeo)) {
+      return res.status(400).json({ status: 'error', message: 'L7 saldırılarda yalnızca Worldwide geo desteklenir (ülke seçimi L4 methodlarına özgü)' });
     }
 
     if (!Number.isFinite(newTime)) {

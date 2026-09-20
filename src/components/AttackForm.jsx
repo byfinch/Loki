@@ -199,6 +199,16 @@ const AttackForm = () => {
     }
   }, [method, layer]);
 
+  // Geo secimi katmana gore: L7'de ulke bazli geo UPSTREAM TARAFINDAN
+  // reddediliyor ("Invalid geo value for Layer 7" — canli olcum); yalniz
+  // worldwide gecerli. L4 ulke listesini kabul eder.
+  const geoOptions = layer === 'L7'
+    ? GEO_OPTIONS.filter((g) => g.value === 'worldwide')
+    : GEO_OPTIONS;
+  useEffect(() => {
+    if (layer === 'L7' && geo !== 'worldwide') setGeo('worldwide');
+  }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredMethods = provider === 'rackghost'
     ? rgMethods
         .filter((m) => (layer === 'L4' ? m.layer === 'L4' : m.layer === 'L7'))
@@ -626,7 +636,7 @@ const AttackForm = () => {
                 onChange={(e) => setGeo(e.target.value)}
                 className="w-full appearance-none rounded-sm border border-green-500/30 bg-black px-3 py-2.5 text-[13px] text-green-400 transition focus:outline-none focus:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
               >
-                {GEO_OPTIONS.map((g) => (
+                {geoOptions.map((g) => (
                   <option key={g.value} value={g.value}>{g.label}</option>
                 ))}
               </select>
