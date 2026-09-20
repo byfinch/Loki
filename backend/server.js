@@ -2242,7 +2242,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
           const row = {
             attack_id: `${rackghost.displayPrefix(a.stresser)}${a.id}`,
             target: `${rgHost}:${a.port || 443}`,
-            method: a.method,
+            method: String(a.method || '').toUpperCase(),
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
             layer: a.layer === 4 || a.layer === 'L4' ? 'L4' : 'L7',
@@ -4690,7 +4690,7 @@ async function liveHubTick(hub, username) {
           const row = {
             attack_id: `${rackghost.displayPrefix(a.stresser)}${a.id}`,
             target: `${rgHost}:${a.port || 443}`,
-            method: a.method,
+            method: String(a.method || '').toUpperCase(),
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
             layer: a.layer === 4 || a.layer === 'L4' ? 'L4' : 'L7',

