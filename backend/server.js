@@ -516,9 +516,12 @@ function loadState() {
         const t = parseInt(attack.time, 10);
         const expMs = new Date(attack.expiresAt || 0).getTime();
         if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(expMs)) return;
-        // Sisme korumasi: expiresAt asla startedAt + time + 5dk toleransi asamaz
+        // Sisme korumasi: expiresAt asla startedAt + time + tolerans asamaz.
+        // Pending satirlar display-only: tolerans 5dk yerine 90sn (registerAttack
+        // kuraliyle uyumlu; restart sonrasi eski sismis kayitlar hizla duser).
         const startedMs = new Date(attack.startedAt || 0).getTime();
-        const maxExp = (Number.isFinite(startedMs) ? startedMs : expMs - t * 1000) + (t + 300) * 1000;
+        const pendTol = String(attackId).startsWith('pending_') ? 90 : 300;
+        const maxExp = (Number.isFinite(startedMs) ? startedMs : expMs - t * 1000) + (t + pendTol) * 1000;
         if (expMs > maxExp) attack.expiresAt = new Date(maxExp).toISOString();
         activeAttacks[attackId] = attack;
       });
@@ -1146,7 +1149,13 @@ function registerAttack(attackId, sessionId, params, loopId = null, concurrents 
   // Kayit omru: upstream hasta donemde saldirilar ~2x nominal yasiyor ve zaman
   // kapisi 2x time kadansinda calisiyor — 2x time kapsar. Gercek olum (upstream'ten
   // dusme) tick'te erken oldurulur (olum takibi) — hayalet kalmaz.
-  const lifeSec = remainingSec + Math.max(60, remainingSec);
+  // ISTISNA — pending satirlar (launch oncesi gorunurluk) display-only'dir:
+  // gercek saldiri baslarsa ID/imza devralir, baslamazsa hata yolu geri alir.
+  // 2x time omur onlari 20dk yasatip stats/slot hesabini sisiyordu — time+60sn.
+  const isPendingId = String(attackId).startsWith('pending_');
+  const lifeSec = isPendingId
+    ? remainingSec + 60
+    : remainingSec + Math.max(60, remainingSec);
   activeAttacks[attackId] = {
     attackId,
     sessionId,

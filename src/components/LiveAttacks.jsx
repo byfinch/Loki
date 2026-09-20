@@ -491,6 +491,7 @@ const LiveAttacks = () => {
           if (Array.isArray(data.ongoing)) {
             setLiveAttacks(data.ongoing);
             updateTimeLefts(data.ongoing);
+            setLastUpdate(new Date());
           }
         },
         () => {
@@ -531,6 +532,32 @@ const LiveAttacks = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
+  }, [state.isAuthenticated]);
+
+  // Donuk gorunum temizligi: SSE + poll ayni anda koptugunda (oturum oldu,
+  // ag kesintisi vb.) son liste ekranda donuyordu ve geri sayimi biten
+  // satirlar yeni veri gelmedikce ASLA dusturmuyordu (bayat 120 satir
+  // vakasinin kaynagi). Veri akisi 15sn'dir yoksa, geri sayimi 0'a inmis
+  // satirlar lokal olarak listeden cikarilir; akis saglikliyken bu blok
+  // hicbir sey yapmaz (taze listede suresi bitmis satir zaten olmaz).
+  const lastUpdateRef = useRef(null);
+  useEffect(() => { lastUpdateRef.current = lastUpdate; }, [lastUpdate]);
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    const t = setInterval(() => {
+      const last = lastUpdateRef.current instanceof Date ? lastUpdateRef.current.getTime() : 0;
+      if (Date.now() - last < 15000) return;
+      setLiveAttacks((rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return rows;
+        const kept = rows.filter((a) => {
+          const key = a.attack_id || sigOf(a.target, a.method);
+          const cur = persistedTimeLefts[key];
+          return !(Number.isFinite(cur) && cur <= 0);
+        });
+        return kept.length !== rows.length ? kept : rows;
+      });
+    }, 5000);
+    return () => clearInterval(t);
   }, [state.isAuthenticated]);
 
   // Gercek anlik toplam: gruplanmis satir adetlerinin toplami (filtrelenmis,
