@@ -1037,7 +1037,10 @@ function normalizeUpstreamError(msg) {
 //  L7: geo-bypass proxy listesi DOSYA adlari — proxies.txt, turkey.txt, ...
 // L7'ye duz ad gonderilirse upstream 400 "Invalid geo value for Layer 7" verir.
 const GEO_L4_VALUES = ['worldwide', 'china', 'russia', 'brazil', 'korea', 'turkey', 'thailand', 'japan', 'vietnam', 'indonesia', 'iran'];
-const GEO_L7_VALUES = ['proxies.txt', 'china.txt', 'brazil.txt', 'canada.txt', 'usa.txt', 'germany.txt', 'vietnam.txt', 'netherlands.txt', 'russia.txt', 'iran.txt', 'korea.txt', 'indonesia.txt', 'turkey.txt'];
+// 'worldwide' L7'de de KABUL EDILIYOR (canli test: L7 geo=worldwide -> 200;
+// proxies.txt ile ayni anlama geliyor) — eski loop kayitlarinin hepsi bu degerle
+// kuruludur, duzenleme dogrulamasi onlari kirmasin diye listede tutulur.
+const GEO_L7_VALUES = ['worldwide', 'proxies.txt', 'china.txt', 'brazil.txt', 'canada.txt', 'usa.txt', 'germany.txt', 'vietnam.txt', 'netherlands.txt', 'russia.txt', 'iran.txt', 'korea.txt', 'indonesia.txt', 'turkey.txt'];
 function geoDomainError(layer, provider, geo) {
   if (provider !== 'stresse' || !geo) return null;
   const valid = layer === 'L7' ? GEO_L7_VALUES : GEO_L4_VALUES;

@@ -5,8 +5,10 @@ import { copyTextToClipboard } from '../utils/clipboard';
 import { renderNoteWithLinks } from '../utils/renderNoteWithLinks.jsx';
 import GroupPicker, { useGroups, notifyGroupsChanged } from './GroupPicker';
 
-// stresse.st'in destekledigi geo degerleri (AttackForm ile ayni liste)
-const LOOP_GEO_OPTIONS = [
+// stresse geo degerleri KATMANA GORE iki listedir (hub country-l4/country-l7):
+// L4 duz ulke adlari; L7 geo-bypass proxy-liste adlari (turkey.txt ...).
+// Loop duzenleme formu duzenlenen loop'un katmanina gore dogru listeyi sunar.
+const GEO_L4_OPTIONS = [
   { value: 'worldwide', label: 'Worldwide' },
   { value: 'china', label: 'China' },
   { value: 'russia', label: 'Russia' },
@@ -18,6 +20,22 @@ const LOOP_GEO_OPTIONS = [
   { value: 'vietnam', label: 'Vietnam' },
   { value: 'indonesia', label: 'Indonesia' },
   { value: 'iran', label: 'Iran' }
+];
+const GEO_L7_OPTIONS = [
+  { value: 'worldwide', label: 'Worldwide' },
+  { value: 'proxies.txt', label: 'Worldwide (yeni proxy-liste)' },
+  { value: 'turkey.txt', label: 'Turkey' },
+  { value: 'usa.txt', label: 'United States' },
+  { value: 'germany.txt', label: 'Germany' },
+  { value: 'netherlands.txt', label: 'Netherlands' },
+  { value: 'canada.txt', label: 'Canada' },
+  { value: 'russia.txt', label: 'Russia' },
+  { value: 'china.txt', label: 'China' },
+  { value: 'brazil.txt', label: 'Brazil' },
+  { value: 'iran.txt', label: 'Iran' },
+  { value: 'korea.txt', label: 'South Korea' },
+  { value: 'vietnam.txt', label: 'Vietnam' },
+  { value: 'indonesia.txt', label: 'Indonesia' }
 ];
 
 const LoopManager = () => {
@@ -485,7 +503,9 @@ const LoopManager = () => {
                                     onChange={(e) => setEditDraft((d) => ({ ...d, geo: e.target.value }))}
                                     className="appearance-none rounded-sm border border-green-500/30 bg-black px-2 py-1.5 text-[11px] text-green-400 focus:outline-none focus:shadow-[0_0_10px_rgba(0,255,65,0.2)]"
                                   >
-                                    {LOOP_GEO_OPTIONS.map((g) => (
+                                    {/* Duzenlenen loop'un katmanina gore dogru geo listesi:
+                                        L4 duz ulke adlari, L7 proxy-liste adlari (turkey.txt...) */}
+                                    {((state.activeLoops || {})[editingLoopId]?.params?.layer === 'L7' ? GEO_L7_OPTIONS : GEO_L4_OPTIONS).map((g) => (
                                       <option key={g.value} value={g.value}>{g.label}</option>
                                     ))}
                                   </select>
