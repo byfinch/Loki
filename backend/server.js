@@ -1486,6 +1486,23 @@ function isFreeMethod(method) {
   return typeof method === 'string' && method.toUpperCase().startsWith('FREE-');
 }
 
+// stresse L4 hedefi IP olmak zorunda: host adi gonderilince upstream saldiriyi
+// BASLATMIYOR ama API yanitisuccess gorunabildiginden panel "aktif" gosterip
+// gercekte hic baslamayan satirlar uretiyordu (canli dogrulama: kullanici
+// stresse tarafinda "IP girin" uyarisi gordu). Hostname girildiyse A kayitlari
+// cozulup mesajda IP'ler onerilir. Donus: true = istek REDDEDILDI (yanit yazildi).
+async function rejectNonIpL4Host(res, layer, provider, host) {
+  if (layer !== 'L4' || provider !== 'stresse') return false;
+  if (net.isIP(host)) return false;
+  let ips = [];
+  try { ips = await dns.promises.resolve4(host); } catch { /* cozulemedi */ }
+  const oneri = ips.length
+    ? ` Çözülen IP'ler: ${ips.join(', ')} — host adı yerine IP girin.`
+    : ' L4 için host adı yerine hedefin IP adresini girin.';
+  res.status(400).json({ status: 'error', message: `stresse L4 methodları IP hedef ister.${oneri}` });
+  return true;
+}
+
 function getJar(sessionId) {
   if (!sessions[sessionId]) {
     return null;
@@ -2259,6 +2276,8 @@ app.post('/api/stresse/attack', async (req, res) => {
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
+    // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
+    if (await rejectNonIpL4Host(res, layer, 'stresse', host)) return;
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
@@ -2385,6 +2404,8 @@ app.post('/api/stresse/attack/bulk', async (req, res) => {
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
+    // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
+    if (await rejectNonIpL4Host(res, layer, provider, host)) return;
 
     if (isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
@@ -2489,6 +2510,8 @@ app.post('/api/stresse/test-api', async (req, res) => {
     if (!host || !port || !time || !method) {
       return res.status(400).json({ status: 'error', message: 'host, port, time and method required' });
     }
+    // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
+    if (await rejectNonIpL4Host(res, layer, 'stresse', host)) return;
 
     const apiToken = (typeof bodyToken === 'string' && bodyToken.trim()) ? bodyToken.trim() : session.apiToken;
     const apiClient = getApiClient(sessionId);
@@ -3198,6 +3221,8 @@ app.post('/api/stresse/loop', async (req, res) => {
     if (provider === 'stresse' && isFreeMethod(method)) {
       return res.status(403).json({ status: 'error', message: 'FREE methodlar bu panelde kullanilamaz' });
     }
+    // stresse L4 IP ister; hostname ile sessiz basarisizligi onle
+    if (await rejectNonIpL4Host(res, layer, provider, host)) return;
 
     // RackGhost limitleri (stresse plan limiti bu provider'a uygulanmaz)
     if (provider === 'rackghost') {
