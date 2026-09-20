@@ -3704,13 +3704,10 @@ const loopEditHandler = async (req, res) => {
     const newTime = req.body.time !== undefined ? parseInt(req.body.time, 10) : parseInt(p.time, 10);
     const newInterval = req.body.interval !== undefined ? parseInt(req.body.interval, 10) : parseInt(p.interval, 10);
     const newConcurrents = req.body.concurrents !== undefined ? parseInt(req.body.concurrents, 10) : parseInt(p.concurrents, 10);
-    // Geo: sadece stresse.st'in destekledigi degerler kabul edilir
-    const VALID_GEO = ['worldwide', 'china', 'russia', 'brazil', 'korea', 'turkey', 'thailand', 'japan', 'vietnam', 'indonesia', 'iran'];
+    // Geo: katman-farkindali tek dogrulama (L4 duz adlar / L7 .txt proxy
+    // listeleri; geoDomainError ikisini de bilir). Eski sabit VALID_GEO listesi
+    // L7'nin .txt degerlerini reddedip "Gecersiz geo degeri" uretiyordu.
     const newGeo = req.body.geo !== undefined ? String(req.body.geo).toLowerCase() : (p.geo || 'worldwide');
-    if (!VALID_GEO.includes(newGeo)) {
-      return res.status(400).json({ status: 'error', message: 'Gecersiz geo degeri' });
-    }
-    // Geo deger uzayi katmana gore dogrulanir (L7: .txt proxy listeleri)
     if (geoDomainError(p.layer || 'L4', p.provider, newGeo)) {
       return res.status(400).json({ status: 'error', message: geoDomainError(p.layer || 'L4', p.provider, newGeo) });
     }
