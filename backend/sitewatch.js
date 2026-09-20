@@ -74,7 +74,8 @@ async function httpCheck(url) {
 const { execFile } = require('child_process');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 const PROOF_DIR = path.join(DATA_DIR, 'sitewatch-proofs');
-const SHOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const SHOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537';
+const { chromeEnv } = require('./chrometmp');
 
 function captureProof(siteUrl) {
   if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
@@ -87,7 +88,7 @@ function captureProof(siteUrl) {
       // sakinlesme butcesi (erken biterse beklemez, gecikirse 3sn tolerans)
       '--timeout=15000', '--virtual-time-budget=3000',
       `--screenshot=${out}`, siteUrl
-    ], { timeout: 60000 }, (err) => {
+    ], { timeout: 60000, env: chromeEnv() }, (err) => {
       resolve(err || !fs.existsSync(out) ? null : out);
     });
   });

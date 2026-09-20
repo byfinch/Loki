@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { isPublicHost } = require('./netutil');
+const { chromeEnv } = require('./chrometmp');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SITES_FILE = path.join(DATA_DIR, 'invader-sites.json');
@@ -104,7 +105,7 @@ function captureShot(url, ua, tag) {
     execFile(CHROME, [
       '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
       '--window-size=1366,900', `--user-agent=${ua}`, `--screenshot=${out}`, url
-    ], { timeout: 60000 }, (err) => {
+    ], { timeout: 60000, env: chromeEnv() }, (err) => {
       resolve(err || !fs.existsSync(out) ? null : out);
     });
   });
@@ -293,7 +294,7 @@ async function buildSiteCard(r, shotBot, shotUsr) {
       '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
       '--allow-file-access-from-files', '--window-size=1406,655',
       `--screenshot=${outPng}`, 'file://' + reportPath
-    ], { timeout: 60000 }, () => resolve());
+    ], { timeout: 60000, env: chromeEnv() }, () => resolve());
   });
   // Ara html png uretildikten sonra ise yaramaz: sil (birikim kaynagiydi)
   try { fs.unlinkSync(reportPath); } catch { /* yoksay */ }
