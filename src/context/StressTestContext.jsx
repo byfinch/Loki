@@ -40,8 +40,16 @@ function stressTestReducer(state, action) {
       // Upstream bozulursa (anti-bot HTML'i vb.) array disi veri gelmesin;
       // aksi halde .filter cagrilari paneli cokertir (siyah ekran).
       return { ...state, methods: Array.isArray(action.payload) ? action.payload : [] };
-    case 'SET_LIVE_ATTACKS':
-      return { ...state, liveAttacks: action.payload };
+    case 'SET_LIVE_ATTACKS': {
+      // Fonksiyonel guncelleme (useState kalibi: setLiveAttacks(prev => ...))
+      // desteklenir + array disi deger asla yazilamaz. Siyah-ekran vakasinin
+      // kaynagi buydu: fonksiyon payload'i ham halde state'e yazilmis, sonra
+      // .map crash'leyerek agaci sokmustu (SET_METHODS'taki koruma ile ayni gerekce).
+      const val = typeof action.payload === 'function'
+        ? action.payload(Array.isArray(state.liveAttacks) ? state.liveAttacks : [])
+        : action.payload;
+      return { ...state, liveAttacks: Array.isArray(val) ? val : [] };
+    }
     case 'SET_ACTIVE_TAB':
       return { ...state, activeTab: action.payload };
     case 'SET_ATTACK_PREFILL':
@@ -58,9 +66,9 @@ function stressTestReducer(state, action) {
         }
       };
     case 'SET_LOOPS':
-      return { ...state, activeLoops: action.payload };
+      return { ...state, activeLoops: (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) ? action.payload : {} };
     case 'SET_ATTACK_HISTORY':
-      return { ...state, attackHistory: action.payload };
+      return { ...state, attackHistory: Array.isArray(action.payload) ? action.payload : [] };
     case 'SET_STOP_PROGRESS':
       return { ...state, stopProgress: action.payload };
     case 'SET_ACTIVE_STOP_KEY':

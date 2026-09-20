@@ -147,8 +147,11 @@ const LiveAttacks = () => {
     // toplanir, kalan sure en buyuk/guncel deger). Satir kimligi imzaya
     // bagli oldugundan tur gecislerinde satir yerinde kalir; kaybolup
     // yeniden dogmaz (titreme/yeniden belirme bug'i).
+    // Guvenlik: state.liveAttacks her zaman dizi olmali (reducer zorluyor);
+    // bu ikinci savunma katmani .map crash'ini imkansiz kilar.
+    const attackRows = Array.isArray(state.liveAttacks) ? state.liveAttacks : [];
     const byKey = new Map();
-    state.liveAttacks
+    attackRows
       .map((attack) => {
         const attackId = attack.attack_id;
         const serverTime = parseInt(attack.timeLeft, 10);
@@ -350,7 +353,7 @@ const LiveAttacks = () => {
 
   const handleStopAll = async () => {
     // Pending (henuz upstream ID'si olusmamis) satirlar durdurulamaz; disla.
-    const allIds = state.liveAttacks
+    const allIds = (Array.isArray(state.liveAttacks) ? state.liveAttacks : [])
       .map((a) => a.attack_id)
       .filter((id) => id && !String(id).startsWith('pending_'));
     if (allIds.length === 0) return;
@@ -954,7 +957,7 @@ const LiveAttacks = () => {
           </span>
           <button
             onClick={handleStopAll}
-            disabled={state.liveAttacks.length === 0 || stopping.has('__ALL__')}
+            disabled={!Array.isArray(state.liveAttacks) || state.liveAttacks.length === 0 || stopping.has('__ALL__')}
             className="inline-flex h-7 items-center justify-center rounded-sm border border-red-500/30 px-3 text-[11px] text-red-400 transition-all hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {stopping.has('__ALL__') ? 'Durduruluyor...' : 'Tümünü Durdur'}
@@ -992,7 +995,7 @@ const LiveAttacks = () => {
       )}
 
       <div className="relative z-10 p-4 sm:p-5">
-        {state.liveAttacks.length === 0 && dyingRows.length === 0 && waitingRows.length === 0 ? (
+        {(Array.isArray(state.liveAttacks) ? state.liveAttacks.length : 0) === 0 && dyingRows.length === 0 && waitingRows.length === 0 ? (
           <div className="py-12 text-center text-green-500/50">
             <p>aktif saldiri yok.</p>
             {lastUpdate && <p className="mt-2 text-[11px] text-green-500/30"># son guncelleme: {lastUpdate.toLocaleTimeString()}</p>}
