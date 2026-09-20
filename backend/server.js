@@ -2234,14 +2234,18 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         ]);
         rgList.forEach((a) => {
           // getOngoing alan normalizasyonu yapar (id/host/time garanti);
-          // api3 (new) satirlarinda port/slots/layer olmayabilir.
+          // api3 (new) satirlarinda port/slots/layer olmayabilir. Upstream
+          // klasik satirlari host'u 'https://x/' + port:'0' ile getirir —
+          // protokol soyulur, port 0 gecersiz sayilip 443'e dusurulur.
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
           const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - now) / 1000)) : dur;
-          const rgHost = String(a.host || '').replace(/\/+$/, '');
+          const rgHost = String(a.host || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+          const rgPortRaw = parseInt(a.port, 10);
+          const rgPort = Number.isFinite(rgPortRaw) && rgPortRaw > 0 ? rgPortRaw : 443;
           const row = {
             attack_id: `${rackghost.displayPrefix(a.stresser)}${a.id}`,
-            target: `${rgHost}:${a.port || 443}`,
+            target: `${rgHost}:${rgPort}`,
             method: String(a.method || '').toUpperCase(),
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
@@ -2957,13 +2961,19 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
   // tekrar beklemek loop'lari sirayla kilitleyip hizayi bozar (skipDrain).
   const previousRoundIds = loop.roundAttackIds || [];
   if (isRackghost) {
-    if (previousRoundIds.length > 0 && !skipDrain) {
-      // RackGhost saldirilari 'time' dolunca kesin sonlanir; onceki turun
-      // dustugunu ongoing ile yoklamak gereksiz istek trafigidir (2+ loop'ta
-      // 1 istek/sn rate limit'ine dayaniyordu). Statik kisa buffer yeterli.
-      console.log(`[loop ${loopId}] rackghost: onceki tur buffer bekleniyor (3sn)`);
-      await new Promise((r) => setTimeout(r, 3000));
+    // PREDIKTIF KAPI (stresse tarafiyla ayni fikir): RG saldirisi da time kadar
+    // yasar ve slot havuzu hesap geneli. Onceki tur olemeden yeni tur ateslenirse
+    // "slot limiti doldu" hatasi donerdi — x15 klasik loop her turda 15 slotun
+    // TAMAMINI doldurdugu icin onceki neslin olumu beklenmeden atis IMKANSIZDI
+    // (hata -> backoff -> tekrar dongusu; panelde [ERR] seridi yapişiyordu).
+    const rgTimeSec = parseInt(effectiveParams.time, 10) || 60;
+    const rgTargetMs = (loop.lastFireAt || 0) + rgTimeSec * 1000 + 8000;
+    const rgWaitMs = rgTargetMs - Date.now();
+    if (rgWaitMs > 0) {
+      console.log(`[loop ${loopId}] rackghost zaman kapisi: ${Math.round(rgWaitMs / 1000)}sn bekleniyor (hedef: son ates + ${rgTimeSec}sn + 8sn)`);
+      await new Promise((r) => setTimeout(r, rgWaitMs));
     }
+    loop.lastFireAt = Date.now();
   } else if (!skipDrain) {
     const timeSec = parseInt(effectiveParams.time, 10) || 60;
     // PREDIKTIF ATESLEME: saldirinin omru upstream'te ~time; hedef = son ates
@@ -4685,11 +4695,13 @@ async function liveHubTick(hub, username) {
           const tl = Number.isFinite(created) ? Math.max(0, Math.round((created + dur * 1000 - Date.now()) / 1000)) : dur;
           const id = `${rackghost.displayPrefix(a.account)}${a.id}`;
           seenRg.add(id);
-          // Sondaki slash varyantlarini tekille ("site.fr", "site.fr///" ayni satir)
-          const rgHost = String(a.host || '').replace(/\/+$/, '');
+          // Sondaki slash/protokol varyantlarini tekille; port 0 -> 443
+          const rgHost = String(a.host || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+          const rgPortRaw = parseInt(a.port, 10);
+          const rgPort = Number.isFinite(rgPortRaw) && rgPortRaw > 0 ? rgPortRaw : 443;
           const row = {
             attack_id: `${rackghost.displayPrefix(a.stresser)}${a.id}`,
-            target: `${rgHost}:${a.port || 443}`,
+            target: `${rgHost}:${rgPort}`,
             method: String(a.method || '').toUpperCase(),
             timeLeft: String(tl),
             count: parseInt(a.slots, 10) || 1,
