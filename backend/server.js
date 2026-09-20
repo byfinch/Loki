@@ -2904,19 +2904,37 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
     }
   } else if (!skipDrain) {
     const timeSec = parseInt(effectiveParams.time, 10) || 60;
-    // Adaptif zaman kapisi: drain her turda onceki neslin olumunu blip
-    // korumali olctugu icin bir SONRAKI turun kapisi = olculen gercek omur
-    // (+5sn pay), [time, 2x time] araliginda. Ilk turde olcum yok: time+15sn
-    // (eski 2x time varsayilan ilk turu gereksiz uzun bekletiyordu; drain
-    // overlap'i zaten engelliyor).
-    const gapMs = loop.measuredGapMs || (timeSec * 1000 + 15000);
-    const waitMs = (loop.lastFireAt || 0) + gapMs - Date.now();
+    // PREDIKTIF ATESLEME: saldirinin omru upstream'te ~time; hedef = son ates
+    // + time + 8sn pay. Eski tasarim "satir /ongoing'den dusene kadar bekle"
+    // (poll-to-death drain) idi; listeleme gecikmesi (5-15sn) + 3 temiz olcum
+    // + pay her tura ~20-40sn ekliyordu (time=120'de olculen omur 150sn'e
+    // sisiyordu). Artik /ongoing sadece DOGRULAMA: hedef saatte ayni imzali
+    // satir hala yasiyorsa (timeLeft>3) kalan kadar ertele — hasta donemde
+    // ~2x omur kendiliginden emilir — degilse aninda atesle. timeLeft'i
+    // olmayan satir olu sayilir (nadir; overlap tavanini slot kapisi korur).
+    const targetMs = (loop.lastFireAt || 0) + timeSec * 1000 + 8000;
+    const waitMs = targetMs - Date.now();
     if (waitMs > 0) {
-      console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor (olculen omur: ${Math.round(gapMs / 1000)}sn)`);
+      console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor (hedef: son ates + ${timeSec}sn + 8sn pay)`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
-    await waitLoopsDrained([loopId], Math.max(60000, timeSec * 1000));
-    // Drain bitisi = onceki neslin olumu: olculen omur = son ateslemeden beri
+    const confirmSig = rowSigKey(`${loop.params.host}:${loop.params.port}`, loop.params.method);
+    if (confirmSig) {
+      for (let check = 0; check < 3; check++) {
+        const { list, ok } = await getOngoingShared(loop.sessionId);
+        if (!ok || !Array.isArray(list)) break; // listeye erisilemiyor: zaman kapisi koruyor, atesle
+        const left = list
+          .filter((r) => rowSigKey(r.target || r.host, r.method) === confirmSig)
+          .map((r) => parseInt(r.timeLeft, 10))
+          .filter((t) => Number.isFinite(t));
+        const maxLeft = left.length ? Math.max(...left) : 0;
+        if (maxLeft <= 3) break; // onceki nesil oldu (veya hic listelenmiyor): atesle
+        const postponeMs = Math.min(maxLeft * 1000 + 4000, timeSec * 1000);
+        console.log(`[loop ${loopId}] dogrulama: onceki tur hala yasiyor (kalan ${maxLeft}sn), ${Math.round(postponeMs / 1000)}sn erteleniyor`);
+        await new Promise((r) => setTimeout(r, postponeMs));
+      }
+    }
+    // Olculen omur bilgi amacli kayit edilir (izleme/analiz)
     if (loop.lastFireAt) {
       loop.measuredGapMs = Math.min(Math.max(Date.now() - loop.lastFireAt + 5000, timeSec * 1000), timeSec * 2000);
     }
