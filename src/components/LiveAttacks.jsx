@@ -977,9 +977,9 @@ const LiveAttacks = () => {
           </span>
           <span
             className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-400"
-            title="Şu an fiilen çalışan saldırılar"
+            title="Aktif = RG + STR toplamı (eklenen toplamların bileşimi)"
           >
-            Aktif {providerStats.total}
+            Aktif {(stats?.rg ?? 0) + (stats?.str ?? 0) || providerStats.total}
           </span>
           <button
             onClick={handleStopAll}
