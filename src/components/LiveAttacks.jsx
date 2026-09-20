@@ -670,6 +670,29 @@ const LiveAttacks = () => {
     prevGroupsRef.current = current;
   }, [groupedAttacks, loopSigs]);
 
+  // Hesap bazli EKLENMIS TOPLAM sayaclar: RG/STR rozetleri "ekledigim toplam"
+  // (loop kapasitesi + duran tek-atimlik; tur gecislerinde degismez), Aktif
+  // rozeti fiilen calisanlari (canli listeden) gosterir.
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    if (!state.isAuthenticated) return undefined;
+    let cancelled = false;
+    const fetchStats = async () => {
+      try {
+        const s = await apiClient.getStats();
+        if (!cancelled) setStats(s?.stats ? s.stats : s);
+      } catch {
+        // sayac alinamazsa rozet yerel hesaptan devam eder
+      }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [state.isAuthenticated]);
+
   // Saglayici bazli sayaclar: RG (RackGhost) / STR (stresse) / Aktif (ikisinin
   // calisan toplami). "Calisan" = canli listede gorunen satirlar — satirlar
   // yalnizca GERCEK geri sayim penceresinde (startedAt+time) yasadigindan bu
@@ -942,19 +965,19 @@ const LiveAttacks = () => {
         <span className="ml-auto flex items-center gap-2">
           <span
             className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-bold text-cyan-400"
-            title="RackGhost tarafında çalışan saldırılar (slot/bağlanti adedi)"
+            title="RackGhost tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (stabil)"
           >
-            RG {providerStats.rg}
+            RG {stats?.rg ?? providerStats.rg}
           </span>
           <span
             className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[11px] font-bold text-green-400"
-            title="stresse.st tarafında çalışan saldırılar"
+            title="stresse.st tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (stabil)"
           >
-            STR {providerStats.str}
+            STR {stats?.str ?? providerStats.str}
           </span>
           <span
             className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-400"
-            title="Şu an fiilen çalışan saldırılar (RG + STR)"
+            title="Şu an fiilen çalışan saldırılar"
           >
             Aktif {providerStats.total}
           </span>

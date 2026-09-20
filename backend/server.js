@@ -4136,28 +4136,37 @@ app.get('/api/stresse/stats', async (req, res) => {
       (a) => a.username === sessionUser && new Date(a.expiresAt || 0).getTime() > now
     ).length;
 
-    // Calisan loop'larin kapasitesi: loop ayakta oldugu surece sabit;
-    // tur bitip yenisinin baslamasi arasindaki boslukta dusmez.
-    let loopCapacity = 0;
+    // EKLENMIS TOPLAM (stabil): calisan loop'larin kapasitesi + tur gecislerinde
+    // degismeyen tek-atimlik saldirilar. Saglayici bazli bolunur:
+    //   rg  = RackGhost (klasik + yeni) eklenen toplam
+    //   str = stresse eklenen toplam
+    let rgTotal = 0;
+    let strTotal = 0;
     Object.values(activeLoops).forEach((loop) => {
       if (!loop.running) return;
       if (getLoopOwner(loop) !== sessionUser) return;
-      loopCapacity += parseInt(loop.params?.concurrents, 10) || 0;
+      const c = parseInt(loop.params?.concurrents, 10) || 0;
+      if ((loop.params?.provider || 'stresse') === 'rackghost') rgTotal += c;
+      else strTotal += c;
     });
-
-    // Loopsuz (tek seferlik) ve suresi henuz dolmamis saldirilar.
-    const nonLoopActive = Object.values(activeAttacks)
-      .filter(
-        (a) => a.username === sessionUser && !a.loopId &&
-          new Date(a.expiresAt || 0).getTime() > now
-      )
-      .reduce((sum, a) => sum + (parseInt(a.concurrents, 10) || 1), 0);
+    // Gercek geri sayim penceresinde olan loopsuz saldirilar (bitmis/Hayalet sayilmaz)
+    Object.values(activeAttacks).forEach((a) => {
+      if (a.username !== sessionUser) return;
+      if (a.loopId) return; // loop saldirilari kapasiteyle sayildi
+      if (new Date(a.expiresAt || 0).getTime() <= now) return;
+      const startedMs = new Date(a.startedAt || 0).getTime();
+      const t = parseInt(a.time, 10) || 0;
+      if (Number.isFinite(startedMs) && t > 0 && startedMs + t * 1000 <= now) return;
+      const c = parseInt(a.concurrents, 10) || 1;
+      if (a.provider === 'rackghost') rgTotal += c; else strTotal += c;
+    });
 
     res.json({
       status: 'success',
       stats: {
         active: activeCount,
-        total: loopCapacity + nonLoopActive
+        rg: rgTotal,
+        str: strTotal
       }
     });
   } catch (error) {
