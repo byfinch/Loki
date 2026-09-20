@@ -51,19 +51,19 @@ const GEO_L4 = [
   { value: 'iran', label: 'Iran' }
 ];
 const GEO_L7 = [
-  { value: 'proxies.txt', label: 'Worldwide (varsayılan)' },
-  { value: 'turkey.txt', label: 'Turkey' },
-  { value: 'usa.txt', label: 'United States' },
-  { value: 'germany.txt', label: 'Germany' },
-  { value: 'netherlands.txt', label: 'Netherlands' },
-  { value: 'canada.txt', label: 'Canada' },
-  { value: 'russia.txt', label: 'Russia' },
-  { value: 'china.txt', label: 'China' },
-  { value: 'brazil.txt', label: 'Brazil' },
-  { value: 'iran.txt', label: 'Iran' },
-  { value: 'korea.txt', label: 'South Korea' },
-  { value: 'vietnam.txt', label: 'Vietnam' },
-  { value: 'indonesia.txt', label: 'Indonesia' }
+  { value: 'worldwide', label: 'Worldwide (varsayılan)' },
+  { value: 'turkey.txt', label: 'Turkey (TR proxy-listesi)' },
+  { value: 'usa.txt', label: 'United States (proxy-listesi)' },
+  { value: 'germany.txt', label: 'Germany (proxy-listesi)' },
+  { value: 'netherlands.txt', label: 'Netherlands (proxy-listesi)' },
+  { value: 'canada.txt', label: 'Canada (proxy-listesi)' },
+  { value: 'russia.txt', label: 'Russia (proxy-listesi)' },
+  { value: 'china.txt', label: 'China (proxy-listesi)' },
+  { value: 'brazil.txt', label: 'Brazil (proxy-listesi)' },
+  { value: 'iran.txt', label: 'Iran (proxy-listesi)' },
+  { value: 'korea.txt', label: 'South Korea (proxy-listesi)' },
+  { value: 'vietnam.txt', label: 'Vietnam (proxy-listesi)' },
+  { value: 'indonesia.txt', label: 'Indonesia (proxy-listesi)' }
 ];
 const GEO_OPTIONS = GEO_L4;
 
@@ -226,7 +226,7 @@ const AttackForm = () => {
   const geoOptions = layer === 'L7' ? GEO_L7 : GEO_L4;
   useEffect(() => {
     const valid = geoOptions.some((g) => g.value === geo);
-    if (!valid) setGeo(layer === 'L7' ? 'proxies.txt' : 'worldwide');
+    if (!valid) setGeo('worldwide');
   }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredMethods = provider === 'rackghost'
