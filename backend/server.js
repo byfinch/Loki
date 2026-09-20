@@ -2033,6 +2033,23 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
 
     const { username } = req.params;
     const client = getClient(sessionId);
+
+    // HUB PAYLASIMI: bu hesabin SSE hub'i yasiyorsa ve son birlesik gorunumu
+    // tazeyse (<20sn) upstream fetch'e hic girme — hub'in zaten birlestirdigi
+    // liste (upstream + RackGhost + taze kayitlar + notlar) aninda doner.
+    // Upstream hasta donemde 3sn'lik bonus pencereye hic sigmiyor, poll kayit
+    // defteri satirlariyla (pending-only) donuyor ve panel gercek ID'leri
+    // goremeyerek uzun sure bayat gorunuyordu. Hub tick 30sn timeout'la
+    // cektigi icin verisi poll'un 3sn'liginden zengin; ek upstream istegi de
+    // uretilmez (poll baskisi artmaz).
+    const liveHub = liveHubs.get(username);
+    if (liveHub && Array.isArray(liveHub.lastOngoing) && liveHub.lastOngoingAt &&
+        Date.now() - liveHub.lastOngoingAt < 20000) {
+      const hubView = [...liveHub.lastOngoing];
+      appendFreshRegistryRows(hubView, username); // son tick'ten sonra dusen taze kayitlar
+      return res.json(hubView);
+    }
+
     // Upstream sadece bonus: 3sn icinde gelirse kullanilir, gelmezse kayit
     // defteri aninda doner (hasta donemde hesap degisimi 30sn bekliyordu —
     // upstream verisi SSE ile zaten ~10-30sn'de guncelleniyor).
@@ -4549,16 +4566,20 @@ async function liveHubTick(hub, username) {
     // gecikmesinden bagimsiz olarak her zaman eklenir.
     appendFreshRegistryRows(ongoingData, username);
     hub.lastOngoing = ongoingData;
+    hub.lastOngoingAt = Date.now();
     // Her tick broadcast (upstream hatasi dahil): akis susmaz; taze kayitlar
     // ve korunan satirlar client'a daima akar. Hata serisinde sadece aralik
-    // uzar (30sn), veri akmaya devam eder.
+    // uzar (15sn), veri akmaya devam eder.
     const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
     if (hub.lastUser) payload.user = hub.lastUser;
     liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
 
   if (hub.clients.size === 0) { hub.tickInFlight = false; return; } // close handler hub'i zaten temizledi
   // Poll baskisi: 3sn agresyifti (stresse anti-abuse tetikliyor); 10sn yeterli.
-  const delay = hub.consecutiveErrors >= 3 ? 30000 : 10000;
+  // Hata backoff'u 30sn'ydi: hasta donemde fetch 30sn surunce etkili cadence
+  // ~60sn'ye cikip panel dakikalarca bayatliyordu. 15sn'ye indirildi (stresse
+  // tarafindan gozlemlenen limit 512 istek/dk; hesap basina 4/dk guvenli).
+  const delay = hub.consecutiveErrors >= 3 ? 15000 : 10000;
   hub.tickInFlight = false;
   hub.timer = setTimeout(() => {
     liveHubTick(hub, username).catch((err) => console.error('[liveHub] beklenmeyen tick hatasi:', err));
@@ -4581,6 +4602,7 @@ function pokeLiveHub(username) {
   const base = Array.isArray(hub.lastOngoing) ? [...hub.lastOngoing] : [];
   appendFreshRegistryRows(base, username);
   hub.lastOngoing = base;
+  hub.lastOngoingAt = Date.now();
   const payload = { timestamp: new Date().toISOString(), ongoing: base };
   if (hub.lastUser) payload.user = hub.lastUser;
   liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
@@ -4633,6 +4655,7 @@ app.get('/api/stresse/live/:username', (req, res) => {
       lastGoodSessionId: null,
       timer: null,
       lastOngoing: null,
+      lastOngoingAt: null,
       lastUser: null,
       consecutiveErrors: 0,
       tickCount: 0

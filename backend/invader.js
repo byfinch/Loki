@@ -295,6 +295,8 @@ async function buildSiteCard(r, shotBot, shotUsr) {
       `--screenshot=${outPng}`, 'file://' + reportPath
     ], { timeout: 60000 }, () => resolve());
   });
+  // Ara html png uretildikten sonra ise yaramaz: sil (birikim kaynagiydi)
+  try { fs.unlinkSync(reportPath); } catch { /* yoksay */ }
   return fs.existsSync(outPng) ? outPng : null;
 }
 
@@ -308,7 +310,12 @@ async function testAndNotify() {
     const shotBot = await captureShot(r.url, BOT_UA, 'bot');
     const shotUsr = await captureShot(r.url, USER_UA, 'usr');
     const card = await buildSiteCard(r, shotBot, shotUsr);
-    if (card) await tgDmPhoto(card, captionOf(r), DM_USERS[0]);
+    try {
+      if (card) await tgDmPhoto(card, captionOf(r), DM_USERS[0]);
+    } finally {
+      // notifyResult ile ayni kural: gonderim sonrasi gorseller diskte kalmaz
+      [shotBot, shotUsr, card].forEach((f) => { if (f) { try { fs.unlinkSync(f); } catch { /* yoksay */ } } });
+    }
   }
   return results;
 }
