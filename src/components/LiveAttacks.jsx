@@ -670,26 +670,21 @@ const LiveAttacks = () => {
     prevGroupsRef.current = current;
   }, [groupedAttacks, loopSigs]);
 
-  // Hesaba ozel sayaclar (aktif/toplam kapasite) — canli listeyle beraber tazelenir
-  const [stats, setStats] = useState(null);
-  useEffect(() => {
-    if (!state.isAuthenticated) return undefined;
-    let cancelled = false;
-    const fetchStats = async () => {
-      try {
-        const s = await apiClient.getStats();
-        if (!cancelled) setStats(s);
-      } catch {
-        // sayac alinamazsa rozet gosterilmez; akis bozulmaz
-      }
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [state.isAuthenticated]);
+  // Saglayici bazli sayaclar: RG (RackGhost) / STR (stresse) / Aktif (ikisinin
+  // calisan toplami). "Calisan" = canli listede gorunen satirlar — satirlar
+  // yalnizca GERCEK geri sayim penceresinde (startedAt+time) yasadigindan bu
+  // tanim loop kapsitesi degil fiilen calisan saldiridir. RG satirlarinin
+  // count alani slot/baglanti adedini tasir (x15 dogru sayilir).
+  const providerStats = useMemo(() => {
+    const rows = Array.isArray(state.liveAttacks) ? state.liveAttacks : [];
+    let rg = 0;
+    let str = 0;
+    rows.forEach((r) => {
+      const c = parseInt(r.count, 10) || 1;
+      if (r.provider === 'rackghost') rg += c; else str += c;
+    });
+    return { rg, str, total: rg + str };
+  }, [state.liveAttacks]);
 
   // Loop listesini her sekmede taze tut: LoopManager sadece Looplar
   // sekmesinde mount oldugundan state.activeLoops baska sekmelerde bayat
@@ -947,15 +942,21 @@ const LiveAttacks = () => {
         <span className="ml-auto flex items-center gap-2">
           <span
             className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-bold text-cyan-400"
-            title="Şu an çalışan saldırılar"
+            title="RackGhost tarafında çalışan saldırılar (slot/bağlanti adedi)"
           >
-            Aktif {totalAttacks}
+            RG {providerStats.rg}
           </span>
           <span
             className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[11px] font-bold text-green-400"
-            title="Çalışan loop kapasitesi + loopsuz aktif saldırılar (tur geçişlerinde değişmez)"
+            title="stresse.st tarafında çalışan saldırılar"
           >
-            Toplam {stats?.total ?? totalAttacks}
+            STR {providerStats.str}
+          </span>
+          <span
+            className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-400"
+            title="Şu an fiilen çalışan saldırılar (RG + STR)"
+          >
+            Aktif {providerStats.total}
           </span>
           <button
             onClick={handleStopAll}
