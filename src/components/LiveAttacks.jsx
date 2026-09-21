@@ -973,21 +973,21 @@ const LiveAttacks = () => {
         <span className="ml-auto flex items-center gap-2">
           <span
             className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-bold text-cyan-400"
-            title="RackGhost hesabındaki TÜM çalışan saldırılar (2x methodlar gerçek tüketimiyle, kim başlattıysa)"
+            title="RackGhost tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (2x method gerçek tüketimiyle; tur geçişlerinde değişmez)"
           >
-            RG {rgTotal ?? providerStats.rg}
+            RG {stats?.rg ?? providerStats.rg}
           </span>
           <span
             className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[11px] font-bold text-green-400"
-            title="stresse.st hesabındaki TÜM çalışan saldırılar (kim başlattıysa)"
+            title="stresse.st tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (tur geçişlerinde değişmez)"
           >
-            STR {strTotal ?? providerStats.str}
+            STR {stats?.str ?? providerStats.str}
           </span>
           <span
             className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-400"
-            title="Aktif = RG + STR (upstream gerçekleri)"
+            title="Şu an fiilen çalışan saldırılar (canlı liste)"
           >
-            Aktif {(rgTotal ?? 0) + (strTotal ?? 0) || providerStats.total}
+            Aktif {providerStats.total}
           </span>
           <button
             onClick={handleStopAll}
