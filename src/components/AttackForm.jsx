@@ -606,11 +606,6 @@ const AttackForm = () => {
             {provider === 'rackghost' && rgStresser === 'new' && (
               <p className="mt-0.5 text-[9px] text-amber-500/80"># yönetici uyarısı: 40-50 üzeri bağlantı yapmayın (maks 80)</p>
             )}
-            {/* HTTP-REST stresse'te 2x baslatir (canli olcum) — bilgi amaçli;
-                panel girilen degeri aynen gonderir, yarilama YOK. */}
-            {provider === 'stresse' && ['HTTP-REST'].includes(method?.toUpperCase()) && (
-              <p className="mt-0.5 text-[9px] text-amber-500/80"># {method.toUpperCase()} stresse tarafında 2× başlatır: {concurrents} girersen {concurrents * 2} saldırı açılır (slot da 2× tükenir)</p>
-            )}
           </div>
 
           {provider === 'rackghost' && rgStresser === 'new' && (
