@@ -498,9 +498,6 @@ const LiveAttacks = () => {
         (data) => {
           sseConnected = true;
           lastSseMsgAt = Date.now();
-        (data) => {
-          sseConnected = true;
-          lastSseMsgAt = Date.now();
           // Backend normalize etse da savunma: array disi payload gelirse yoksay
           if (Array.isArray(data.ongoing)) {
             setLiveAttacks(data.ongoing);
