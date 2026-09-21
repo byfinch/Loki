@@ -2275,6 +2275,9 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
             provider: 'rackghost',
             ...(a.stresser ? { account: a.stresser } : {})
           };
+          // Not: loop'un notasini satira tasi (stresse satirlariyla ayni davranis)
+          const rgNote = resolveNoteForRow(username, row.target, row.method);
+          if (rgNote) row.note = rgNote;
           if (rgVisibleRow(row, username)) ongoing.push(row);
         });
       } catch { /* RG merge hatasi: taze kayitlar asagida yine eklenir */ }
@@ -4555,6 +4558,8 @@ function appendFreshRegistryRows(ongoingData, username) {
       if (owner && owner !== username) return; // baska hesabin saldirisi
       const tlSec = realTlSec(a);
       if (!Number.isFinite(tlSec) || tlSec <= 0) return;
+      // Not: loop kaynakli saldirida not LOOP'un uzerindedir
+      const rgNote = a.loopId && activeLoops[a.loopId]?.note;
       ongoingData.push({
         attack_id: id,
         target: `${String(a.host || '').replace(/\/+$/, '')}:${a.port || 443}`,
@@ -4563,6 +4568,7 @@ function appendFreshRegistryRows(ongoingData, username) {
         count: a.concurrents || 1,
         layer: a.layer || 'L7',
         provider: 'rackghost',
+        ...(rgNote ? { note: rgNote } : {}),
         ...(a.providerAccount ? { account: a.providerAccount } : {})
       });
     });
@@ -4813,6 +4819,8 @@ async function liveHubTick(hub, username) {
             provider: 'rackghost',
             ...(a.stresser ? { account: a.stresser } : {})
           };
+          const rgNote2 = resolveNoteForRow(username, row.target, row.method);
+          if (rgNote2) row.note = rgNote2;
           if (rgVisible(row, username)) ongoingData.push(row);
         });
       } catch (rgErr) {
