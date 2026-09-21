@@ -2904,6 +2904,10 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
   }
 }
 
+// Gercek stresse hesap limitleri (plan sayfasi 500 gostersede upstream'in
+// uyguladigi kapilar bunlar — kullanici bildirimi: buyuk=200, kucuk=80).
+const REAL_STRESSE_LIMITS = { Yavrukurt1: 200, Yavrukurt: 80 };
+
 // Hesap slot kapisi: plan limiti (fallback 80) altinda yer acilana dek bekle.
 // Coklu loop ayni anda ateslendiginde limit asimi stresse reddi -> tur hatasi
 // -> backoff dongusu yaratyordu; kapisi asan turlar sirayla bosalan slotu
@@ -2911,10 +2915,10 @@ async function waitLoopsDrained(loopIds, maxWaitMs = 60000) {
 async function waitForSlotBudget(sessionId, sendConc, maxWaitMs = 45000) {
   const owner = sessions[sessionId]?.username;
   if (!owner) return 0;
-  let maxConc = 80;
+  let maxConc = REAL_STRESSE_LIMITS[owner] || 80;
   for (const s of Object.values(sessions)) {
     if (s?.username === owner && s.plan?.Concurrents) {
-      maxConc = parseInt(s.plan.Concurrents, 10) || 80;
+      maxConc = Math.min(parseInt(s.plan.Concurrents, 10) || maxConc, REAL_STRESSE_LIMITS[owner] || parseInt(s.plan.Concurrents, 10) || 80);
       break;
     }
   }
