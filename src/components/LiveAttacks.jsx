@@ -498,12 +498,18 @@ const LiveAttacks = () => {
         (data) => {
           sseConnected = true;
           lastSseMsgAt = Date.now();
+        (data) => {
+          sseConnected = true;
+          lastSseMsgAt = Date.now();
           // Backend normalize etse da savunma: array disi payload gelirse yoksay
           if (Array.isArray(data.ongoing)) {
             setLiveAttacks(data.ongoing);
             updateTimeLefts(data.ongoing);
             setLastUpdate(new Date());
           }
+          // Hesap geneli toplamlar (upstream gercegi): RG/STR rozetleri bunlarla beslenir
+          if (Number.isFinite(data.rgTotal)) setRgTotal(data.rgTotal);
+          if (Number.isFinite(data.strTotal)) setStrTotal(data.strTotal);
         },
         () => {
           // Baglanti koptu; EventSource yeniden baglanana kadar poll devreye girer
@@ -673,6 +679,11 @@ const LiveAttacks = () => {
   // Hesap bazli EKLENMIS TOPLAM sayaclar: RG/STR rozetleri "ekledigim toplam"
   // (loop kapasitesi + duran tek-atimlik; tur gecislerinde degismez), Aktif
   // rozeti fiilen calisanlari (canli listeden) gosterir.
+  // Hesap geneli toplamlar: SSE payload'indan (upstream gercegi — RG hesabi
+  // paylasildigi icin kimin bastigi fark etmez, tum RG saldirilari sayilir).
+  // SSE yoksa/yok sayilirsa fallback: canli listeden hesap.
+  const [rgTotal, setRgTotal] = useState(null);
+  const [strTotal, setStrTotal] = useState(null);
   const [stats, setStats] = useState(null);
   useEffect(() => {
     if (!state.isAuthenticated) return undefined;
@@ -965,21 +976,21 @@ const LiveAttacks = () => {
         <span className="ml-auto flex items-center gap-2">
           <span
             className="rounded-sm border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-bold text-cyan-400"
-            title="RackGhost tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (stabil)"
+            title="RackGhost hesabındaki TÜM çalışan saldırılar (2x methodlar gerçek tüketimiyle, kim başlattıysa)"
           >
-            RG {stats?.rg ?? providerStats.rg}
+            RG {rgTotal ?? providerStats.rg}
           </span>
           <span
             className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[11px] font-bold text-green-400"
-            title="stresse.st tarafına EKLENEN toplam: loop kapasitesi + duran saldırılar (stabil)"
+            title="stresse.st hesabındaki TÜM çalışan saldırılar (kim başlattıysa)"
           >
-            STR {stats?.str ?? providerStats.str}
+            STR {strTotal ?? providerStats.str}
           </span>
           <span
             className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-400"
-            title="Aktif = RG + STR toplamı (eklenen toplamların bileşimi)"
+            title="Aktif = RG + STR (upstream gerçekleri)"
           >
-            Aktif {(stats?.rg ?? 0) + (stats?.str ?? 0) || providerStats.total}
+            Aktif {(rgTotal ?? 0) + (strTotal ?? 0) || providerStats.total}
           </span>
           <button
             onClick={handleStopAll}

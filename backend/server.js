@@ -4170,8 +4170,11 @@ app.get('/api/stresse/stats', async (req, res) => {
       if (!loop.running) return;
       if (getLoopOwner(loop) !== sessionUser) return;
       const c = parseInt(loop.params?.concurrents, 10) || 0;
-      if ((loop.params?.provider || 'stresse') === 'rackghost') rgTotal += c;
-      else strTotal += c;
+      if ((loop.params?.provider || 'stresse') === 'rackghost') {
+        // 2x carpanli methodlar (HTTPSMIX/HTTPSCUSTOM) gercek tuketimiyle sayilir:
+        // kullanici 7 girse bile upstream 14 baslatir ve panelde x14 gorunur.
+        rgTotal += c * rackghost.slotMultiplier(loop.params.method);
+      } else strTotal += c;
     });
     // Gercek geri sayim penceresinde olan loopsuz saldirilar (bitmis/Hayalet sayilmaz)
     Object.values(activeAttacks).forEach((a) => {
@@ -4685,6 +4688,12 @@ async function liveHubTick(hub, username) {
     user = userRes;
     // Upstream array disi bir sey dondururse (challenge HTML'i, hata objesi) hata say
     if (!Array.isArray(ongoing.data)) throw new Error('upstream array disi yanit');
+    // HESAP GENELI toplamlar (rozet icin upstream gercegi): stresse /ongoing
+    // hesaptaki TUM saldirilari dondurur (kim baslattiysa). Bazi donemlerde
+    // yalanci-bos liste dondugu icin bos liste son degeri hemen silmesin
+    // (60sn tolerans).
+    hub.strTotal = ongoing.data.length > 0 ? ongoing.data.length : (hub.strTotalAt && Date.now() - hub.strTotalAt < 60000 ? hub.strTotal : 0);
+    if (ongoing.data.length > 0) hub.strTotalAt = Date.now();
     // Not cozumleme ID'den bagimsiz oldugu icin satir /ongoing'de gorunur
     // gorunmez not da ayni tick'te hazirdir (gec gelme sorunu yok).
     ongoingData = ongoing.data.map((item) => {
@@ -4757,6 +4766,9 @@ async function liveHubTick(hub, username) {
         const rgOutcome = rgPromise ? await rgPromise : { list: null };
         if (rgOutcome.error) throw rgOutcome.error;
         const rgList = rgOutcome.list;
+        // RG hesap geneli toplam: klassik+assign tum satirlarin slot toplami
+        hub.rgTotal = rgList.reduce((s, r) => s + (parseInt(r.slots, 10) || 1), 0);
+        hub.rgTotalAt = Date.now();
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
           const dur = parseInt(a.time, 10) || 0;
@@ -4799,6 +4811,8 @@ async function liveHubTick(hub, username) {
     // uzar (15sn), veri akmaya devam eder.
     const payload = { timestamp: new Date().toISOString(), ongoing: hub.lastOngoing };
     if (hub.lastUser) payload.user = hub.lastUser;
+    if (Number.isFinite(hub.rgTotal)) payload.rgTotal = hub.rgTotal;
+    if (Number.isFinite(hub.strTotal)) payload.strTotal = hub.strTotal;
     liveHubBroadcast(hub, `data: ${JSON.stringify(payload)}\n\n`);
 
   if (hub.clients.size === 0) { hub.tickInFlight = false; return; } // close handler hub'i zaten temizledi
