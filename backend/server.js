@@ -4766,8 +4766,32 @@ async function liveHubTick(hub, username) {
         const rgOutcome = rgPromise ? await rgPromise : { list: null };
         if (rgOutcome.error) throw rgOutcome.error;
         const rgList = rgOutcome.list;
-        // RG hesap geneli toplam: klassik+assign tum satirlarin slot toplami
-        hub.rgTotal = rgList.reduce((s, r) => s + (parseInt(r.slots, 10) || 1), 0);
+        // RG hesap geneli toplam — iki kaynagin birlesimi:
+        //  1) Kayit defteri: Loki'den baslatilan tum RG saldirilari (klasik +
+        //     assign) gercek geri sayim penceresinde
+        //  2) Upstream listesinde olup defterde olmayanlar (RG sitesinden
+        //     baslatilan klasikler) — assign/api3 saldirilari zaten upstream
+        //     listesine HIC dusmedigi icin sadece defter onları bilir.
+        const nowRg = Date.now();
+        let rgTotal = 0;
+        const trackedIds = new Set();
+        Object.values(activeAttacks).forEach((a) => {
+          if (a.provider !== 'rackghost') return;
+          if (String(a.attackId).startsWith('pending_')) return;
+          const exp = new Date(a.expiresAt || 0).getTime();
+          if (exp <= nowRg) return;
+          const startedMs = new Date(a.startedAt || 0).getTime();
+          const t = parseInt(a.time, 10) || 0;
+          if (Number.isFinite(startedMs) && t > 0 && startedMs + t * 1000 <= nowRg) return;
+          trackedIds.add(String(a.attackId));
+          rgTotal += parseInt(a.concurrents, 10) || 1;
+        });
+        rgList.forEach((r) => {
+          const rid = String(r.id ?? r.target ?? '');
+          if (trackedIds.has(rid)) return; // defterde zaten sayildi
+          rgTotal += parseInt(r.slots, 10) || 1;
+        });
+        hub.rgTotal = rgTotal;
         hub.rgTotalAt = Date.now();
         rgList.forEach((a) => {
           const created = a.created_at ? Date.parse(String(a.created_at).replace(' ', 'T')) : NaN;
