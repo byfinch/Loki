@@ -3025,14 +3025,16 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       for (let check = 0; check < 3; check++) {
         const { list, ok } = await getOngoingShared(loop.sessionId);
         if (!ok || !Array.isArray(list)) break; // listeye erisilemiyor: zaman kapisi koruyor, atesle
-        const left = list
-          .filter((r) => rowSigKey(r.target || r.host, r.method) === confirmSig)
-          .map((r) => parseInt(r.timeLeft, 10))
-          .filter((t) => Number.isFinite(t));
-        const maxLeft = left.length ? Math.max(...left) : 0;
-        if (maxLeft <= 3) break; // onceki nesil oldu (veya hic listelenmiyor): atesle
-        const postponeMs = Math.min(maxLeft * 1000 + 4000, timeSec * 1000);
-        console.log(`[loop ${loopId}] dogrulama: onceki tur hala yasiyor (kalan ${maxLeft}sn), ${Math.round(postponeMs / 1000)}sn erteleniyor`);
+        const match = list.find((r) => rowSigKey(r.target || r.host, r.method) === confirmSig);
+        if (!match) break; // onceki nesil düstü (veya hiç listelenmiyor): atesle
+        // Upstream L4 satirlarinda timeLeft sabit/yanlis donuyor (SYN: hep 20) —
+        // sayilira guvenme; satirin VARLIGINI örtüsme isareti say ve kisa adimla
+        // tekrar kontrol et (3 kontrol tuketilirse de atesle — kadans kilitlenmesin).
+        const tl = parseInt(match.timeLeft, 10);
+        const alive = Number.isFinite(tl) ? tl > 3 : true;
+        if (!alive) break;
+        const postponeMs = Math.min(Number.isFinite(tl) && tl > 3 ? tl * 1000 + 4000 : 12000, timeSec * 1000);
+        console.log(`[loop ${loopId}] dogrulama: onceki tur hala yasiyor (timeLeft=${match.timeLeft ?? '?'}), ${Math.round(postponeMs / 1000)}sn erteleniyor`);
         await new Promise((r) => setTimeout(r, postponeMs));
       }
     }
