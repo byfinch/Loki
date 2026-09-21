@@ -2995,13 +2995,20 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
     // yasar ve slot havuzu hesap geneli. Onceki tur olemeden yeni tur ateslenirse
     // "slot limiti doldu" hatasi donerdi — x15 klasik loop her turda 15 slotun
     // TAMAMINI doldurdugu icin onceki neslin olumu beklenmeden atis IMKANSIZDI
-    // (hata -> backoff -> tekrar dongusu; panelde [ERR] seridi yapişiyordu).
+    // (hata -> backoff -> tekrar dongusu; panelde [ERR] seridi yapisiyordu).
     const rgTimeSec = parseInt(effectiveParams.time, 10) || 60;
     const rgTargetMs = (loop.lastFireAt || 0) + rgTimeSec * 1000 + 8000;
     const rgWaitMs = rgTargetMs - Date.now();
     if (rgWaitMs > 0) {
-      console.log(`[loop ${loopId}] rackghost zaman kapisi: ${Math.round(rgWaitMs / 1000)}sn bekleniyor (hedef: son ates + ${rgTimeSec}sn + 8sn)`);
+      console.log(`[loop ${loopId}] rackghost zaman kapisi: ${Math.round(rgWaitMs / 1000)}sn bekleniyor (hedef: son ates + ${rgTimeSec}sn + 8sn pay)`);
       await new Promise((r) => setTimeout(r, rgWaitMs));
+    }
+    // IPTAL KONTROLU: kapi beklemesi sirasinda loop durdurulduysa tur ATMA
+    // (eski davranis: beklemeden cikip saldiriyi baslatiyordu — "iptal ettim,
+    // sonraki tur yine basladi" sikayetinin yapisal sebebi)
+    if (!loop.running || !activeLoops[loopId]) {
+      console.log(`[loop ${loopId}] bekleme sirasinda iptal algılandi, tur atlanıyor`);
+      return 0;
     }
     loop.lastFireAt = Date.now();
   } else if (!skipDrain) {
@@ -3020,11 +3027,17 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
       console.log(`[loop ${loopId}] zaman kapisi: ${Math.round(waitMs / 1000)}sn bekleniyor (hedef: son ates + ${timeSec}sn + 8sn pay)`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
+    // IPTAL KONTROLU: kapi beklemesi sirasinda loop durdurulduysa tur ATMA
+    if (!loop.running || !activeLoops[loopId]) {
+      console.log(`[loop ${loopId}] bekleme sirasinda iptal algılandi, tur atlanıyor`);
+      return 0;
+    }
     const confirmSig = rowSigKey(`${loop.params.host}:${loop.params.port}`, loop.params.method);
     if (confirmSig) {
       for (let check = 0; check < 3; check++) {
         const { list, ok } = await getOngoingShared(loop.sessionId);
         if (!ok || !Array.isArray(list)) break; // listeye erisilemiyor: zaman kapisi koruyor, atesle
+        if (!loop.running || !activeLoops[loopId]) return 0; // sorgu sirasinda iptal
         const match = list.find((r) => rowSigKey(r.target || r.host, r.method) === confirmSig);
         if (!match) break; // onceki nesil düstü (veya hiç listelenmiyor): atesle
         // Upstream L4 satirlarinda timeLeft sabit/yanlis donuyor (SYN: hep 20) —
@@ -3036,6 +3049,11 @@ async function fireLoopRoundInner(loopId, { skipDrain = false } = {}) {
         const postponeMs = Math.min(Number.isFinite(tl) && tl > 3 ? tl * 1000 + 4000 : 12000, timeSec * 1000);
         console.log(`[loop ${loopId}] dogrulama: onceki tur hala yasiyor (timeLeft=${match.timeLeft ?? '?'}), ${Math.round(postponeMs / 1000)}sn erteleniyor`);
         await new Promise((r) => setTimeout(r, postponeMs));
+        // Erteleme sirasinda iptal edildiyse tur atma
+        if (!loop.running || !activeLoops[loopId]) {
+          console.log(`[loop ${loopId}] erteleme sirasinda iptal algılandi, tur atlanıyor`);
+          return 0;
+        }
       }
     }
     // Olculen omur bilgi amacli kayit edilir (izleme/analiz)
