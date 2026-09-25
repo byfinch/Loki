@@ -60,23 +60,20 @@ async function semrushApi(endpoint, params) {
     headers: { Authorization: `Apikey ${key}` },
     timeout: 45000
   });
-  return r.data.data || [];
+  return r.data.data;
 }
 
 // Genel durum: authority score + toplam sayilar (overview ucu, 1 istek)
+// NOT: overview data'yi NESNE olarak dondurur (links'teki gibi array degil)
 async function semrushOverview(target) {
-  const rows = await semrushApi('overview', {
-    url: target,
-    scope: 'ROOT_DOMAIN',
-    fields: 'score,backlinks_count,domains_count,follows_count,nofollows_count'
-  });
-  const d = rows[0] || {};
+  const d = await semrushApi('overview', { url: target, scope: 'ROOT_DOMAIN' }) || {};
   return {
     score: d.score ?? '-',
     backlinks: d.backlinks_count ?? 0,
     domains: d.domains_count ?? 0,
     follow: d.follows_count ?? 0,
-    nofollow: d.nofollows_count ?? 0
+    nofollow: d.nofollows_count ?? 0,
+    lost: d.lost_count ?? 0
   };
 }
 
@@ -85,7 +82,7 @@ async function semrushBacklinks(target, keyword, limit) {
   const params = { url: target, scope: 'ROOT_DOMAIN', limit: String(limit) };
   if (keyword) params.filter = `anchor LIKE '%${keyword.replace(/['\\]/g, '')}%'`;
   const rows = await semrushApi('links', params);
-  return rows.map(r => ({
+  return (Array.isArray(rows) ? rows : []).map(r => ({
     source_domain: r.source_domain || '?',
     source_url: r.source_url || '',
     anchor: r.anchor || '—',
@@ -110,6 +107,7 @@ function buildReport(domain, keyword, ov, rows) {
   L.push(`🔗 Toplam Backlink: <b>${fmt(ov.backlinks)}</b>`);
   L.push(`🌐 Referans Domain: <b>${fmt(ov.domains)}</b>`);
   L.push(`✅ Follow: <b>${fmt(ov.follow)}</b>  |  🚫 No-Follow: <b>${fmt(ov.nofollow)}</b>`);
+  if (ov.lost) L.push(`📉 Kaybedilen backlink: <b>${fmt(ov.lost)}</b>`);
   L.push('');
   L.push(`━━━ <b>BACKLINKLER (${rows.length})</b> ━━━`);
   rows.forEach((r, i) => {
