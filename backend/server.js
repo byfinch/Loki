@@ -21,6 +21,7 @@ const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, rem
 const rackghost = require('./rackghost');
 const sitewatch = require('./sitewatch');
 const sync = require('./sync');
+const semrush = require('./semrush');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -2109,6 +2110,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
         Date.now() - liveHub.lastOngoingAt < 20000) {
       const hubView = [...liveHub.lastOngoing];
       appendFreshRegistryRows(hubView, username); // son tick'ten sonra dusen taze kayitlar
+      capRowsToConcurrency(hubView);
       return res.json(hubView);
     }
 
@@ -2285,6 +2287,7 @@ app.get('/api/stresse/ongoing/:username', async (req, res) => {
       appendFreshRegistryRows(ongoing, username);
     }
 
+    capRowsToConcurrency(ongoing);
     res.json(ongoing);
   } catch (error) {
     handleEndpointError(res, error, 'Ongoing fetch error');
@@ -4484,6 +4487,9 @@ app.get('/api/ping-pe', async (req, res) => {
 /**
  * GET /api/fofa?query=...
  */
+/**
+ * GET /api/fofa?query=...
+ */
 app.get('/api/fofa', async (req, res) => {
   try {
     const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
@@ -4508,10 +4514,112 @@ app.get('/api/fofa', async (req, res) => {
 });
 
 // =====================
+// SEMRUSH (backlink/keyword analizi — API v4)
+// =====================
+
+// Oturumlu semrush sorgu proxy'si: anahtar sunucuda kalir, istemciye sızmaz
+function semrushGate(req, res) {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId || !sessions[sessionId]) {
+    res.status(401).json({ status: 'error', message: 'Session required' });
+    return false;
+  }
+  if (!semrush.isConfigured()) {
+    res.status(503).json({ status: 'error', message: 'Semrush API anahtari tanimli degil' });
+    return false;
+  }
+  return true;
+}
+
+app.get('/api/semrush/backlinks', async (req, res) => {
+  try {
+    if (!semrushGate(req, res)) return;
+    const { target, scope, limit, anchor, offset } = req.query;
+    if (!target) return res.status(400).json({ status: 'error', message: 'target required' });
+    const data = await semrush.backlinks(target, { scope, limit, anchor, offset });
+    res.json({ status: 'success', ...data });
+  } catch (error) {
+    console.error('Semrush backlinks error:', error.response?.status, error.message);
+    res.status(error.response?.status || 500).json({ status: 'error', message: error.response?.data?.message || error.message });
+  }
+});
+
+app.get('/api/semrush/overview', async (req, res) => {
+  try {
+    if (!semrushGate(req, res)) return;
+    const { target, scope } = req.query;
+    if (!target) return res.status(400).json({ status: 'error', message: 'target required' });
+    res.json({ status: 'success', data: await semrush.overview(target, scope) });
+  } catch (error) {
+    console.error('Semrush overview error:', error.message);
+    res.status(error.response?.status || 500).json({ status: 'error', message: error.message });
+  }
+});
+
+app.get('/api/semrush/ref-domains', async (req, res) => {
+  try {
+    if (!semrushGate(req, res)) return;
+    const { target, scope, limit } = req.query;
+    if (!target) return res.status(400).json({ status: 'error', message: 'target required' });
+    res.json({ status: 'success', rows: await semrush.refDomains(target, { scope, limit }) });
+  } catch (error) {
+    console.error('Semrush ref-domains error:', error.message);
+    res.status(error.response?.status || 500).json({ status: 'error', message: error.message });
+  }
+});
+
+// =====================
 // LIVE ATTACK STREAM (SSE)
 // =====================
 
-// SSE hub'lari: username basina TEK upstream poller calisir, tum bagli
+// NESIL CAPMASI: upstream, saldiri bittikten sonra da satirlari bir sure
+// listelemeye devam edebiliyor (listeleme gecikmesi + uzayan omur). Bu durumda
+// ayni hedef+method icin eski+yeni nesil birlikte listelenip panel 2x
+// gosterebiliyordu (kullanici x10 baslatti x20 gordu). Cozum: her
+// (host+method) grubunu, o hedefe atanmis loop'larin toplam adedine gore
+// sinirla — asan en-dusuk-timeLeft satirlari goruntuden duser. Loop'u olmayan
+// hedeflere dokunulmaz (tek atimlik saldirilar serbest).
+function normHostKey(h) {
+  let s = String(h || '').toLowerCase().trim();
+  s = s.replace(/^https?:\/\//, '').split('/')[0].split('?')[0];
+  s = s.replace(/:(80|443)$/, '');
+  return s;
+}
+
+function capRowsToConcurrency(ongoingData) {
+  // 1) hedef+method -> izinli maks satir (loop adetleri toplami)
+  const caps = new Map();
+  Object.values(activeLoops).forEach((l) => {
+    if (!l.running) return;
+    const prov = l.params?.provider || 'stresse';
+    let c = parseInt(l.params?.concurrents, 10) || 0;
+    if (prov === 'rackghost') c *= rackghost.slotMultiplier(l.params.method);
+    const key = normHostKey(l.params?.host) + '|' + String(l.params?.method || '').toUpperCase();
+    caps.set(key, (caps.get(key) || 0) + c);
+  });
+  if (!caps.size) return;
+  // 2) satirlari grupla, adedi asanlari isaretle (yuksek timeLeft once kalir)
+  const groups = new Map();
+  ongoingData.forEach((r, idx) => {
+    const key = normHostKey(r.target || r.host) + '|' + String(r.method || '').toUpperCase();
+    if (!caps.has(key)) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(idx);
+  });
+  const drop = new Set();
+  groups.forEach((idxs, key) => {
+    const cap = caps.get(key);
+    if (idxs.length <= cap) return;
+    const sorted = idxs
+      .map((i) => ({ i, tl: parseInt(ongoingData[i].timeLeft, 10) || 0 }))
+      .sort((a, b) => b.tl - a.tl);
+    sorted.slice(cap).forEach((x) => drop.add(x.i));
+  });
+  // 3) tersten sil (indeks kaymasini onle)
+  [...drop].sort((a, b) => b - a).forEach((i) => ongoingData.splice(i, 1));
+}
+
+
 // client'lara broadcast edilir. Boylece N sekme = N x 2 upstream istegi yerine
 // 3sn'de toplam 1-2 istek atilir.
 // username -> { clients: Set<res>, sessionId, timer, lastOngoing, lastUser, consecutiveErrors, tickCount }
@@ -4836,6 +4944,7 @@ async function liveHubTick(hub, username) {
     // Taze kayit defteri satirlari (stresse + rackghost pending): upstream
     // gecikmesinden bagimsiz olarak her zaman eklenir.
     appendFreshRegistryRows(ongoingData, username);
+    capRowsToConcurrency(ongoingData);
     hub.lastOngoing = ongoingData;
     hub.lastOngoingAt = Date.now();
     // Her tick broadcast (upstream hatasi dahil): akis susmaz; taze kayitlar
@@ -4874,6 +4983,7 @@ function pokeLiveHub(username) {
   // eklenir; sonraki gercek tick uzlastirir/tekillestirir.
   const base = Array.isArray(hub.lastOngoing) ? [...hub.lastOngoing] : [];
   appendFreshRegistryRows(base, username);
+  capRowsToConcurrency(base);
   hub.lastOngoing = base;
   hub.lastOngoingAt = Date.now();
   const payload = { timestamp: new Date().toISOString(), ongoing: base };
