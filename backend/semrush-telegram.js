@@ -65,7 +65,11 @@ async function semrushApi(endpoint, params) {
 
 // Genel durum: authority score + toplam sayilar (overview ucu, 1 istek)
 async function semrushOverview(target) {
-  const rows = await semrushApi('overview', { url: target, scope: 'ROOT_DOMAIN' });
+  const rows = await semrushApi('overview', {
+    url: target,
+    scope: 'ROOT_DOMAIN',
+    fields: 'score,backlinks_count,domains_count,follows_count,nofollows_count'
+  });
   const d = rows[0] || {};
   return {
     score: d.score ?? '-',
