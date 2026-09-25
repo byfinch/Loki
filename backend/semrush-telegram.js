@@ -95,6 +95,7 @@ async function semrushBacklinks(target, keyword, limit) {
     source_url: r.source_url || '',
     anchor: r.anchor || '—',
     domain_score: r.domain_score ?? '?',
+    page_score: r.page_score ?? '?',
     first_seen: (r.first_seen_at || '').slice(0, 10)
   }));
 }
@@ -123,8 +124,22 @@ function buildReport(domain, keyword, ov, rows, mode) {
   let listed;
   let baslik;
   if (mode === 'top') {
-    baslik = '🏆 EN GÜÇLÜ KAYNAKLAR';
+    baslik = '🏆 EN GÜÇLÜ KAYNAKLAR (DS)';
     listed = groups.slice().sort((a, b) => Number(b.ds) - Number(a.ds)).slice(0, 10);
+  } else if (mode === 'pa') {
+    // Sayfa bazli: source_url basina tek satir, page_score'a gore sirala
+    baslik = '📄 EN GÜÇLÜ SAYFALAR (PA)';
+    const byUrl = new Map();
+    for (const r of rows) {
+      const k = r.source_url || r.source_domain;
+      if (!byUrl.has(k)) byUrl.set(k, { domain: r.source_domain, url: r.source_url, pa: r.page_score, ds: r.domain_score, first: r.first_seen });
+      else {
+        const g = byUrl.get(k);
+        if (Number(r.page_score) > Number(g.pa)) g.pa = r.page_score;
+        if (r.first_seen > g.first) g.first = r.first_seen;
+      }
+    }
+    listed = [...byUrl.values()].sort((a, b) => Number(b.pa) - Number(a.pa)).slice(0, 10);
   } else {
     baslik = '🆕 SON YERLEŞİMLER (7 gün)';
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
@@ -139,7 +154,14 @@ function buildReport(domain, keyword, ov, rows, mode) {
   if (listed.length) {
     L.push(`${baslik}:`);
     for (const g of listed) {
-      L.push(`• <b>${esc(g.domain)}</b> — DS ${esc(g.ds)} — ${esc((g.first || '').slice(8, 10) + '.' + (g.first || '').slice(5, 7))}`);
+      if (mode === 'pa') {
+        // Kisa sayfa yolu: protokol + sorgu atilir, path kisaltilir
+        let yol = (g.url || '').replace(/^https?:\/\//, '').replace(/\?.*$/, '');
+        if (yol.length > 34) yol = yol.slice(0, 34) + '…';
+        L.push(`• <b>${esc(yol || g.domain)}</b> — PA ${esc(g.pa)} — ${esc((g.first || '').slice(8, 10) + '.' + (g.first || '').slice(5, 7))}`);
+      } else {
+        L.push(`• <b>${esc(g.domain)}</b> — DS ${esc(g.ds)} — ${esc((g.first || '').slice(8, 10) + '.' + (g.first || '').slice(5, 7))}`);
+      }
     }
   } else {
     L.push(`🆕 Son 7 günde yeni yerleşim yok`);
@@ -172,14 +194,15 @@ try { lastOffset = parseInt(fs.readFileSync(OFFSET_FILE, 'utf8').trim(), 10) || 
 async function handleCommand(chatId, text) {
   const parts = text.split(/\s+/);
   const domain = parts[1];
-  // 'top' anahtar kelimesi ozel mod: en yuksek DS'li kaynaklar
+  // 'top'/'pa' ozel modlar; diger kelimeler anchor filtresi olur
   const rest = parts.slice(2);
-  const mode = rest[0] === 'top' ? 'top' : '';
+  let mode = '';
+  if (rest[0] === 'top' || rest[0] === 'pa') mode = rest[0];
   const keyword = mode ? '' : rest.join(' ');
   if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
     await tgApi('sendMessage', {
       chat_id: chatId,
-      text: '❌ Kullanım:\n/semrush <domain> — son yerleşimler\n/semrush <domain> top — en güçlü kaynaklar\n/semrush <domain> <keyword> — anchor arama\n\nÖrnek:\n/semrush sabacirc.org\n/semrush sabacirc.org top\n/semrush sabacirc.org freespin'
+      text: '❌ Kullanım:\n/semrush <domain> — son yerleşimler\n/semrush <domain> top — en güçlü domainler (DS)\n/semrush <domain> pa — en güçlü sayfalar (PA)\n/semrush <domain> <keyword> — anchor arama\n\nÖrnek:\n/semrush sabacirc.org\n/semrush sabacirc.org top\n/semrush sabacirc.org pa\n/semrush sabacirc.org freespin'
     });
     return;
   }
@@ -187,7 +210,7 @@ async function handleCommand(chatId, text) {
   try {
     // Overview her zaman cekilir; link listesi moda gore cekilir
     const ov = await semrushOverview(domain);
-    const fetchLimit = mode === 'top' ? 100 : LINK_LIMIT;
+    const fetchLimit = mode ? 100 : LINK_LIMIT;
     const rows = await semrushBacklinks(domain, keyword, fetchLimit);
     if (!rows.length && keyword) {
       await tgApi('sendMessage', { chat_id: chatId, text: `❌ "${keyword}" anchor'lı backlink bulunamadı (${domain})` });
