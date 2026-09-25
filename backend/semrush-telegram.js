@@ -103,36 +103,41 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Rapor metni (HTML parse mode) — KOMPAKT: domain basina tek satir
+// Rapor metni (HTML parse mode) — SADECE ISYE YARAYAN: genel durum + son 7 gunun yeni yerlesimleri
+// Her yeni domain tek satir: kim — DS kac — ne zaman. Anchor listesi ve "..." dolgusu yok.
 function buildReport(domain, keyword, ov, rows) {
-  // Ayni kaynak domain'in coklu backlink'lerini tek satira grupla
-  const groups = [];
+  // Domain basina tek kayit: en yeni first_seen + en yuksek DS
   const byDomain = new Map();
   for (const r of rows) {
-    let g = byDomain.get(r.source_domain);
+    const g = byDomain.get(r.source_domain);
     if (!g) {
-      g = { domain: r.source_domain, ds: r.domain_score, anchors: [], first: r.first_seen };
-      byDomain.set(r.source_domain, g);
-      groups.push(g);
+      byDomain.set(r.source_domain, { domain: r.source_domain, ds: r.domain_score, first: r.first_seen });
+    } else {
+      if (r.first_seen > g.first) g.first = r.first_seen;
+      if (Number(r.domain_score) > Number(g.ds)) g.ds = r.domain_score;
     }
-    if (g.anchors.length < 4 && !g.anchors.includes(r.anchor)) g.anchors.push(r.anchor);
   }
-  const shown = groups.slice(0, 12);
+  const groups = [...byDomain.values()].sort((a, b) => (b.first || '').localeCompare(a.first || ''));
+
+  // Son 7 gunun yerlesimleri
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const fresh = groups.filter(g => g.first >= weekAgo);
+  const freshShown = fresh.slice(0, 10);
 
   const L = [];
-  L.push(`📊 <b>SEMRUSH — ${esc(domain)}</b>`);
-  if (keyword) L.push(`🔍 Filtre: <b>${esc(keyword)}</b>`);
+  L.push(`📊 <b>${esc(domain)}</b> — SEMRUSH${keyword ? ` · filtre: ${esc(keyword)}` : ''}`);
+  L.push(`⭐ Score <b>${esc(ov.score)}</b> | 🔗 <b>${compactNum(ov.backlinks)}</b> backlink | 🌐 <b>${fmt(ov.domains)}</b> domain`);
   L.push('');
-  L.push(`⭐ Score <b>${esc(ov.score)}</b> · 🔗 <b>${compactNum(ov.backlinks)}</b> backlink · 🌐 <b>${fmt(ov.domains)}</b> domain`);
-  L.push(`✅ Follow <b>${compactNum(ov.follow)}</b> · 🚫 NF <b>${fmt(ov.nofollow)}</b>${ov.lost ? ` · 📉 Lost <b>${fmt(ov.lost)}</b>` : ''}`);
+  if (freshShown.length) {
+    L.push(`🆕 <b>SON YERLEŞİMLER (7 gün):</b>`);
+    for (const g of freshShown) {
+      L.push(`• <b>${esc(g.domain)}</b> — DS ${esc(g.ds)} — ${esc((g.first || '').slice(8, 10) + '.' + (g.first || '').slice(5, 7))}`);
+    }
+  } else {
+    L.push(`🆕 Son 7 günde yeni yerleşim yok`);
+  }
   L.push('');
-  L.push(`📍 <b>KAYNAK DOMAİNLER:</b>`);
-  shown.forEach((g, i) => {
-    L.push(`${i + 1}. <b>${esc(g.domain)}</b> (DS ${esc(g.ds)}) — ${esc(g.anchors.join(', '))}${g.anchors.length >= 4 ? '…' : ''}`);
-  });
-  if (groups.length > shown.length) L.push(`   … +${groups.length - shown.length} domain daha`);
-  L.push('');
-  L.push(`🧮 ${groups.length} domain / ${rows.length} backlink listelendi`);
+  L.push(`📉 Lost: <b>${fmt(ov.lost)}</b> · İlk ${rows.length} link tarandı`);
 
   // 4096 karakter siniri: satir sinirlarindan parcalara bol
   const text = L.join('\n');
