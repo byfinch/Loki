@@ -22,6 +22,7 @@ const rackghost = require('./rackghost');
 const sitewatch = require('./sitewatch');
 const sync = require('./sync');
 const semrush = require('./semrush');
+const semrushTg = require('./semrush-telegram');
 
 // stresse.st istekleri icin opsiyonel cikis proxy'si (HTTP veya SOCKS5;
 // or. http://user:pass@ip:port ya da socks5://127.0.0.1:1080).
@@ -4530,6 +4531,24 @@ function semrushGate(req, res) {
   }
   return true;
 }
+
+// Semrush Telegram komut dinleyicisi: kullanici Telegram'da /semrush yazarak
+// manuel sorgu yapabilir (background polling, ayri interval, panel'i mesgul etmez)
+
+function semrushGate(req, res) {
+  const sessionId = req.headers['sessionid'] || req.headers['sessionId'];
+  if (!sessionId || !sessions[sessionId]) {
+    res.status(401).json({ status: 'error', message: 'Session required' });
+    return false;
+  }
+  if (!semrush.isConfigured()) {
+    res.status(503).json({ status: 'error', message: 'Semrush API anahtari tanimli degil' });
+    return false;
+  }
+  return true;
+}
+
+semrushTg.startSemrushTelegram();
 
 app.get('/api/semrush/backlinks', async (req, res) => {
   try {
