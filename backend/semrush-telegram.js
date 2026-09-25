@@ -189,7 +189,8 @@ async function handleCommand(chatId, text) {
   try {
     // Overview her zaman cekilir; link listesi moda gore cekilir
     const ov = await semrushOverview(domain);
-    const fetchLimit = mode ? 100 : LINK_LIMIT;
+    // top modu 30 satir ceker — unit tasarrufu (100 satir kotayi tek istekte yer)
+    const fetchLimit = mode ? 30 : LINK_LIMIT;
     const rows = await semrushBacklinks(domain, keyword, fetchLimit);
     if (!rows.length && keyword) {
       await tgApi('sendMessage', { chat_id: chatId, text: `❌ "${keyword}" anchor'lı backlink bulunamadı (${domain})` });
