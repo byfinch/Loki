@@ -52,6 +52,14 @@ function fmt(n) {
   try { return Number(n).toLocaleString('tr-TR'); } catch (e) { return String(n); }
 }
 
+// Buyuk sayilari kisa yaz: 10034314 -> 10,0M, 92668 -> 92,7B
+function compactNum(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.', ',') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace('.', ',') + 'B';
+  return String(n);
+}
+
 async function semrushApi(endpoint, params) {
   const key = getSemrushKey();
   if (!key) throw new Error('Semrush anahtari yok');
@@ -95,29 +103,36 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Rapor metni (HTML parse mode). Ayrica mesaj sinirina gore parcalara boler.
+// Rapor metni (HTML parse mode) — KOMPAKT: domain basina tek satir
 function buildReport(domain, keyword, ov, rows) {
+  // Ayni kaynak domain'in coklu backlink'lerini tek satira grupla
+  const groups = [];
+  const byDomain = new Map();
+  for (const r of rows) {
+    let g = byDomain.get(r.source_domain);
+    if (!g) {
+      g = { domain: r.source_domain, ds: r.domain_score, anchors: [], first: r.first_seen };
+      byDomain.set(r.source_domain, g);
+      groups.push(g);
+    }
+    if (g.anchors.length < 4 && !g.anchors.includes(r.anchor)) g.anchors.push(r.anchor);
+  }
+  const shown = groups.slice(0, 12);
+
   const L = [];
-  L.push(`📊 <b>SEMRUSH RAPORU</b>`);
-  L.push(`🎯 <b>${esc(domain)}</b>`);
+  L.push(`📊 <b>SEMRUSH — ${esc(domain)}</b>`);
   if (keyword) L.push(`🔍 Filtre: <b>${esc(keyword)}</b>`);
   L.push('');
-  L.push(`━━━ <b>GENEL DURUM</b> ━━━`);
-  L.push(`⭐ Authority Score: <b>${ov.score}</b>`);
-  L.push(`🔗 Toplam Backlink: <b>${fmt(ov.backlinks)}</b>`);
-  L.push(`🌐 Referans Domain: <b>${fmt(ov.domains)}</b>`);
-  L.push(`✅ Follow: <b>${fmt(ov.follow)}</b>  |  🚫 No-Follow: <b>${fmt(ov.nofollow)}</b>`);
-  if (ov.lost) L.push(`📉 Kaybedilen backlink: <b>${fmt(ov.lost)}</b>`);
+  L.push(`⭐ Score <b>${esc(ov.score)}</b> · 🔗 <b>${compactNum(ov.backlinks)}</b> backlink · 🌐 <b>${fmt(ov.domains)}</b> domain`);
+  L.push(`✅ Follow <b>${compactNum(ov.follow)}</b> · 🚫 NF <b>${fmt(ov.nofollow)}</b>${ov.lost ? ` · 📉 Lost <b>${fmt(ov.lost)}</b>` : ''}`);
   L.push('');
-  L.push(`━━━ <b>BACKLINKLER (${rows.length})</b> ━━━`);
-  rows.forEach((r, i) => {
-    L.push('');
-    L.push(`${i + 1}. <b>${esc(r.source_domain)}</b> — DS ${esc(r.domain_score)}`);
-    L.push(`   💬 anchor: <i>${esc(r.anchor)}</i>  📅 ${esc(r.first_seen)}`);
-    if (r.source_url) L.push(`   🔗 ${esc(r.source_url.slice(0, 80))}`);
+  L.push(`📍 <b>KAYNAK DOMAİNLER:</b>`);
+  shown.forEach((g, i) => {
+    L.push(`${i + 1}. <b>${esc(g.domain)}</b> (DS ${esc(g.ds)}) — ${esc(g.anchors.join(', '))}${g.anchors.length >= 4 ? '…' : ''}`);
   });
+  if (groups.length > shown.length) L.push(`   … +${groups.length - shown.length} domain daha`);
   L.push('');
-  L.push(`🧮 Bu raporda <b>${rows.length}</b> backlink listelendi${rows.length >= LINK_LIMIT ? ` (ilk ${LINK_LIMIT})` : ''}`);
+  L.push(`🧮 ${groups.length} domain / ${rows.length} backlink listelendi`);
 
   // 4096 karakter siniri: satir sinirlarindan parcalara bol
   const text = L.join('\n');
