@@ -103,9 +103,10 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Rapor metni (HTML parse mode) — SADECE ISYE YARAYAN: genel durum + son 7 gunun yeni yerlesimleri
-// Her yeni domain tek satir: kim — DS kac — ne zaman. Anchor listesi ve "..." dolgusu yok.
-function buildReport(domain, keyword, ov, rows) {
+// Rapor metni (HTML parse mode)
+// mode='fresh' (varsayilan): genel durum + son 7 gunun yeni yerlesimleri
+// mode='top': genel durum + tum zamanlarin en yuksek DS'li kaynaklari
+function buildReport(domain, keyword, ov, rows, mode) {
   // Domain basina tek kayit: en yeni first_seen + en yuksek DS
   const byDomain = new Map();
   for (const r of rows) {
@@ -117,20 +118,27 @@ function buildReport(domain, keyword, ov, rows) {
       if (Number(r.domain_score) > Number(g.ds)) g.ds = r.domain_score;
     }
   }
-  const groups = [...byDomain.values()].sort((a, b) => (b.first || '').localeCompare(a.first || ''));
+  const groups = [...byDomain.values()];
 
-  // Son 7 gunun yerlesimleri
-  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
-  const fresh = groups.filter(g => g.first >= weekAgo);
-  const freshShown = fresh.slice(0, 10);
+  let listed;
+  let baslik;
+  if (mode === 'top') {
+    baslik = '🏆 EN GÜÇLÜ KAYNAKLAR';
+    listed = groups.slice().sort((a, b) => Number(b.ds) - Number(a.ds)).slice(0, 10);
+  } else {
+    baslik = '🆕 SON YERLEŞİMLER (7 gün)';
+    const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const fresh = groups.filter(g => g.first >= weekAgo).sort((a, b) => (b.first || '').localeCompare(a.first || ''));
+    listed = fresh.slice(0, 10);
+  }
 
   const L = [];
   L.push(`📊 <b>${esc(domain)}</b> — SEMRUSH${keyword ? ` · filtre: ${esc(keyword)}` : ''}`);
   L.push(`⭐ Score <b>${esc(ov.score)}</b> | 🔗 <b>${compactNum(ov.backlinks)}</b> backlink | 🌐 <b>${fmt(ov.domains)}</b> domain`);
   L.push('');
-  if (freshShown.length) {
-    L.push(`🆕 <b>SON YERLEŞİMLER (7 gün):</b>`);
-    for (const g of freshShown) {
+  if (listed.length) {
+    L.push(`${baslik}:`);
+    for (const g of listed) {
       L.push(`• <b>${esc(g.domain)}</b> — DS ${esc(g.ds)} — ${esc((g.first || '').slice(8, 10) + '.' + (g.first || '').slice(5, 7))}`);
     }
   } else {
@@ -164,19 +172,23 @@ try { lastOffset = parseInt(fs.readFileSync(OFFSET_FILE, 'utf8').trim(), 10) || 
 async function handleCommand(chatId, text) {
   const parts = text.split(/\s+/);
   const domain = parts[1];
-  const keyword = parts.slice(2).join(' ');
+  // 'top' anahtar kelimesi ozel mod: en yuksek DS'li kaynaklar
+  const rest = parts.slice(2);
+  const mode = rest[0] === 'top' ? 'top' : '';
+  const keyword = mode ? '' : rest.join(' ');
   if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
     await tgApi('sendMessage', {
       chat_id: chatId,
-      text: '❌ Kullanım:\n/semrush <domain>\n/semrush <domain> <keyword>\n\nÖrnek:\n/semrush sabacirc.org\n/semrush sabacirc.org freespin'
+      text: '❌ Kullanım:\n/semrush <domain> — son yerleşimler\n/semrush <domain> top — en güçlü kaynaklar\n/semrush <domain> <keyword> — anchor arama\n\nÖrnek:\n/semrush sabacirc.org\n/semrush sabacirc.org top\n/semrush sabacirc.org freespin'
     });
     return;
   }
   await tgApi('sendMessage', { chat_id: chatId, text: `⏳ ${domain}${keyword ? ` (filtre: ${keyword})` : ''} sorgulanıyor...` });
   try {
-    // Overview her zaman cekilir; keyword yoksa link listesi de cekilir
+    // Overview her zaman cekilir; link listesi moda gore cekilir
     const ov = await semrushOverview(domain);
-    const rows = await semrushBacklinks(domain, keyword, LINK_LIMIT);
+    const fetchLimit = mode === 'top' ? 100 : LINK_LIMIT;
+    const rows = await semrushBacklinks(domain, keyword, fetchLimit);
     if (!rows.length && keyword) {
       await tgApi('sendMessage', { chat_id: chatId, text: `❌ "${keyword}" anchor'lı backlink bulunamadı (${domain})` });
       return;
@@ -185,7 +197,7 @@ async function handleCommand(chatId, text) {
       await tgApi('sendMessage', { chat_id: chatId, text: `❌ ${domain} için backlink bulunamadı` });
       return;
     }
-    const chunks = buildReport(domain, keyword, ov, rows);
+    const chunks = buildReport(domain, keyword, ov, rows, mode);
     for (const c of chunks) {
       await tgApi('sendMessage', { chat_id: chatId, text: c, parse_mode: 'HTML', disable_web_page_preview: true });
     }
