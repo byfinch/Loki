@@ -72,7 +72,7 @@ def _http(url, method="GET", data=None, json_body=None, timeout=30, no_redirect=
     if no_redirect:
         handlers.append(_NoRedirect())
     opener = urllib.request.build_opener(*handlers)
-    headers = {"User-Agent": _ua, "Accept": "*/*"}
+    headers = {"User-Agent": _ua or DEFAULT_UA, "Accept": "*/*"}
     if _jar:
         headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in _jar.items())
     body = None
@@ -187,14 +187,47 @@ def gate_pass():
     log("gate: dogrulama cookie alindi")
 
 
+DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+
+def _get_login_page():
+    # /login sayfasini getir; WAF kapisi 403 verdiginde body'yi kaybetmeden dondur
+    try:
+        return _http(f"{BASE}/login")
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 404):
+            body = e.read().decode("utf-8", errors="replace")
+            return e.code, body, e.headers
+        raise
+
+
+def _is_waf_gate(page):
+    return ("rg-challenge-verify" in page) or ("Güvenlik Doğrulaması" in page) or ("cf-turnstile" in page)
+
+
 def login():
     global _ua, _login_at
-    cl, ua = capsolver_solve()
-    _ua = ua
     _jar.clear()
-    _jar["cf_clearance"] = cl
-    gate_pass()  # RackGhost WAF: Turnstile kapisi (2026-09-26 sonrasi zorunlu)
-    status, page, _ = _http(f"{BASE}/login")
+    # ADAPTIF MERDIVEN: RackGhost gun icinde kapilari acip kapatiyor
+    # (04:28 gate acildi, ~06:20 kapildi). Her katman yalnizca gerektiginde:
+    # 1) temiz GET /login -> 200 ise dogrudan form
+    # 2) CF challenge -> capsolver clearance
+    # 3) RackGhost WAF gate -> Turnstile + /rg-challenge-verify
+    _ua = _ua or DEFAULT_UA
+    status, page, _ = _get_login_page()
+    if status != 200:
+        # NOT: 200 sayfalarda 'challenge-platform' string'i CF beacon'i olarak
+        # gecabilir; challenge tespiti status'e bakilarak yapilir (false positive
+        # her yenilemede gereksiz CapSolver çozumu yakardi).
+        log(f"cf/login sayfasi engelli (HTTP {status}), clearance deniyor...")
+        cl, ua = capsolver_solve()
+        _ua = ua
+        _jar["cf_clearance"] = cl
+        status, page, _ = _get_login_page()
+    if status != 200 or _is_waf_gate(page):
+        log(f"WAF kapisi aktif (HTTP {status}), turnstile cozuluyor...")
+        gate_pass()
+        status, page, _ = _get_login_page()
     m = re.search(r'name="csrf_token" value="([^"]+)"', page)
     if not m:
         raise RuntimeError(f"csrf_token bulunamadi (HTTP {status})")
