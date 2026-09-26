@@ -17,6 +17,7 @@ import threading
 import time
 import traceback
 import urllib.request
+import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,7 +59,7 @@ def log(m):
 _last_rg_req = [0.0]
 
 
-def _http(url, method="GET", data=None, json_body=None, timeout=30):
+def _http(url, method="GET", data=None, json_body=None, timeout=30, no_redirect=False):
     # RackGhost rate limit (1 istek/sn): login zinciri dahil HER istek
     # arasina zorunlu bosluk. api_call _lock altinda cagildigi icin
     # zaman damgasi yarissiz ilerler.
@@ -67,7 +68,10 @@ def _http(url, method="GET", data=None, json_body=None, timeout=30):
         time.sleep(wait)
     _last_rg_req[0] = time.time()
     proxy_handler = urllib.request.ProxyHandler({"http": PROXY, "https": PROXY})
-    opener = urllib.request.build_opener(proxy_handler)
+    handlers = [proxy_handler]
+    if no_redirect:
+        handlers.append(_NoRedirect())
+    opener = urllib.request.build_opener(*handlers)
     headers = {"User-Agent": _ua, "Accept": "*/*"}
     if _jar:
         headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in _jar.items())
@@ -122,12 +126,74 @@ def capsolver_solve():
     raise RuntimeError("capsolver timeout")
 
 
+# RackGhost WAF kapisi (2026-09-26'da devreye alindi): /login oncesi
+# Cloudflare Turnstile dogrulamasi zorunlu. Sitekey sayfadan alindi:
+# <div class="cf-turnstile" data-sitekey="..."> -> token /rg-challenge-verify
+# endpointine POST edilir, dogrulama cookie'si jara dusar.
+GATE_SITEKEY = "0x4AAAAAADy19OgZ8TU2PH7c"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    # 302 yonlendirmesini takip etme: ara yanitin Set-Cookie'sini kacirmamak icin
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def turnstile_token():
+    log("capsolver: turnstile cozuluyor...")
+    t = _cs_post("createTask", {
+        "clientKey": CAPSOLVER_KEY,
+        "task": {
+            "type": "AntiTurnstileTask",
+            "websiteURL": f"{BASE}/login",
+            "websiteKey": GATE_SITEKEY,
+            "proxy": PROXY,
+        },
+    })
+    if t.get("errorId"):
+        raise RuntimeError(f"capsolver turnstile createTask: {t.get('errorDescription')}")
+    tid = t["taskId"]
+    for _ in range(24):
+        time.sleep(5)
+        r = _cs_post("getTaskResult", {"clientKey": CAPSOLVER_KEY, "taskId": tid})
+        if r.get("status") == "ready":
+            tok = (r.get("solution") or {}).get("token")
+            if tok:
+                log("capsolver: turnstile token alindi")
+                return tok
+        elif r.get("status") == "failed" or r.get("errorId"):
+            raise RuntimeError(f"capsolver turnstile: {r.get('errorDescription') or r}")
+    raise RuntimeError("capsolver turnstile timeout")
+
+
+def gate_pass():
+    tok = turnstile_token()
+    time.sleep(1.2)  # rackghost rate limit: 1 istek/sn
+    body = urllib.parse.urlencode({
+        "cf-turnstile-response": tok,
+        "rg_redirect": "/login",
+    })
+    try:
+        status, _, _ = _http(f"{BASE}/rg-challenge-verify", method="POST", data=body, no_redirect=True)
+    except urllib.error.HTTPError as e:
+        # 302 gibi yonlendirme yanitlari HTTPError olarak gelir; Set-Cookie jara islenir
+        status = e.code
+        for c in e.headers.get_all("Set-Cookie") or []:
+            m = re.match(r"([^=;\s]+)=([^;\s]*)", c)
+            if m:
+                _jar[m.group(1)] = m.group(2)
+    if status not in (200, 301, 302, 303):
+        raise RuntimeError(f"gate dogrulamasi basarisiz (HTTP {status})")
+    log("gate: dogrulama cookie alindi")
+
+
 def login():
     global _ua, _login_at
     cl, ua = capsolver_solve()
     _ua = ua
     _jar.clear()
     _jar["cf_clearance"] = cl
+    gate_pass()  # RackGhost WAF: Turnstile kapisi (2026-09-26 sonrasi zorunlu)
     status, page, _ = _http(f"{BASE}/login")
     m = re.search(r'name="csrf_token" value="([^"]+)"', page)
     if not m:
