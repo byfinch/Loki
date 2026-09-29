@@ -73,6 +73,11 @@ def _http(url, method="GET", data=None, json_body=None, timeout=30, no_redirect=
         handlers.append(_NoRedirect())
     opener = urllib.request.build_opener(*handlers)
     headers = {"User-Agent": _ua or DEFAULT_UA, "Accept": "*/*"}
+    # WAF POST'larda Origin/Referer bekliyor (2026-09-29): panel click akisi
+    # bu header'larla geldigi icin ham POST'lar 403 yiyordu.
+    if method == "POST":
+        headers["Origin"] = BASE
+        headers["Referer"] = f"{BASE}/panel" if API_PATH in url else f"{BASE}/login"
     if _jar:
         headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in _jar.items())
     body = None
@@ -234,7 +239,11 @@ def login():
     tok = m.group(1)
     time.sleep(1.2)  # rackghost rate limit: 1 istek/sn
     body = urllib.parse.urlencode({"csrf_token": tok, "email": EMAIL, "password": PASSWORD})
-    status2, resp2, _ = _http(f"{BASE}/login", method="POST", data=body)
+    try:
+        status2, resp2, _ = _http(f"{BASE}/login", method="POST", data=body)
+    except urllib.error.HTTPError as e:
+        # Ham HTTPError yerine aciklayici hata: watchdog mesaji anlamli olsun
+        raise RuntimeError(f"login POST reddedildi (HTTP {e.code})") from None
     if "PHPSESSID" not in _jar:
         raise RuntimeError(f"login basarisiz (HTTP {status2})")
     _login_at = time.time()

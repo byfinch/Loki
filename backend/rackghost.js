@@ -91,7 +91,7 @@ function newStresserApiMethod(method) {
 
 const STRESSERS = {
   main: { name: 'main', label: 'Klasik', api: 2, limits: { maxTime: 7200, maxConcurrents: 15 }, methods: METHODS_MAIN },
-  new: { name: 'new', label: 'Yeni (Profil)', api: 3, limits: { maxTime: 7200, maxConcurrents: 80 }, methods: METHODS_NEW }
+  new: { name: 'new', label: 'Yeni (Profil)', api: 3, limits: { maxTime: 7200, maxConcurrents: 150 }, methods: METHODS_NEW }
 };
 
 // Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX,
