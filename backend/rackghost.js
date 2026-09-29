@@ -91,7 +91,7 @@ function newStresserApiMethod(method) {
 
 const STRESSERS = {
   main: { name: 'main', label: 'Klasik', api: 2, limits: { maxTime: 7200, maxConcurrents: 15 }, methods: METHODS_MAIN },
-  new: { name: 'new', label: 'Yeni (Profil)', api: 3, limits: { maxTime: 7200, maxConcurrents: 150 }, methods: METHODS_NEW }
+  new: { name: 'new', label: 'Yeni (Profil)', api: 3, limits: { maxTime: 7200, maxConcurrents: 9999 }, methods: METHODS_NEW }
 };
 
 // Bazi methodlar girilen concurrents'in kati kadar slot tuketir (or. HTTPSMIX,
@@ -393,5 +393,8 @@ module.exports = {
   getStressers,
   displayPrefix,
   RG_PROFILE_ID,
-  LIMITS: { maxTime: 7200, maxConcurrents: 80 }
+  // NOT: 'new' icin maxConcurrents 9999 = pratikte kapak yok; gercek siniri
+  // upstream belirler (tasarsa "reached the limit of available slots" doner,
+  // biz bunu cevirip gosteririz). Sahibin paneli 151'i de kabul ediyor.
+  LIMITS: { maxTime: 7200, maxConcurrents: 9999 }
 };
