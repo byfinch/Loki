@@ -16,7 +16,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
-const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
+const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderSetEnabled, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 const rackghost = require('./rackghost');
 const sitewatch = require('./sitewatch');
@@ -4017,6 +4017,11 @@ app.post('/api/invader/interval', (req, res) => {
   const min = parseInt(req.body?.min, 10);
   if (!Number.isFinite(min) || min < 1) return res.status(400).json({ status: 'error', message: 'Gecersiz aralik' });
   res.json({ status: 'success', ...invaderSetInterval(min) });
+});
+
+app.post('/api/invader/enabled', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', ...invaderSetEnabled(req.body?.enabled !== false) });
 });
 
 app.get('/api/invader/state', (req, res) => {

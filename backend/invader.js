@@ -209,6 +209,9 @@ async function notifyResult(r, prev) {
 }
 
 async function runChecks(onlyUrl = null, forceNotify = false) {
+  // Genel kapatma (config.enabled === false): periyodik/toplu tarama durur;
+  // tekli "tara" acik istek oldugundan yine calisir.
+  if (!onlyUrl && readJson(CONFIG_FILE, {}).enabled === false) return;
   let sites = readJson(SITES_FILE, []);
   if (onlyUrl) sites = sites.filter((s) => s.url === onlyUrl || s.name === onlyUrl);
   // Kapali (paused) siteler periyodik/toplu taramaya girmez; tekli "tara"
@@ -363,14 +366,24 @@ function invaderSetInterval(min) {
   return { intervalMin: cfg.intervalMin };
 }
 
+// Genel ac/kapa: tum modulun otomatik taramasi durur/devam eder (site listesi korunur)
+function invaderSetEnabled(enabled) {
+  const cfg = readJson(CONFIG_FILE, {});
+  if (enabled) delete cfg.enabled;
+  else cfg.enabled = false;
+  writeJson(CONFIG_FILE, cfg);
+  return { enabled: enabled !== false };
+}
+
 function invaderHistory(limit = 50) {
   return readJson(HISTORY_FILE, []).slice(-limit).reverse();
 }
 
 function getInvaderState() {
   const sites = readJson(SITES_FILE, []);
+  const enabled = readJson(CONFIG_FILE, {}).enabled !== false;
   state = readJson(STATE_FILE, state);
-  return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: getIntervalMs() / 60000 };
+  return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: getIntervalMs() / 60000, enabled };
 }
 
-module.exports = { initInvader, runChecks, testAndNotify, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderHistory, notifyResult, checkSite };
+module.exports = { initInvader, runChecks, testAndNotify, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderSetEnabled, invaderHistory, notifyResult, checkSite };

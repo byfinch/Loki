@@ -408,6 +408,10 @@ export const apiClient = {
     const res = await apiFetch(`${API_BASE}/invader/interval`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ min }) });
     return handleResponse(res);
   },
+  async setInvaderEnabled(enabled) {
+    const res = await apiFetch(`${API_BASE}/invader/enabled`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ enabled }) });
+    return handleResponse(res);
+  },
 
   // ---- Gruplar (ortak panel) ----
   async getGroups() {

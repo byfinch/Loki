@@ -101,6 +101,16 @@ const InvaderPanel = () => {
     } catch (err) { showToast(err.message, 'error'); }
   };
 
+  const globallyOff = data.enabled === false;
+
+  const toggleGlobal = async () => {
+    try {
+      await apiClient.setInvaderEnabled(globallyOff);
+      showToast(globallyOff ? 'Invader izleme açıldı' : 'Invader izleme tamamen kapatıldı (siteler korunur)', 'success');
+      refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+
   const inputCls = 'bg-black/60 border border-green-500/20 rounded-sm px-2.5 py-1.5 text-[11px] font-mono text-green-100 placeholder-gray-600 focus:outline-none focus:border-green-500/50';
 
   return (
@@ -128,8 +138,18 @@ const InvaderPanel = () => {
               <button onClick={saveInterval} className="shrink-0 px-2 py-1 rounded-sm border border-green-500/30 bg-green-500/10 text-green-400 text-[10px] hover:bg-green-500/20">kaydet</button>
             </span>
             <button
+              onClick={toggleGlobal}
+              title={globallyOff ? 'Tüm otomatik taramayı aç' : 'Tüm otomatik taramayı durdur (siteler silinmez)'}
+              className={`shrink-0 px-4 py-1.5 rounded-sm text-xs font-bold tracking-wider border transition ${globallyOff
+                ? 'bg-green-500/15 border-green-500/40 text-green-400 hover:bg-green-500/25'
+                : 'bg-red-500/15 border-red-500/40 text-red-400 hover:bg-red-500/25'}`}
+            >
+              {globallyOff ? 'GENEL: KAPALI — AÇ' : 'GENEL: AÇIK — KAPAT'}
+            </button>
+            <button
               onClick={manualScan}
-              disabled={scanning}
+              disabled={scanning || globallyOff}
+              title={globallyOff ? 'Genel izleme kapalı — önce aç' : 'Tüm aktif siteleri şimdi tara'}
               className="shrink-0 px-4 py-1.5 rounded-sm text-xs font-bold tracking-wider bg-green-500/15 border border-green-500/40 text-green-400 hover:bg-green-500/25 transition disabled:opacity-40"
             >
               ŞİMDİ TARA
@@ -162,18 +182,20 @@ const InvaderPanel = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.sites.map((s) => (
-                    <tr key={s.name || s.url} className={`border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors ${s.paused ? 'opacity-45' : ''}`}>
+                  {data.sites.map((s) => {
+                    const off = s.paused || globallyOff;
+                    return (
+                    <tr key={s.name || s.url} className={`border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors ${off ? 'opacity-45' : ''}`}>
                       <td className="px-2 py-2.5 text-green-300">
                         <div className="flex items-center gap-1.5">
-                          <span title={s.paused ? 'İzleme kapalı' : 'İzleme açık'}>{s.paused ? '⏸' : '▶'}</span>
+                          <span title={off ? 'İzleme kapalı' : 'İzleme açık'}>{off ? '⏸' : '▶'}</span>
                           {s.name}
                         </div>
                       </td>
                       <td className="px-2 py-2.5"><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{s.url}</a></td>
                       <td className="px-2 py-2.5 text-cyan-300/80">{s.expect || '—'}</td>
-                      <td className="px-2 py-2.5">{s.paused ? badge('KAPALI') : badge(s.status, 'bot')}</td>
-                      <td className="px-2 py-2.5">{s.paused ? badge('KAPALI') : badge(s.ustatus, 'kullanıcı')}</td>
+                      <td className="px-2 py-2.5">{off ? badge('KAPALI') : badge(s.status, 'bot')}</td>
+                      <td className="px-2 py-2.5">{off ? badge('KAPALI') : badge(s.ustatus, 'kullanıcı')}</td>
                       <td className="px-2 py-2.5 text-[10px] text-gray-500">{s.since ? new Date(s.since).toLocaleString('tr-TR') : '—'}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex gap-1.5">
@@ -204,7 +226,8 @@ const InvaderPanel = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
