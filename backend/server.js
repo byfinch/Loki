@@ -16,7 +16,7 @@ const path = require('path');
 const { sendTelegram, initTelegram, esc } = require('./telegram');
 const phish = require('./phish');
 const { initImpact, getImpactForUser } = require('./impact');
-const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
+const { initInvader, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderHistory, runChecks: invaderRunChecks } = require('./invader');
 const { initWatch, getState: watchState, addKeyword, removeKeyword, addSite, removeSite, triggerScan } = require('./watch');
 const rackghost = require('./rackghost');
 const sitewatch = require('./sitewatch');
@@ -4000,6 +4000,11 @@ app.post('/api/invader/sites', async (req, res) => {
 app.post('/api/invader/sites/remove', (req, res) => {
   if (!watchAuth(req, res)) return;
   res.json({ status: 'success', sites: invaderRemoveSite(req.body?.name).sites });
+});
+
+app.post('/api/invader/sites/toggle', (req, res) => {
+  if (!watchAuth(req, res)) return;
+  res.json({ status: 'success', sites: invaderToggleSite(req.body?.name, !!req.body?.paused).sites });
 });
 
 app.get('/api/invader/history', (req, res) => {

@@ -211,6 +211,9 @@ async function notifyResult(r, prev) {
 async function runChecks(onlyUrl = null, forceNotify = false) {
   let sites = readJson(SITES_FILE, []);
   if (onlyUrl) sites = sites.filter((s) => s.url === onlyUrl || s.name === onlyUrl);
+  // Kapali (paused) siteler periyodik/toplu taramaya girmez; tekli "tara"
+  // acik istek oldugundan kapali siteyi de tarar.
+  else sites = sites.filter((s) => !s.paused);
   if (!sites.length) return;
   const prevState = { ...state };
   const changes = [];
@@ -341,6 +344,18 @@ function invaderRemoveSite(name) {
   return { sites };
 }
 
+// Site izlemeyi ac/kapa: kayit silinmez, sadece otomatik tarama disi birakilir
+function invaderToggleSite(name, paused) {
+  const sites = readJson(SITES_FILE, []);
+  const s = sites.find((x) => x.name === name || x.url === name);
+  if (s) {
+    if (paused) s.paused = true;
+    else delete s.paused;
+  }
+  writeJson(SITES_FILE, sites);
+  return { sites };
+}
+
 function invaderSetInterval(min) {
   const cfg = readJson(CONFIG_FILE, {});
   cfg.intervalMin = parseInt(min, 10);
@@ -358,4 +373,4 @@ function getInvaderState() {
   return { sites: sites.map((s) => ({ ...s, ...(state[s.name || s.url] || {}) })), intervalMin: getIntervalMs() / 60000 };
 }
 
-module.exports = { initInvader, runChecks, testAndNotify, getInvaderState, invaderAddSite, invaderRemoveSite, invaderSetInterval, invaderHistory, notifyResult, checkSite };
+module.exports = { initInvader, runChecks, testAndNotify, getInvaderState, invaderAddSite, invaderRemoveSite, invaderToggleSite, invaderSetInterval, invaderHistory, notifyResult, checkSite };

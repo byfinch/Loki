@@ -395,6 +395,10 @@ export const apiClient = {
     const res = await apiFetch(`${API_BASE}/invader/sites/remove`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) });
     return handleResponse(res);
   },
+  async toggleInvaderSite(name, paused) {
+    const res = await apiFetch(`${API_BASE}/invader/sites/toggle`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name, paused }) });
+    return handleResponse(res);
+  },
   async getInvaderHistory() {
     const res = await apiFetch(`${API_BASE}/invader/history`, { headers: getHeaders() });
     const data = await handleResponse(res);

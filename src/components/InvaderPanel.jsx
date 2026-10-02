@@ -82,6 +82,15 @@ const InvaderPanel = () => {
     catch (err) { showToast(err.message, 'error'); }
   };
 
+  const toggleSite = async (site) => {
+    const name = site.name || site.url;
+    try {
+      await apiClient.toggleInvaderSite(name, !site.paused);
+      refresh();
+      showToast(site.paused ? 'İzleme açıldı' : 'İzleme kapatıldı (site listede kalır)', 'success');
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+
   const saveInterval = async () => {
     const min = parseInt(intervalDraft, 10);
     if (!Number.isFinite(min) || min < 1) { showToast('Geçersiz aralık', 'error'); return; }
@@ -154,15 +163,29 @@ const InvaderPanel = () => {
                 </thead>
                 <tbody>
                   {data.sites.map((s) => (
-                    <tr key={s.name || s.url} className="border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors">
-                      <td className="px-2 py-2.5 text-green-300">{s.name}</td>
+                    <tr key={s.name || s.url} className={`border-b border-dashed border-green-500/10 hover:bg-green-500/5 transition-colors ${s.paused ? 'opacity-45' : ''}`}>
+                      <td className="px-2 py-2.5 text-green-300">
+                        <div className="flex items-center gap-1.5">
+                          <span title={s.paused ? 'İzleme kapalı' : 'İzleme açık'}>{s.paused ? '⏸' : '▶'}</span>
+                          {s.name}
+                        </div>
+                      </td>
                       <td className="px-2 py-2.5"><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky-300/90 hover:underline break-all">{s.url}</a></td>
                       <td className="px-2 py-2.5 text-cyan-300/80">{s.expect || '—'}</td>
-                      <td className="px-2 py-2.5">{badge(s.status, 'bot')}</td>
-                      <td className="px-2 py-2.5">{badge(s.ustatus, 'kullanıcı')}</td>
+                      <td className="px-2 py-2.5">{s.paused ? badge('KAPALI') : badge(s.status, 'bot')}</td>
+                      <td className="px-2 py-2.5">{s.paused ? badge('KAPALI') : badge(s.ustatus, 'kullanıcı')}</td>
                       <td className="px-2 py-2.5 text-[10px] text-gray-500">{s.since ? new Date(s.since).toLocaleString('tr-TR') : '—'}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex gap-1.5">
+                          <button
+                            onClick={() => toggleSite(s)}
+                            title={s.paused ? 'Otomatik taramayı aç' : 'Otomatik taramayı durdur (site silinmez)'}
+                            className={`px-2.5 py-1 rounded-sm border text-[10px] transition ${s.paused
+                              ? 'border-green-500/30 text-green-400/90 hover:bg-green-500/10'
+                              : 'border-yellow-500/25 text-yellow-400/80 hover:bg-yellow-500/10'}`}
+                          >
+                            {s.paused ? 'aç' : 'kapat'}
+                          </button>
                           <button
                             onClick={() => scanOne(s.url)}
                             disabled={rowScanning === s.url}
